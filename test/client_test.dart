@@ -25,6 +25,7 @@ class FakeBackend implements DesktopBackend {
   bool running = false;
   bool failImport = false;
   Json proxyData = {};
+  final selections = <String, String>{};
   @override
   Stream<Json> get events => changes.stream;
   @override
@@ -37,6 +38,7 @@ class FakeBackend implements DesktopBackend {
             'settings': settings,
             'profiles': profiles,
             'activeId': profiles.isEmpty ? '' : profiles.first['id'],
+            'selections': selections,
           },
           'core': {'running': running},
           'service': {'installed': false},
@@ -61,7 +63,20 @@ class FakeBackend implements DesktopBackend {
       case 'settings':
         settings = params!;
         return settings;
+      case 'rememberSelection':
+        selections[params!['group'] as String] = params['name'] as String;
+        return true;
       case 'controller':
+        if (params!['method'] == 'PUT' &&
+            (params['path'] as String).startsWith('/proxies/')) {
+          final group = Uri.decodeComponent(
+            (params['path'] as String).substring('/proxies/'.length),
+          );
+          final node = (params['body'] as Json)['name'] as String;
+          (proxyData[group] as Json?)?['now'] = node;
+          selections[group] = node;
+          return null;
+        }
         if (params!['path'] == '/proxies') {
           return {'proxies': proxyData};
         }
@@ -141,6 +156,35 @@ void main() {
     expect(backend.profiles, isEmpty);
     expect(find.byKey(const Key('import-submit')), findsOneWidget);
   });
+  testWidgets('node can be chosen before the first connection', (tester) async {
+    final backend = FakeBackend();
+    backend.profiles.add({
+      'id': 'offline',
+      'name': 'Offline selection',
+      'content': 'proxies: [{name: First, type: direct}, {name: Second, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: [MATCH,Choice]\n',
+    });
+    final c = await setup(tester, backend);
+    c.navigate(1);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Second'));
+    await tester.pumpAndSettle();
+    expect(c.running, isFalse);
+    expect(c.selections['Choice'], 'Second');
+    expect(backend.calls, contains('rememberSelection'));
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'Second'),
+        matching: find.byIcon(Icons.check_circle),
+      ),
+      findsOneWidget,
+    );
+    c.navigate(0);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('primary-connect')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, containsAllInOrder(['rememberSelection', 'connect']));
+    expect(c.running, isTrue);
+  });
   testWidgets('six pages fit the minimum supported window', (tester) async {
     final backend = FakeBackend();
     final c = await setup(tester, backend, size: const Size(760, 580));
@@ -149,6 +193,34 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'page $i overflowed');
     }
+  });
+  testWidgets('global mode continues using the chosen node', (tester) async {
+    final backend = FakeBackend()..running = true;
+    backend.profiles.add({
+      'id': 'global',
+      'name': 'Global selection',
+      'content': 'proxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: [MATCH,Choice]\n',
+    });
+    backend.proxyData = {
+      'GLOBAL': {
+        'type': 'Selector',
+        'all': ['DIRECT', 'Choice'],
+        'now': 'DIRECT',
+      },
+      'Choice': {
+        'type': 'Selector',
+        'all': ['First', 'Second'],
+        'now': 'First',
+      },
+    };
+    final c = await setup(tester, backend);
+    expect(await c.saveSettings({'mode': 'global'}), isTrue);
+    expect((backend.proxyData['GLOBAL'] as Json)['now'], 'Choice');
+    expect(c.currentNode, 'First');
+    expect(await c.selectNode('Choice', 'Second'), isTrue);
+    expect(c.currentNode, 'Second');
+    expect(await c.saveSettings({'mode': 'direct'}), isTrue);
+    expect(c.currentNode, 'DIRECT');
   });
   testWidgets('light and dark Material 3 overview renders', (tester) async {
     final backend = FakeBackend();

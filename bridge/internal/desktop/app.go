@@ -454,16 +454,25 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		return result, err
 	case "rememberSelection":
-		// macOS routes controller operations through the authenticated XPC helper.
+		// Offline selection and macOS's authenticated XPC controller share storage.
 		var p struct{ Group, Name string }
 		if err := decode(req.Params, &p); err != nil {
 			return nil, err
 		}
-		if len(p.Group) > 512 || len(p.Name) > 512 {
+		if p.Group == "" || p.Name == "" || len(p.Group) > 512 || len(p.Name) > 512 {
 			return nil, errors.New("invalid selection")
 		}
+		previous, existed := s.State.Selections[p.Group]
 		s.State.Selections[p.Group] = p.Name
-		return true, s.Save()
+		if err := s.Save(); err != nil {
+			if existed {
+				s.State.Selections[p.Group] = previous
+			} else {
+				delete(s.State.Selections, p.Group)
+			}
+			return nil, err
+		}
+		return true, nil
 	case "logs":
 		if a.remote != nil {
 			var logs []string

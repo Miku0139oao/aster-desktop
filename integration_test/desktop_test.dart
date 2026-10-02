@@ -47,7 +47,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('import-source')),
-      'proxies: []\nrules:\n - MATCH,DIRECT\n',
+      'proxies: [{name: Local A, type: direct}, {name: Local B, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [Local A, Local B]}]\nrules: [MATCH,Choice]\n',
     );
     await tester.tap(find.byKey(const Key('import-submit')));
     for (var attempt = 0; attempt < 150 && c.profiles.isEmpty; attempt++) {
@@ -55,12 +55,25 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(c.profiles.length, 1, reason: c.error);
+    c.navigate(1);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Local B'));
+    await tester.pumpAndSettle();
+    expect(c.selections['Choice'], 'Local B');
+    expect(c.running, isFalse);
+    c.navigate(0);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('primary-connect')));
     for (var attempt = 0; attempt < 150 && !c.running; attempt++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
     await tester.pumpAndSettle();
     expect(c.running, isTrue, reason: c.error);
+    expect((await c.api('GET', '/proxies/Choice') as Json)['now'], 'Local B');
+    expect(await c.saveSettings({'mode': 'global'}), isTrue, reason: c.error);
+    expect((await c.api('GET', '/proxies/GLOBAL') as Json)['now'], 'Choice');
+    expect(c.currentNode, 'Local B');
+    expect(await c.saveSettings({'mode': 'rule'}), isTrue, reason: c.error);
     if (Platform.isWindows) {
       await windowManager.close();
       await tester.pump(const Duration(seconds: 1));

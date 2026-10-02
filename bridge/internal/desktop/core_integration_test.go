@@ -63,8 +63,17 @@ func TestRealCoreClientLifecycle(t *testing.T) {
 	}
 	var profile Profile
 	_ = json.Unmarshal(profileJSON, &profile)
+	if _, err = call("rememberSelection", map[string]string{"group": "Test Group", "name": "Local B"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = call("connect", nil); err != nil {
 		t.Fatal(err)
+	}
+	offlineSelected, err := call("controller", map[string]any{"method": "GET", "path": "/proxies/Test%20Group"})
+	var restoredSelection map[string]any
+	_ = json.Unmarshal(offlineSelected, &restoredSelection)
+	if err != nil || restoredSelection["now"] != "Local B" {
+		t.Fatalf("offline selection was not applied at startup: %s %v", offlineSelected, err)
 	}
 	pid := a.Core.Status().PID
 	if pid == 0 {

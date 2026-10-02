@@ -388,6 +388,15 @@ class OverviewPage extends StatelessWidget {
                   c.active!.name,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.hub_outlined),
+                  title: Text(c.tr('目前節點', 'Current node')),
+                  subtitle: Text(c.currentNode),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => c.navigate(1),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   c.active!.url.isEmpty
@@ -469,6 +478,23 @@ class _NodesPageState extends State<NodesPage> {
     try {
       final doc = loadYaml(c.active?.content ?? '') as YamlMap;
       final result = <String, dynamic>{};
+      final providerNodes = <String, List<String>>{};
+      final providers = doc['proxy-providers'] as YamlMap?;
+      if (providers != null) {
+        for (final entry in providers.entries) {
+          final nodes = (entry.value as YamlMap)['payload'] as YamlList?;
+          if (nodes == null) continue;
+          providerNodes[entry.key as String] = [
+            for (final node in nodes) node['name'] as String,
+          ];
+          for (final node in nodes) {
+            result[node['name'] as String] = {
+              'name': node['name'],
+              'type': node['type'],
+            };
+          }
+        }
+      }
       for (final node in (doc['proxies'] as YamlList? ?? [])) {
         result[node['name'] as String] = {
           'name': node['name'],
@@ -476,10 +502,17 @@ class _NodesPageState extends State<NodesPage> {
         };
       }
       for (final g in (doc['proxy-groups'] as YamlList? ?? [])) {
+        final names = <String>[
+          ...List<String>.from(g['proxies'] as List? ?? []),
+          for (final provider in (g['use'] as List? ?? []))
+            ...providerNodes[provider] ?? [],
+        ];
+        final saved = c.selections[g['name']];
         result[g['name'] as String] = {
           'name': g['name'],
           'type': g['type'] == 'select' ? 'Selector' : g['type'],
-          'all': List<String>.from(g['proxies'] as List? ?? []),
+          'all': names,
+          'now': names.contains(saved) ? saved : names.firstOrNull,
         };
       }
       return result;
@@ -520,7 +553,14 @@ class _NodesPageState extends State<NodesPage> {
         ),
       );
     }
-    if (!groups.any((g) => g.key == group)) group = groups.first.key;
+    if (!groups.any((g) => g.key == group)) {
+      group =
+          groups
+              .where((g) => (g.value as Json)['type'] == 'Selector')
+              .firstOrNull
+              ?.key ??
+          groups.first.key;
+    }
     final selected = all[group] as Json;
     final nodes = (selected['all'] as List)
         .cast<String>()
@@ -585,8 +625,8 @@ class _NodesPageState extends State<NodesPage> {
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
             child: Text(
               c.tr(
-                '開始連線後，即可切換節點與測速。',
-                'Connect to switch nodes and test latency.',
+                '可先選擇節點，再到首頁連線。測速與遠端提供者的節點會在連線後載入。',
+                'Choose a node, then connect on Overview. Latency tests and remote provider nodes become available after connecting.',
               ),
             ),
           ),
@@ -618,7 +658,7 @@ class _NodesPageState extends State<NodesPage> {
                   ),
                   title: Text(name),
                   subtitle: Text(node['type'] as String? ?? ''),
-                  onTap: !c.running || c.busy || selected['type'] != 'Selector'
+                  onTap: c.busy || selected['type'] != 'Selector'
                       ? null
                       : () => c.selectNode(group, name),
                   trailing: Row(

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,6 +48,19 @@ func TestMain(m *testing.M) {
 		if err = yaml.Unmarshal(data, &doc); err != nil {
 			os.Exit(9)
 		}
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%v", doc["mixed-port"]))
+		if err != nil {
+			os.Exit(10)
+		}
+		go func() {
+			for {
+				connection, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				_ = connection.Close()
+			}
+		}()
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			fields := map[string]any{"/version": map[string]any{"version": "fixture"}, "/configs": map[string]any{"mode": "rule"}, "/proxies": map[string]any{"proxies": map[string]any{}}, "/rules": map[string]any{"rules": []any{}}, "/connections": map[string]any{"connections": []any{}}}
 			if mode == "incompatible" && r.URL.Path == "/configs" {

@@ -155,8 +155,8 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	if err != nil {
 		return fmt.Errorf("proxy port %d is in use; stop the other proxy or choose another port in Advanced settings", s.MixedPort)
 	}
-	_ = listener.Close()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
+	_ = listener.Close()
 	if err != nil {
 		return err
 	}
@@ -233,7 +233,7 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 			return fmt.Errorf("core did not start: %s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-deadline.C:
 			_ = c.Stop()
-			return errors.New("core startup timed out; check the configuration or conflicting proxy software")
+			return fmt.Errorf("core startup timed out; check the configuration or conflicting proxy software\n%s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-ticker.C:
 			if body, err := c.Request(ctx, "GET", "/version", nil); err == nil {
 				var version struct {
@@ -242,6 +242,12 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 				if json.Unmarshal(body, &version) != nil || version.Version == "" {
 					continue
 				}
+				// Controller readiness precedes binding the proxy listeners.
+				listener, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", s.MixedPort), 250*time.Millisecond)
+				if err != nil {
+					continue
+				}
+				_ = listener.Close()
 				c.mu.Lock()
 				c.coreVersion = version.Version
 				c.mu.Unlock()

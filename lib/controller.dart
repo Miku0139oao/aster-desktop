@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:yaml/yaml.dart';
 
 import 'backend.dart';
 
@@ -66,6 +67,7 @@ class AppController extends ChangeNotifier {
   List<Profile> profiles = [];
   String activeId = '';
   Json service = {}, proxies = {}, connections = {};
+  Map<String, String> selections = {};
   List<String> logs = [];
   List<Json> rules = [];
   bool running = false, busy = false, ready = false;
@@ -86,6 +88,59 @@ class AppController extends ChangeNotifier {
   num _previousUp = 0, _previousDown = 0;
   final _refreshAttempts = <String, DateTime>{};
   Profile? get active => profiles.where((p) => p.id == activeId).firstOrNull;
+  String get profileTarget {
+    try {
+      final doc = loadYaml(active?.content ?? '') as YamlMap;
+      for (final rule in (doc['rules'] as List? ?? []).reversed) {
+        final parts = (rule as String).split(',');
+        if (parts.length > 1 && ['MATCH', 'FINAL'].contains(parts.first)) {
+          return parts[1].trim();
+        }
+      }
+      final groups = doc['proxy-groups'] as List? ?? [];
+      return groups.where((g) => g['type'] == 'select').firstOrNull?['name']
+              as String? ??
+          'DIRECT';
+    } catch (_) {
+      return 'DIRECT';
+    }
+  }
+
+  String get currentNode {
+    if (settings.mode == 'direct') return 'DIRECT';
+    var node = settings.mode == 'global'
+        ? (running ? 'GLOBAL' : selections['GLOBAL'] ?? profileTarget)
+        : profileTarget;
+    final seen = <String>{};
+    YamlMap? doc;
+    try {
+      doc = loadYaml(active?.content ?? '') as YamlMap?;
+    } catch (_) {}
+    while (seen.add(node)) {
+      final live = running ? proxies[node] as Json? : null;
+      final group = (doc?['proxy-groups'] as List? ?? [])
+          .where((g) => g['name'] == node)
+          .firstOrNull;
+      final next =
+          live?['now'] as String? ??
+          selections[node] ??
+          (group?['proxies'] as List?)?.firstOrNull as String?;
+      if (next == null) break;
+      node = next;
+    }
+    return node;
+  }
+
+  Future<void> _selectGlobalTarget() async {
+    final result = await api('GET', '/proxies') as Json;
+    final all = result['proxies'] as Json;
+    final choices = (all['GLOBAL'] as Json?)?['all'] as List? ?? [];
+    var target = selections['GLOBAL'] ?? profileTarget;
+    if (!choices.contains(target)) target = profileTarget;
+    if (!choices.contains(target)) return;
+    await api('PUT', '/proxies/GLOBAL', {'name': target});
+  }
+
   String tr(String zh, String en) => settings.language == 'en' ? en : zh;
   ThemeMode get themeMode => switch (settings.theme) {
     'light' => ThemeMode.light,
@@ -112,6 +167,9 @@ class AppController extends ChangeNotifier {
         .map((p) => Profile(p as Json))
         .toList();
     activeId = state['activeId'] as String? ?? '';
+    selections = (state['selections'] as Json? ?? {}).map(
+      (group, node) => MapEntry(group, node as String),
+    );
     service = result['service'] as Json? ?? {};
     final core = result['core'] as Json;
     running = core['running'] == true;
@@ -140,13 +198,16 @@ class AppController extends ChangeNotifier {
 
   Future<bool> toggle() => perform(() async {
     await backend.call(running ? 'disconnect' : 'connect');
+    if (!running && settings.mode == 'global') await _selectGlobalTarget();
     if (running) {
       upload = 0;
       download = 0;
+      _metricsAt = null;
     }
   });
   Future<bool> saveSettings(Json changes) => perform(() async {
     await backend.call('settings', settings.copy(changes).toJson());
+    if (running && changes['mode'] == 'global') await _selectGlobalTarget();
   });
   Future<void> loadRuntime() async {
     final result = await api('GET', '/proxies') as Json;
@@ -164,7 +225,22 @@ class AppController extends ChangeNotifier {
   Future<dynamic> api(String method, String path, [dynamic body]) => backend
       .call('controller', {'method': method, 'path': path, 'body': body});
   Future<bool> selectNode(String group, String node) => perform(() async {
-    await api('PUT', '/proxies/${Uri.encodeComponent(group)}', {'name': node});
+    if (running) {
+      await api('PUT', '/proxies/${Uri.encodeComponent(group)}', {
+        'name': node,
+      });
+      if (settings.mode == 'global' && group != 'GLOBAL') {
+        await api('PUT', '/proxies/GLOBAL', {'name': group});
+      }
+    } else {
+      await backend.call('rememberSelection', {'group': group, 'name': node});
+      if (settings.mode == 'global') {
+        await backend.call('rememberSelection', {
+          'group': 'GLOBAL',
+          'name': group,
+        });
+      }
+    }
   });
   Future<int?> testNode(String name) async {
     try {

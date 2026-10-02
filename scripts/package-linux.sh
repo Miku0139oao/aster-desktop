@@ -52,6 +52,9 @@ depend = gtk3
 depend = libappindicator
 depend = polkit
 depend = systemd
+depend = ca-certificates
+optdepend = kconfig: KDE proxy settings
+optdepend = gsettings-desktop-schemas: GNOME proxy settings
 EOF
 cp packaging/linux/aster-desktop.install "$archstage/.INSTALL"
 tar -C "$archstage" --owner=0 --group=0 --zstd -cf dist/Aster-Desktop-0.1.0-linux-x64.pkg.tar.zst .
