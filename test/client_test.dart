@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:ffi';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,13 @@ import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/pages.dart';
+
+String goldenPath(String name) {
+  final platform = Platform.isWindows
+      ? ''
+      : '${Platform.operatingSystem}-${Abi.current() == Abi.macosArm64 ? 'arm64' : 'x64'}/';
+  return '../evidence/$platform$name.png';
+}
 
 class FakeBackend implements DesktopBackend {
   final calls = <String>[];
@@ -153,14 +162,14 @@ void main() {
     await tester.pumpAndSettle();
     await expectLater(
       find.byType(AsterApp),
-      matchesGoldenFile('../evidence/overview-light.png'),
+      matchesGoldenFile(goldenPath('overview-light')),
     );
     backend.settings = {...backend.settings, 'theme': 'dark'};
     await c.refresh();
     await tester.pumpAndSettle();
     await expectLater(
       find.byType(AsterApp),
-      matchesGoldenFile('../evidence/overview-dark.png'),
+      matchesGoldenFile(goldenPath('overview-dark')),
     );
     backend.settings = {
       ...backend.settings,
@@ -171,7 +180,7 @@ void main() {
     await tester.pumpAndSettle();
     await expectLater(
       find.byType(AsterApp),
-      matchesGoldenFile('../evidence/overview-zh.png'),
+      matchesGoldenFile(goldenPath('overview-zh')),
     );
   });
   testWidgets('large node collection can be searched at high text scaling', (
