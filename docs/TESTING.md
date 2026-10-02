@@ -20,7 +20,7 @@
 | Windows 原生 GUI | `flutter test integration_test -d windows`：實際 Flutter 視窗啟動 Go／原核心，在 GUI 匯入 YAML、連線、透過代理存取本機 HTTP、巡覽六頁、停止後代理埠關閉；關窗進托盤仍保持核心執行 |
 | Linux 原生 GUI | Xvfb 下相同匯入／HTTP 代理／六頁／停止流程通過；此測試停用托盤生命週期，不等同 GNOME／KDE 托盤驗收 |
 | Go 管理層與 vet | 匯入、設定管理、代理還原、單一管理程序鎖、更新與真實核心測試通過；`go vet ./...` 通過 |
-| 匯入格式 | SS、VMess、VLESS、Trojan、HY2、TUIC、AnyTLS；AnyTLS + REALITY、明文／Base64、Clash YAML、重複與群組保留名稱、部分無效連結、過大下載及 HTTP 失敗 |
+| 匯入格式 | SS、VMess、VLESS、Trojan、HY2、TUIC、AnyTLS；AnyTLS + REALITY、明文／Base64、Clash YAML、重複與群組保留名稱、部分無效連結、過大下載及 HTTP 失敗。節點／inline／HTTP／本機 file provider-only YAML 的基本群組產生、保留 DNS 與核心驗證亦通過 |
 | 真實 Controller / 核心 | 本機 direct 節點與 select 群組切換／保存、延遲測試、流量／連線事件、連線中止、核心日誌、三種模式、訂閱更新失敗保留有效內容、無效 YAML 保留執行設定、備份／還原、崩潰後顯示停止並可重連 |
 | Linux TUN | 實際 gVisor TUN 在隔離網路中建立介面與路由、DNS 攔截、停止後介面與路由清理 |
 | Linux 權限服務 | 實際 root bridge 與 UID 1000 客戶端；UID 1001 拒絕、受限操作拒絕、TUN 啟動、客戶端直接斷開後清理核心與 TUN |
@@ -30,7 +30,7 @@
 | Windows 打包 | Release GUI、獨立 bridge／gVisor core、VC runtime、第三方授權、可攜 ZIP 與原生安裝器；安裝器嵌入 ZIP 的完整性／必要檔案／路徑檢查通過 |
 | Ubuntu 原生 CI | [37035979448](https://github.com/Miku0139oao/aster-desktop/actions/runs/37035979448)：Ubuntu job 通過靜態分析、元件／真實核心測試、原生 GUI 與 deb／可攜包建置；最新功能修正由後續 CI 重驗 |
 | macOS 原生畫面 | Intel／Apple Silicon 的 [畫面基準 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37035312635) 通過；已人工檢視並納入各平台淺／深色／繁中基準 |
-| macOS 編譯 | 37035979448 已完成 Apple Silicon Flutter、Swift XPC 助手、Go bridge／核心與 PKG；DMG 容量估算失敗已修正，最終 DMG 與 Intel 結果以後續 CI 記錄為準 |
+| macOS Apple Silicon | [37038842721](https://github.com/Miku0139oao/aster-desktop/actions/runs/37038842721) 的 ARM job 通過分析、元件測試、Swift XPC 助手／Flutter／Go 原生編譯、真實核心／回復測試、PKG 與 DMG。DMG 容量修正已通過；後續匯入功能修正另由最新 CI 重驗 |
 
 分享連結測試證明轉換與核心設定驗證，不代表已與七種協議的遠端伺服器逐一完成網路互通。更新的失敗測試使用本機 HTTP fixture 與真實原核心；未為測試覆寫使用者已安裝核心，未在正式 GitHub release 發佈資產。
 
@@ -38,7 +38,7 @@
 
 | 項目 | 狀態／需要的環境 |
 |---|---|
-| macOS Intel / Apple Silicon 打包 | 原生 CI 已實際執行；最終 DMG 建置修正重驗中。請依 [最新 CI](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml) 的逐平台結果取得測試包，不把早期失敗 run 視為通過 |
+| macOS Intel 打包 | Intel 原生 CI 仍在建置；ARM 已通過。請依 [最新 CI](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml) 的逐平台結果取得測試包，不把早期失敗 run 視為通過 |
 | macOS 網路／代理／TUN | 待 macOS 13+ 實機；包含授權拒絕、網路服務切換、既有 PAC／認證代理、TUN 清理與睡眠喚醒 |
 | Windows 完整安裝／服務 | 已驗證安裝器 payload；尚未進行管理員 UAC 安裝／卸載、服務 named-pipe 權限、Windows TUN 與乾淨 Windows 10／11 機器驗收 |
 | Windows 系統代理 | 原生 WinInet adapter 與所有權還原邏輯已實作／測試；未改動本機使用者的實際全域代理設定 |

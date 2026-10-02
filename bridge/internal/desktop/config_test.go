@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"context"
 	"encoding/base64"
 	"gopkg.in/yaml.v3"
 	"os"
@@ -8,6 +9,62 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestNodeOnlyYAMLGeneratesUsableProfile(t *testing.T) {
+	cases := []struct {
+		name, content string
+		nodes         int
+	}{
+		{"nodes", "proxies: [{name: Proxy, type: direct}, {name: Proxy, type: direct}]\ndns: {enable: true, nameserver: [1.1.1.1]}\n", 2},
+		{"inline-provider", "proxy-providers: {Local: {type: inline, payload: [{name: Auto, type: direct}]}}\n", 1},
+		{"http-provider", "proxy-providers: {Remote: {type: http, url: 'https://example.com/nodes.yaml', interval: 3600}}\n", 0},
+	}
+	for _, fixture := range cases {
+		t.Run(fixture.name, func(t *testing.T) {
+			result, err := Import([]byte(fixture.content))
+			if err != nil || result.Nodes != fixture.nodes {
+				t.Fatalf("import: %v, nodes: %d", err, result.Nodes)
+			}
+			var doc map[string]any
+			if err = yaml.Unmarshal([]byte(result.Content), &doc); err != nil {
+				t.Fatal(err)
+			}
+			groups := doc["proxy-groups"].([]any)
+			if len(groups) != 2 || groups[0].(map[string]any)["name"] != "Proxy" || doc["rules"].([]any)[4] != "MATCH,Proxy" {
+				t.Fatal("missing basic groups or routing")
+			}
+			if fixture.name == "nodes" {
+				nodes := doc["proxies"].([]any)
+				if nodes[0].(map[string]any)["name"] != "Proxy (2)" || nodes[1].(map[string]any)["name"] != "Proxy (3)" || doc["dns"].(map[string]any)["nameserver"].([]any)[0] != "1.1.1.1" {
+					t.Fatal("duplicate names or original DNS lost")
+				}
+			} else if len(groups[0].(map[string]any)["use"].([]any)) != 1 {
+				t.Fatal("provider subscription is not connected to the group")
+			}
+			if binary := os.Getenv("ASTER_TEST_CORE"); binary != "" {
+				core := NewCore(binary, t.TempDir())
+				if _, err = core.Validate(context.Background(), result.Content, DefaultSettings(), false); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestNodeOnlyLocalProviderImportedBeforeGroupGeneration(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "nodes.yaml"), []byte("proxies: [{name: Auto, type: direct}]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	input := "proxy-providers: {Local: {type: file, path: nodes.yaml}}\n"
+	result, err := Import([]byte(input), filepath.Join(dir, "profile.yaml"))
+	if err != nil || result.Nodes != 1 || !strings.Contains(result.Content, "Auto (2)") || !strings.Contains(result.Content, "type: inline") {
+		t.Fatalf("local provider import: %v, %s", err, result.Content)
+	}
+	if _, err = Import([]byte(input), ""); err == nil {
+		t.Fatal("pasted file provider accepted without a source file")
+	}
+}
 
 func TestImportProtocolsAndDuplicates(t *testing.T) {
 	links := []string{

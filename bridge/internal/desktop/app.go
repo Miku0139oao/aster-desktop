@@ -209,11 +209,7 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			}
 			p.Content = string(b)
 		}
-		result, err := Import([]byte(p.Content))
-		if err != nil {
-			return nil, err
-		}
-		result.Content, err = InlineLocalProviders(result.Content, p.File)
+		result, err := Import([]byte(p.Content), p.File)
 		if err != nil {
 			return nil, err
 		}
@@ -254,7 +250,7 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			_ = s.Save()
 			return nil, err
 		}
-		result, err := Import([]byte(content))
+		result, err := Import([]byte(content), "")
 		if err != nil {
 			return nil, err
 		}

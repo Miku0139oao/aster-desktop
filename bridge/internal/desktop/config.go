@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Miku0139oao/aster-core/adapter"
@@ -19,18 +20,84 @@ type ImportResult struct {
 	Nodes    int      `json:"nodes"`
 }
 
-func Import(data []byte) (ImportResult, error) {
+func Import(data []byte, sourceFile ...string) (ImportResult, error) {
 	if len(data) == 0 || len(data) > MaxConfig {
 		return ImportResult{}, errors.New("configuration is empty or too large")
 	}
 	var doc map[string]any
 	if yaml.Unmarshal(data, &doc) == nil && doc != nil && (doc["proxies"] != nil || doc["proxy-providers"] != nil || doc["rules"] != nil) {
+		if len(sourceFile) > 0 {
+			content, err := InlineLocalProviders(string(data), sourceFile[0])
+			if err != nil {
+				return ImportResult{}, err
+			}
+			data = []byte(content)
+			if err = yaml.Unmarshal(data, &doc); err != nil {
+				return ImportResult{}, err
+			}
+		}
 		if _, err := yaml.Marshal(doc); err != nil {
 			return ImportResult{}, err
 		}
 		n := 0
 		if p, ok := doc["proxies"].([]any); ok {
 			n = len(p)
+		}
+		// A node/provider-only YAML subscription needs a usable routing profile,
+		// just like a subscription made of sharing links. Preserve complete profiles.
+		if emptySequence(doc["proxy-groups"]) && emptySequence(doc["rules"]) && (n > 0 || doc["proxy-providers"] != nil) {
+			names := map[string]bool{"Proxy": true, "Auto": true, "GLOBAL": true, "DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true}
+			nodeNames := []string{}
+			entries, _ := doc["proxies"].([]any)
+			allEntries := append([]any{}, entries...)
+			providers := []string{}
+			values, _ := doc["proxy-providers"].(map[string]any)
+			for name := range values {
+				providers = append(providers, name)
+			}
+			sort.Strings(providers)
+			if len(values) > 0 {
+				for _, name := range providers {
+					value := values[name]
+					if provider, ok := value.(map[string]any); ok {
+						if payload, ok := provider["payload"].([]any); ok {
+							allEntries = append(allEntries, payload...)
+							n += len(payload)
+						}
+					}
+				}
+			}
+			for index, entry := range allEntries {
+				node, ok := entry.(map[string]any)
+				if !ok {
+					return ImportResult{}, errors.New("YAML node must be a mapping")
+				}
+				name, _ := node["name"].(string)
+				if name == "" {
+					return ImportResult{}, errors.New("YAML node is missing its name")
+				}
+				base := name
+				for suffix := 2; names[name]; suffix++ {
+					name = fmt.Sprintf("%s (%d)", base, suffix)
+				}
+				names[name] = true
+				node["name"] = name
+				if index < len(entries) {
+					nodeNames = append(nodeNames, name)
+				}
+			}
+			selector := map[string]any{"name": "Proxy", "type": "select", "proxies": append([]string{"Auto"}, nodeNames...)}
+			auto := map[string]any{"name": "Auto", "type": "url-test", "proxies": nodeNames, "url": "https://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50}
+			if len(providers) > 0 {
+				selector["use"], auto["use"] = providers, providers
+			}
+			doc["proxy-groups"] = []any{selector, auto}
+			doc["rules"] = basicRules("Proxy")
+			if doc["dns"] == nil {
+				doc["dns"] = map[string]any{"enable": true, "enhanced-mode": "fake-ip", "nameserver": []string{"system"}}
+			}
+			generated, err := yaml.Marshal(doc)
+			return ImportResult{Content: string(generated), Warnings: []string{}, Nodes: n}, err
 		}
 		return ImportResult{Content: string(data), Warnings: []string{}, Nodes: n}, nil
 	}
@@ -76,9 +143,21 @@ func Import(data []byte) (ImportResult, error) {
 		nodeNames = append(nodeNames, n["name"].(string))
 	}
 	choices := append([]string{"Auto"}, nodeNames...)
-	doc = map[string]any{"proxies": nodes, "proxy-groups": []any{map[string]any{"name": "Proxy", "type": "select", "proxies": choices}, map[string]any{"name": "Auto", "type": "url-test", "proxies": nodeNames, "url": "https://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50}}, "dns": map[string]any{"enable": true, "enhanced-mode": "fake-ip", "nameserver": []string{"system"}}, "rules": []string{"IP-CIDR,127.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve", "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve", "MATCH,Proxy"}}
+	doc = map[string]any{"proxies": nodes, "proxy-groups": []any{map[string]any{"name": "Proxy", "type": "select", "proxies": choices}, map[string]any{"name": "Auto", "type": "url-test", "proxies": nodeNames, "url": "https://www.gstatic.com/generate_204", "interval": 300, "tolerance": 50}}, "dns": map[string]any{"enable": true, "enhanced-mode": "fake-ip", "nameserver": []string{"system"}}, "rules": basicRules("Proxy")}
 	b, err := yaml.Marshal(doc)
 	return ImportResult{Content: string(b), Warnings: warnings, Nodes: len(nodes)}, err
+}
+
+func emptySequence(value any) bool {
+	if value == nil {
+		return true
+	}
+	values, ok := value.([]any)
+	return ok && len(values) == 0
+}
+
+func basicRules(target string) []string {
+	return []string{"IP-CIDR,127.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve", "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve", "MATCH," + target}
 }
 
 // Runtime owns controller and process-related settings. Imported profiles never
