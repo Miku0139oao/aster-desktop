@@ -79,6 +79,7 @@ tun: {device: AsterSvcTest, stack: gvisor}
 	if err = client.Call("start", params, nil); err != nil {
 		t.Fatal(err)
 	}
+	status = CoreStatus{} // Healthy responses omit the optional error field.
 	if err = client.Call("status", nil, &status); err != nil || !status.Running || status.Error != "" {
 		t.Fatalf("core not ready: %+v %v", status, err)
 	}
