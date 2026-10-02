@@ -1,6 +1,6 @@
 # Aster Desktop 0.1.0 測試版
 
-Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)；尚未執行的 macOS CI 不代表已通過。
+Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
 ## 安裝與第一次使用
 
@@ -15,7 +15,7 @@ Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁
 ## 日常操作
 
 - **首頁**：連線／停止、目前設定與節點、速度、流量、模式、訂閱狀態，錯誤提供復原提示與可展開的細節。
-- **節點**：搜尋、群組選擇、延遲測試。離線可選擇匯入的節點，連線時自動套用；远端 HTTP provider 節點與測速在核心連線後載入。
+- **節點**：搜尋、群組選擇、延遲測試。離線可選擇匯入的節點，連線時自動套用；遠端 HTTP provider 節點與測速在核心連線後載入。
 - **訂閱／設定**：本機／URL Clash YAML、明文／Base64 訂閱、SS、VMess、VLESS、Trojan、HY2、TUIC、AnyTLS（包含 REALITY）。更新／切換／匯出／刪除；部分無效連結顯示行號，更新失敗保留舊內容。
 - **連線**：搜尋程序、主機、IP 與規則，中止單一或目前顯示的連線。
 - **日誌**：搜尋、等級過濾、複製／匯出，匯出遮蔽常見密碼與分享連結憑證。
@@ -46,7 +46,7 @@ GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝
 ASTER_FLUTTER=/path/to/flutter/bin/flutter bash scripts/build.sh
 ```
 
-結果在 `dist/`，含套件、對應桌面／固定核心來源包及 `checksums.txt`。Windows 使用 Go 建置的原生安裝器，升權後在管理員專用目錄展開安裝資料。Linux 在 Ubuntu 24.04 建置 deb 與 Ubuntu 可攜包，在 Arch 建置 Arch 套件與 Arch 可攜包，各自連結對應的 AppIndicator 函式庫。Mac DMG 內含保護安裝所有權的 PKG。正式 Mac 簽署設定 `ASTER_SIGN_IDENTITY` 和 `ASTER_NOTARY_PROFILE`。CI 在 `.github/workflows/build.yml`，推送到 repository 後才能執行。
+結果在 `dist/`，含套件、對應桌面／固定核心來源包及 `checksums.txt`。Windows 使用 Go 建置的原生安裝器，升權後在管理員專用目錄展開安裝資料。Linux 在 Ubuntu 24.04 建置 deb 與 Ubuntu 可攜包，在 Arch 建置 Arch 套件與 Arch 可攜包，各自連結對應的 AppIndicator 函式庫。Mac DMG 內含保護安裝所有權的 PKG。正式 Mac 簽署設定 `ASTER_SIGN_IDENTITY` 和 `ASTER_NOTARY_PROFILE`。CI 在 `.github/workflows/build.yml`，推送到 repository 後自動執行。
 
 ```sh
 flutter pub get --enforce-lockfile

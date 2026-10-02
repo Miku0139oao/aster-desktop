@@ -77,7 +77,7 @@ class FakeBackend implements DesktopBackend {
           selections[group] = node;
           return null;
         }
-        if (params!['path'] == '/proxies') {
+        if (params['path'] == '/proxies') {
           return {'proxies': proxyData};
         }
         if (params['path'] == '/version') return {'version': 'test-core'};

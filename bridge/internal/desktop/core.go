@@ -155,8 +155,14 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	if err != nil {
 		return fmt.Errorf("proxy port %d is in use; stop the other proxy or choose another port in Advanced settings", s.MixedPort)
 	}
+	packet, err := net.ListenPacket("udp", net.JoinHostPort(bind, fmt.Sprint(s.MixedPort)))
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("proxy UDP port %d is unavailable; stop the other proxy or choose another port in Advanced settings", s.MixedPort)
+	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	_ = listener.Close()
+	_ = packet.Close()
 	if err != nil {
 		return err
 	}

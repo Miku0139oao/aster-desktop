@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,26 @@ import (
 	"testing"
 	"time"
 )
+
+func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
+	binary := os.Getenv("ASTER_TEST_CORE")
+	if binary == "" {
+		t.Skip("requires ASTER_TEST_CORE")
+	}
+	packet, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer packet.Close()
+	settings := DefaultSettings()
+	settings.SystemProxy = false
+	settings.MixedPort = packet.LocalAddr().(*net.UDPAddr).Port
+	core := NewCore(binary, t.TempDir())
+	defer core.Stop()
+	if err = core.Start(context.Background(), "proxies: []\nrules: [MATCH,DIRECT]\n", settings, false); err == nil || core.Status().Running {
+		t.Fatal("occupied UDP port should not become a connected status")
+	}
+}
 
 func TestRealCoreClientLifecycle(t *testing.T) {
 	binary := os.Getenv("ASTER_TEST_CORE")
