@@ -26,6 +26,7 @@ type Core struct {
 	cmd                          *exec.Cmd
 	done                         chan struct{}
 	lastError                    string
+	stopping                     bool
 	coreVersion                  string
 	logMu                        sync.Mutex
 	logs                         []string
@@ -98,10 +99,22 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 	}
 	return b, nil
 }
-func (c *Core) Start(ctx context.Context, content string, s Settings, privileged bool) error {
+func (c *Core) recordError(err error) {
+	c.mu.Lock()
+	c.lastError = err.Error()
+	c.mu.Unlock()
+	c.appendLog("Desktop: " + err.Error())
+}
+
+func (c *Core) Start(ctx context.Context, content string, s Settings, privileged bool) (result error) {
 	if c.Status().Running {
 		return errors.New("core is already running")
 	}
+	defer func() {
+		if result != nil {
+			c.recordError(result)
+		}
+	}()
 	err := c.start(ctx, content, s, privileged)
 	if err == nil || c.Binary == c.BundledBinary || ctx.Err() != nil {
 		return err
@@ -200,9 +213,12 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	c.done = make(chan struct{})
 	c.Address = address
 	c.lastError = ""
+	c.stopping = false
 	done := c.done
 	c.mu.Unlock()
+	logDone := make(chan struct{})
 	go func() {
+		defer close(logDone)
 		scanner := bufio.NewScanner(r)
 		scanner.Buffer(make([]byte, 4096), 64<<10)
 		for scanner.Scan() {
@@ -213,14 +229,19 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	go func() {
 		err := cmd.Wait()
 		w.Close()
+		<-logDone
 		releaseCore(cmd)
 		// Finish restoring this generation's proxy before allowing another start.
 		_ = c.restoreProxy()
 		c.mu.Lock()
 		if c.cmd == cmd {
 			c.cmd = nil
-			if err != nil {
+			if !c.stopping {
 				c.lastError = "core stopped unexpectedly; reconnect to try again"
+				if err != nil {
+					c.lastError += ": " + err.Error()
+				}
+				c.lastError += "\n" + bounded(strings.Join(c.Logs(), "\n"), 3000)
 			}
 		}
 		close(done)
@@ -265,6 +286,9 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 func (c *Core) Stop() error {
 	c.mu.Lock()
 	cmd, done := c.cmd, c.done
+	if cmd != nil {
+		c.stopping = true
+	}
 	c.mu.Unlock()
 	var err error
 	if cmd != nil {

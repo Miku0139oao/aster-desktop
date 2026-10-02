@@ -37,6 +37,21 @@ func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	}
 }
 
+func TestRealCoreFailedTUNValidationKeepsCause(t *testing.T) {
+	binary := os.Getenv("ASTER_TEST_CORE")
+	if binary == "" {
+		t.Skip("requires ASTER_TEST_CORE")
+	}
+	c := NewCore(binary, t.TempDir())
+	s := DefaultSettings()
+	s.Tun = true
+	s.SystemProxy = false
+	err := c.Start(context.Background(), "proxies: [{name: bad, type: socks5, certificate: /etc/shadow}]", s, true)
+	if err == nil || c.Status().Running || c.Status().Error != err.Error() || !strings.Contains(strings.Join(c.Logs(), "\n"), "inline certificate") {
+		t.Fatal("startup failure is missing from stopped status or diagnostic logs")
+	}
+}
+
 func TestRealCoreClientLifecycle(t *testing.T) {
 	binary := os.Getenv("ASTER_TEST_CORE")
 	if binary == "" {

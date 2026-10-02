@@ -24,6 +24,8 @@ class FakeBackend implements DesktopBackend {
   final profiles = <Json>[];
   bool running = false;
   bool failImport = false;
+  String? coreError;
+  Completer<dynamic>? pendingState;
   Json proxyData = {};
   Json connectionData = {'connections': []};
   final closedConnections = <String>[];
@@ -35,6 +37,7 @@ class FakeBackend implements DesktopBackend {
     calls.add(method);
     switch (method) {
       case 'state':
+        if (pendingState != null) return pendingState!.future;
         return {
           'state': {
             'settings': settings,
@@ -42,7 +45,10 @@ class FakeBackend implements DesktopBackend {
             'activeId': profiles.isEmpty ? '' : profiles.first['id'],
             'selections': selections,
           },
-          'core': {'running': running},
+          'core': {
+            'running': running,
+            if (coreError != null) 'error': coreError,
+          },
           'service': {'installed': false},
         };
       case 'import':
@@ -129,6 +135,54 @@ Future<AppController> setup(
 }
 
 void main() {
+  test(
+    'poll preserves the core failure and retrieves logs while stopped',
+    () async {
+      final backend = FakeBackend()..running = true;
+      final c = AppController(backend);
+      addTearDown(c.dispose);
+      addTearDown(backend.close);
+      await c.refresh();
+      c.ready = true;
+      c.page = 4;
+      backend.running = false;
+      backend.coreError = 'TUN adapter could not start: permission denied';
+      await c.poll();
+      expect(c.running, isFalse);
+      expect(c.error, backend.coreError);
+      expect(backend.calls.last, 'logs');
+    },
+  );
+
+  test('an old poll cannot overwrite a completed connection', () async {
+    final backend = FakeBackend();
+    final c = AppController(backend);
+    addTearDown(c.dispose);
+    addTearDown(backend.close);
+    await c.refresh();
+    c.ready = true;
+    final oldState = {
+      'state': {
+        'settings': backend.settings,
+        'profiles': <Json>[],
+        'activeId': '',
+        'selections': <String, String>{},
+      },
+      'core': {'running': false},
+      'service': <String, dynamic>{},
+    };
+    final delayed = Completer<dynamic>();
+    backend.pendingState = delayed;
+    final poll = c.poll();
+    backend.pendingState = null;
+    expect(await c.toggle(), isTrue);
+    expect(c.running, isTrue);
+    delayed.complete(oldState);
+    await poll;
+    expect(c.running, isTrue);
+    expect(c.error, isNull);
+  });
+
   testWidgets('first use imports and connects without technical setup', (
     tester,
   ) async {

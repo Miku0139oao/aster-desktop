@@ -134,6 +134,92 @@ func TestPrivilegedFilesRejected(t *testing.T) {
 		t.Fatal("privileged local file allowed")
 	}
 }
+
+func TestTUNSubscriptionTransportPathsAndAnchors(t *testing.T) {
+	input := `provider-template: &provider
+  type: http
+  path: ./subscription-cache.yaml
+  interval: 3600
+node-template: &node
+  type: vmess
+  server: example.com
+  port: 443
+  uuid: 00000000-0000-4000-8000-000000000001
+  alterId: 0
+  cipher: auto
+proxies:
+  - {<<: *node, name: WS, network: ws, ws-opts: {path: /ws}}
+  - {<<: *node, name: HTTP, network: http, http-opts: {path: [/connect]}}
+  - {<<: *node, name: H2, network: h2, h2-opts: {path: /h2}}
+proxy-providers:
+  Remote: {<<: *provider, url: 'https://example.com/nodes.yaml'}
+  Inline:
+    type: inline
+    payload:
+      - {<<: *node, name: ProviderWS, network: ws, ws-opts: {path: /provider}}
+dns:
+  enable: true
+  nameserver: [system]
+  fallback-filter: {geoip: true, geosite: [gfw]}
+rules: ['MATCH,DIRECT']
+`
+	s := DefaultSettings()
+	s.Tun = true
+	dir := t.TempDir()
+	b, err := Runtime(input, s, "127.0.0.1:9000", "managed", dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err = yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	nodes := doc["proxies"].([]any)
+	if nodes[0].(map[string]any)["ws-opts"].(map[string]any)["path"] != "/ws" || doc["dns"].(map[string]any)["fallback-filter"].(map[string]any)["geosite"].([]any)[0] != "gfw" {
+		t.Fatal("transport or DNS settings changed")
+	}
+	providers := doc["proxy-providers"].(map[string]any)
+	if !strings.HasPrefix(providers["Remote"].(map[string]any)["path"].(string), filepath.Join(dir, "providers")) {
+		t.Fatal("provider cache escaped the managed directory")
+	}
+	// Exercise the real core's configuration parser without enabling TUN or
+	// fetching remote providers/geodata, including paths copied into a provider.
+	if binary := os.Getenv("ASTER_TEST_CORE"); binary != "" {
+		delete(doc, "dns")
+		delete(providers, "Remote")
+		content, _ := yaml.Marshal(doc)
+		if _, err = NewCore(binary, dir).Validate(context.Background(), string(content), s, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTUNRejectsActualFileResources(t *testing.T) {
+	for _, fragment := range []string{
+		"tls: {certificate: /etc/shadow}",
+		"tls: {custom-certifactes: [/etc/shadow]}",
+		"proxy-providers: {P: {type: inline, payload: [{name: bad, type: socks5, certificate: /etc/shadow}]}}",
+		"proxy-providers: {private-key: {type: inline, payload: [{name: bad, type: ssh, private-key: /etc/shadow}]}}",
+		"proxies: [{name: bad, type: tailscale, state-dir: /etc}]",
+		"geox-url: {mmdb: 'file:///etc/shadow'}",
+		"geox-url: {asn: /etc/shadow}",
+		"traffic-control: {store: /etc/shadow}",
+	} {
+		t.Run(fragment, func(t *testing.T) {
+			if _, err := Runtime(fragment, DefaultSettings(), "127.0.0.1:0", "managed", t.TempDir(), true); err == nil {
+				t.Fatal("local privileged resource accepted")
+			}
+		})
+	}
+}
+
+func TestTUNInlineProtocolKeys(t *testing.T) {
+	for _, protocol := range []string{"wireguard", "masque"} {
+		if _, err := Runtime("proxies: [{name: inline, type: "+protocol+", private-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}]", DefaultSettings(), "127.0.0.1:0", "managed", t.TempDir(), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 func TestInlineLocalProviders(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "nodes.yaml"), []byte("proxies:\n - name: local\n   type: socks5\n   server: localhost\n   port: 1080\n"), 0600)

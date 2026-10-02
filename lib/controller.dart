@@ -84,6 +84,7 @@ class AppController extends ChangeNotifier {
   Timer? _timer;
   StreamSubscription<Json>? _subscription;
   bool _polling = false;
+  int _operationEpoch = 0;
   DateTime? _metricsAt;
   num _previousUp = 0, _previousDown = 0;
   final _refreshAttempts = <String, DateTime>{};
@@ -160,7 +161,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    final epoch = _operationEpoch;
     final result = await backend.call('state') as Json;
+    if (epoch != _operationEpoch) return;
     final state = result['state'] as Json;
     settings = AppSettings.fromJson(state['settings'] as Json);
     profiles = (state['profiles'] as List? ?? [])
@@ -180,6 +183,7 @@ class AppController extends ChangeNotifier {
   Future<bool> perform(Future<void> Function() task) async {
     if (busy) return false;
     busy = true;
+    _operationEpoch++;
     error = null;
     notifyListeners();
     try {
@@ -197,9 +201,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<bool> toggle() => perform(() async {
-    await backend.call(running ? 'disconnect' : 'connect');
-    if (!running && settings.mode == 'global') await _selectGlobalTarget();
-    if (running) {
+    final disconnecting = running;
+    await backend.call(disconnecting ? 'disconnect' : 'connect');
+    if (!disconnecting && settings.mode == 'global') {
+      await _selectGlobalTarget();
+    }
+    if (disconnecting) {
       upload = 0;
       download = 0;
       _metricsAt = null;
@@ -269,11 +276,13 @@ class AppController extends ChangeNotifier {
   Future<void> poll() async {
     if (_polling || busy || !ready) return;
     _polling = true;
+    final epoch = _operationEpoch;
     try {
       final wasRunning = running;
       await refresh();
+      if (busy || epoch != _operationEpoch) return;
       if (wasRunning && !running) {
-        error = tr(
+        error ??= tr(
           '代理已停止，請重新連線。',
           'The proxy stopped. Reconnect to try again.',
         );
@@ -303,9 +312,9 @@ class AppController extends ChangeNotifier {
             _previousDown = down;
           }
         }
-        if (page == 4) {
-          logs = (await backend.call('logs') as List? ?? []).cast<String>();
-        }
+      }
+      if (page == 4 && !busy && epoch == _operationEpoch) {
+        logs = (await backend.call('logs') as List? ?? []).cast<String>();
       }
       // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
       if (Platform.isMacOS && settings.subscriptionHours > 0) {
@@ -328,6 +337,7 @@ class AppController extends ChangeNotifier {
       }
       notifyListeners();
     } catch (e) {
+      if (busy || epoch != _operationEpoch) return;
       error = e.toString();
       notifyListeners();
     } finally {

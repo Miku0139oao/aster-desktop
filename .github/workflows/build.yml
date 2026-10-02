@@ -58,6 +58,14 @@ jobs:
       - name: Real core lifecycle and rollback tests (Unix)
         if: runner.os != 'Windows'
         run: cd bridge && ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./... -count=1
+      - name: Windows LocalSystem service and TUN regression
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
+          $env:ASTER_TEST_WINDOWS_SERVICE='disposable-runner'
+          cd bridge
+          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 3m
       - name: Native GUI workflow (Windows)
         if: runner.os == 'Windows'
         run: flutter test integration_test -d windows

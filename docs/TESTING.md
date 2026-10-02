@@ -1,3 +1,17 @@
+# Aster Desktop 0.1.1 修正驗證
+
+日期：2026-10-03。此版修正 beta.1 的實際 TUN 匯入阻擋：WebSocket／HTTP／H2 request path、DNS geosite 分類及 YAML anchor 範本不再誤判為本機檔案；實際憑證檔案仍拒絕。WireGuard／MASQUE 的 inline private key 不再要求 PEM。節點 provider 的快取路徑仍由桌面管理。
+
+- Windows `flutter analyze` 無問題；11 項元件／單元測試通過，新增舊輪詢不能覆蓋新連線、停止後保留核心錯誤並能查看日誌。
+- Windows 實際原核心 Go 啟停／更新回復／設定測試與 `go vet` 通過；新增失敗的 TUN 啟動原因保存測試，以及 transport path／provider payload／YAML anchor／DNS 分類回歸測試。
+- Windows 原生 Flutter GUI 匯入、選節點、HTTP 代理、三種模式、停止流程通過。
+- 使用實際使用者設定的私人副本進行 TUN 設定驗證：固定核心 `alpha-main-a9a3350`、使用者已更新的 `alpha-main-56e24f5` 均通過。測試只執行核心 `-t`，未變更使用者設定、系統代理或主機路由；私人副本及診斷不納入 repository 或套件。
+- 新增 GitHub Windows 一次性 runner 的 LocalSystem 服務／named pipe／gVisor TUN／拒絕操作／重連／EOF 清理回歸測試。預設不執行，明確拒絕覆寫既有 AsterDesktop 服務；不能當作本機 UAC 驗收。
+- 本次 Linux、Mac 建置及 Windows 服務回歸 CI 結果將附於 release；尚未完成的實機項目仍以下列 beta.1 紀錄為準。
+
+已安裝 Windows 背景服務者須使用 0.1.1 安裝器覆蓋更新，安裝器會停止並重新啟動既有服務；只換可攜 GUI 不會更新已安裝的服務程式。
+
+---
 # Aster Desktop 0.1.0 測試紀錄
 
 日期：2026-10-03。本紀錄分開標示自動測試、實際核心／GUI 測試，以及尚未完成的作業系統驗收。測試包尚不代表全部平台驗收完成。

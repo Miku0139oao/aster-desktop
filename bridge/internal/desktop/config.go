@@ -210,7 +210,7 @@ func Runtime(content string, s Settings, controller, secret, dir string, privile
 		}
 	}
 	if privileged {
-		if err := checkPrivilegedResources(doc, ""); err != nil {
+		if err := checkPrivilegedResources(doc); err != nil {
 			return nil, err
 		}
 	}
@@ -227,33 +227,58 @@ func safeName(s string) string {
 	}
 	return b.String()
 }
-func checkPrivilegedResources(v any, key string) error {
+
+// Check fields which the core actually uses as files. Request paths (WS/HTTP/H2),
+// DNS geosite categories and subscription YAML anchors are not file resources.
+func checkPrivilegedResources(doc map[string]any) error {
+	for _, key := range []string{"proxies", "proxy-providers", "tls", "tuic-server"} {
+		if err := checkPrivilegedCertificates(doc[key], key); err != nil {
+			return err
+		}
+	}
+	if urls, ok := doc["geox-url"].(map[string]any); ok {
+		for _, key := range []string{"geoip", "geosite", "mmdb", "asn"} {
+			if value, ok := urls[key].(string); ok && value != "" && ValidateURL(value) != nil {
+				return fmt.Errorf("geox-url.%s: use an HTTP or HTTPS resource URL for TUN", key)
+			}
+		}
+	}
+	if traffic, ok := doc["traffic-control"].(map[string]any); ok {
+		if path, _ := traffic["store"].(string); path != "" {
+			return errors.New("traffic-control.store: custom local file access is unavailable in TUN mode")
+		}
+	}
+	return nil
+}
+
+func checkPrivilegedCertificates(v any, key string) error {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, val := range x {
-			if k == "path" && strings.Contains(key, "providers") {
+			// WireGuard and MASQUE keys are inline protocol key bytes, not PEM/files.
+			if k == "private-key" && (x["type"] == "wireguard" || x["type"] == "masque") {
 				continue
 			}
-			if err := checkPrivilegedResources(val, key+"."+k); err != nil {
+			if k == "state-dir" {
+				if path, _ := val.(string); path != "" {
+					return fmt.Errorf("%s.%s: custom local file access is unavailable in TUN mode", key, k)
+				}
+			}
+			if err := checkPrivilegedCertificates(val, key+"."+k); err != nil {
 				return err
 			}
 		}
 	case []any:
-		for _, val := range x {
-			if err := checkPrivilegedResources(val, key); err != nil {
+		for index, val := range x {
+			if err := checkPrivilegedCertificates(val, fmt.Sprintf("%s[%d]", key, index)); err != nil {
 				return err
 			}
 		}
 	case string:
-		last := key[strings.LastIndex(key, ".")+1:]
-		if last == "certificate" || last == "private-key" || last == "ca" || last == "client-auth-cert" {
+		last := strings.Split(key[strings.LastIndex(key, ".")+1:], "[")[0]
+		if last == "certificate" || last == "private-key" || last == "ca" || last == "client-auth-cert" || last == "custom-certifactes" {
 			if x != "" && !strings.Contains(x, "-----BEGIN ") {
 				return fmt.Errorf("%s: use inline certificate/key material for TUN", key)
-			}
-		}
-		if last == "path" || last == "file" || last == "mmdb" || last == "geosite" || last == "geoip" {
-			if x != "" && !strings.HasPrefix(x, "http://") && !strings.HasPrefix(x, "https://") {
-				return fmt.Errorf("%s: local file access is unavailable in TUN mode", key)
 			}
 		}
 	}
