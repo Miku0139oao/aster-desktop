@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.go text eol=lf
+*.dart text eol=lf
+*.swift text eol=lf
+packaging/linux/* text eol=lf
+*.png binary
+*.ico binary
+*.ttf binary
+assets/OFL-NotoSansTC.txt -whitespace

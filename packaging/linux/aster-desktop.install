@@ -1,0 +1,5 @@
+pre_remove() {
+  if [ -f /etc/systemd/system/aster-desktop.service ]; then
+    /usr/lib/aster-desktop/aster-bridge --uninstall-service
+  fi
+}

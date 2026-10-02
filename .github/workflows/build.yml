@@ -1,0 +1,62 @@
+name: Desktop checks and packages
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - name: Linux prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev libsecret-1-dev dpkg-dev zstd xvfb
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: flutter test
+      - name: Go tests
+        working-directory: bridge
+        env:
+          CGO_ENABLED: '0'
+        run: go test ./...
+      - name: Build Windows packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build.ps1 -Installer
+      - name: Build Unix packages
+        if: runner.os != 'Windows'
+        run: bash scripts/build.sh
+      - name: Real core lifecycle and rollback tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
+          cd bridge
+          go test ./... -count=1
+      - name: Real core lifecycle and rollback tests (Unix)
+        if: runner.os != 'Windows'
+        run: cd bridge && ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./... -count=1
+      - name: Native GUI workflow (Windows)
+        if: runner.os == 'Windows'
+        run: flutter test integration_test -d windows
+      - name: Native GUI workflow (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a flutter test integration_test -d linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aster-desktop-${{ matrix.os }}
+          path: dist/*

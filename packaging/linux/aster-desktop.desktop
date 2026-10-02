@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Aster Desktop
+Comment=Connect with Aster Core
+Exec=aster-desktop
+Icon=aster-desktop
+Terminal=false
+Type=Application
+Categories=Network;
+StartupWMClass=app.astercore.aster_desktop
