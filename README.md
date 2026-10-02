@@ -2,6 +2,8 @@
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
+[下載 v0.1.0-beta.1 測試包](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.0-beta.1)：Windows 安裝器／可攜版、Intel／Apple Silicon DMG、Ubuntu deb、Arch 套件及各 Linux 可攜版，附 SHA-256 與對應來源碼。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
+
 ## 安裝與第一次使用
 
 1. Windows：執行 `Aster-Desktop-0.1.0-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
@@ -29,7 +31,7 @@ Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁
 
 ## 更新與資料
 
-GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；尚未發佈桌面 release 時下載按鈕停用。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
+GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，目前的私人測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
 
 資料位於系統應用程式支援目錄，由 `path_provider` 取得，包含 `state.json`、`backup-*.yaml`、`runtime/` 與 `cores/`。設定含訂閱 token、節點密碼，請勿公開。解除安裝保留使用者設定；服務私人狀態位於 ProgramData／`/var/lib/aster-desktop`／`/Library/Application Support/AsterDesktop/service`。
 
