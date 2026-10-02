@@ -22,7 +22,12 @@ func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	if binary == "" {
 		t.Skip("requires ASTER_TEST_CORE")
 	}
-	packet, err := net.ListenPacket("udp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := net.ListenPacket("udp", listener.Addr().String())
+	_ = listener.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +38,7 @@ func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	core := NewCore(binary, t.TempDir())
 	defer core.Stop()
 	if err = core.Start(context.Background(), "proxies: []\nrules: ['MATCH,DIRECT']\n", settings, false); err == nil || core.Status().Running || !strings.Contains(err.Error(), "UDP port") {
-		t.Fatal("occupied UDP port should not become a connected status")
+		t.Fatalf("occupied UDP port should not become a connected status: %v", err)
 	}
 }
 

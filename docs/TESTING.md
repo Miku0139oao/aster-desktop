@@ -6,6 +6,7 @@
 - Windows 實際原核心 Go 啟停／更新回復／設定測試與 `go vet` 通過；新增失敗的 TUN 啟動原因保存測試，以及 transport path／provider payload／YAML anchor／DNS 分類回歸測試。
 - Windows 原生 Flutter GUI 匯入、選節點、HTTP 代理、三種模式、停止流程通過。
 - 使用實際使用者設定的私人副本進行 TUN 設定驗證：固定核心 `alpha-main-a9a3350`、使用者已更新的 `alpha-main-56e24f5` 均通過。測試只執行核心 `-t`，未變更使用者設定、系統代理或主機路由；私人副本及診斷不納入 repository 或套件。
+- 新增 TUN 就緒檢查與回歸測試：HTTP Controller／代理端口正常但 TUN 未建立時，不顯示連線成功，停止核心並保留失敗原因。
 - 新增 GitHub Windows 一次性 runner 的 LocalSystem 服務／named pipe／gVisor TUN／拒絕操作／重連／EOF 清理回歸測試。預設不執行，明確拒絕覆寫既有 AsterDesktop 服務；不能當作本機 UAC 驗收。
 - 本次 Linux、Mac 建置及 Windows 服務回歸 CI 結果將附於 release；尚未完成的實機項目仍以下列 beta.1 紀錄為準。
 

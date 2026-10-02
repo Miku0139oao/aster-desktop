@@ -260,6 +260,9 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 			return fmt.Errorf("core did not start: %s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-deadline.C:
 			_ = c.Stop()
+			if s.Tun {
+				return fmt.Errorf("TUN adapter did not become ready; check the background service and conflicting VPN software\n%s", bounded(strings.Join(c.Logs(), "\n"), 3000))
+			}
 			return fmt.Errorf("core startup timed out; check the configuration or conflicting proxy software\n%s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-ticker.C:
 			if body, err := c.Request(ctx, "GET", "/version", nil); err == nil {
@@ -275,6 +278,20 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 					continue
 				}
 				_ = listener.Close()
+				if s.Tun {
+					// The HTTP controller and proxy listeners can start even when
+					// the OS rejects creating TUN. Report connected only after the
+					// core reports the successfully applied TUN listener config.
+					config, err := c.Request(ctx, "GET", "/configs", nil)
+					var active struct {
+						Tun struct {
+							Enable bool `json:"enable"`
+						} `json:"tun"`
+					}
+					if err != nil || json.Unmarshal(config, &active) != nil || !active.Tun.Enable {
+						continue
+					}
+				}
 				c.mu.Lock()
 				c.coreVersion = version.Version
 				c.mu.Unlock()

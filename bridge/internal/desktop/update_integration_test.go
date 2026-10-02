@@ -40,6 +40,9 @@ func TestMain(m *testing.M) {
 		if mode == "startup-failure" && !strings.Contains(config, "compat-") {
 			os.Exit(7)
 		}
+		if mode == "tun-not-ready" {
+			fmt.Println("Start TUN listening error: permission denied")
+		}
 		data, err := os.ReadFile(config)
 		if err != nil {
 			os.Exit(8)
@@ -72,6 +75,25 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestTUNRequiresReadyAdapterDespiteWorkingController(t *testing.T) {
+	t.Setenv("ASTER_CORE_FIXTURE", "tun-not-ready")
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCore(binary, t.TempDir())
+	defer c.Stop()
+	s := DefaultSettings()
+	s.Tun, s.SystemProxy = true, false
+	s.MixedPort = unusedPort()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err = c.Start(ctx, "proxies: []\nrules: ['MATCH,DIRECT']\n", s, true)
+	if err == nil || c.Status().Running || !strings.Contains(err.Error(), "TUN adapter") || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("controller readiness falsely reported a TUN connection: %v", err)
+	}
 }
 
 func serviceProbe(mode string) int {
