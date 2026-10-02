@@ -15,7 +15,7 @@ Bridge stdin/stdout uses NDJSON `{id,method,params}` → `{id,result}` or `{id,e
 | controller, logs | Restricted controller operations and bounded logs |
 | installService, uninstallService | OS-authorized helper lifecycle |
 | checkUpdates, updateCore | Official releases and verified replacement |
-| rememberSelection | Persist native macOS XPC selections |
+| rememberSelection | Persist offline choices and native macOS XPC selections |
 
 ## Privilege boundaries
 
@@ -40,6 +40,8 @@ Proxy adapters snapshot original and installed values before modification, resto
 Core update: official release → trusted asset URL → SHA-256 → bounded in-memory decompression → architecture check → temporary API probe → active-profile validation → stop old/start new → persist selected executable. Old binaries are retained; failure restores the old selection. User/core service updates have independent rollback, so partial failure can leave them on different valid versions and is reported. Fully atomic upgrades spanning both managers are not implemented.
 
 macOS scheduled subscriptions run in Flutter so changes pass through XPC. Windows/Linux schedule in Go. Normal traffic uses WebSocket; TUN speed is derived from controller totals every two seconds. Lists render lazily and delay tests run at most four at a time.
+
+Offline choices are saved before the first connection and replayed after core startup. Global mode selects the profile's chosen group in GLOBAL, so changing mode retains the user's node. Startup requires both the Controller and mixed proxy listener to be ready; TCP and UDP port conflicts fail before spawning the core.
 
 ## Release verification
 

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	settings.MixedPort = packet.LocalAddr().(*net.UDPAddr).Port
 	core := NewCore(binary, t.TempDir())
 	defer core.Stop()
-	if err = core.Start(context.Background(), "proxies: []\nrules: [MATCH,DIRECT]\n", settings, false); err == nil || core.Status().Running {
+	if err = core.Start(context.Background(), "proxies: []\nrules: ['MATCH,DIRECT']\n", settings, false); err == nil || core.Status().Running || !strings.Contains(err.Error(), "UDP port") {
 		t.Fatal("occupied UDP port should not become a connected status")
 	}
 }

@@ -25,6 +25,8 @@ class FakeBackend implements DesktopBackend {
   bool running = false;
   bool failImport = false;
   Json proxyData = {};
+  Json connectionData = {'connections': []};
+  final closedConnections = <String>[];
   final selections = <String, String>{};
   @override
   Stream<Json> get events => changes.stream;
@@ -50,7 +52,7 @@ class FakeBackend implements DesktopBackend {
         profiles.add({
           'id': 'fixture',
           'name': 'My subscription',
-          'content': 'proxies: []\nrules: [MATCH,DIRECT]\n',
+          'content': 'proxies: []\nrules: ["MATCH,DIRECT"]\n',
           'updated': '2026-10-02T00:00:00Z',
         });
         return profiles.last;
@@ -67,7 +69,19 @@ class FakeBackend implements DesktopBackend {
         selections[params!['group'] as String] = params['name'] as String;
         return true;
       case 'controller':
-        if (params!['method'] == 'PUT' &&
+        if (params!['method'] == 'DELETE' &&
+            (params['path'] as String).startsWith('/connections/')) {
+          final id = Uri.decodeComponent(
+            (params['path'] as String).substring('/connections/'.length),
+          );
+          closedConnections.add(id);
+          (connectionData['connections'] as List).removeWhere(
+            (dynamic entry) => (entry as Json)['id'] == id,
+          );
+          return null;
+        }
+        if (params['path'] == '/connections') return connectionData;
+        if (params['method'] == 'PUT' &&
             (params['path'] as String).startsWith('/proxies/')) {
           final group = Uri.decodeComponent(
             (params['path'] as String).substring('/proxies/'.length),
@@ -161,7 +175,7 @@ void main() {
     backend.profiles.add({
       'id': 'offline',
       'name': 'Offline selection',
-      'content': 'proxies: [{name: First, type: direct}, {name: Second, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: [MATCH,Choice]\n',
+      'content': 'proxies: [{name: First, type: direct}, {name: Second, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: ["MATCH,Choice"]\n',
     });
     final c = await setup(tester, backend);
     c.navigate(1);
@@ -199,7 +213,7 @@ void main() {
     backend.profiles.add({
       'id': 'global',
       'name': 'Global selection',
-      'content': 'proxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: [MATCH,Choice]\n',
+      'content': 'proxy-groups: [{name: Choice, type: select, proxies: [First, Second]}]\nrules: ["MATCH,Choice"]\n',
     });
     backend.proxyData = {
       'GLOBAL': {
@@ -279,6 +293,41 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('large connection collection can be searched and closed', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..running = true;
+    backend.connectionData = {
+      'connections': List.generate(
+        10000,
+        (i) => {
+          'id': 'connection-$i',
+          'metadata': {
+            'host': 'host-$i.example.test',
+            'destinationPort': '443',
+            'process': 'browser',
+          },
+          'chains': ['Proxy', 'Test node'],
+          'rule': 'MATCH',
+          'upload': 100,
+          'download': 200,
+        },
+      ),
+    };
+    final c = await setup(tester, backend, size: const Size(760, 580));
+    c.navigate(3);
+    await tester.pumpAndSettle();
+    expect(find.byType(ExpansionTile).evaluate().length, lessThan(30));
+    await tester.enterText(find.byType(TextField), 'host-9999.example.test');
+    await tester.pumpAndSettle();
+    expect(find.text('host-9999.example.test:443'), findsOneWidget);
+    await tester.tap(find.byTooltip('Close connection'));
+    await tester.pumpAndSettle();
+    expect(backend.closedConnections, ['connection-9999']);
+    expect((backend.connectionData['connections'] as List).length, 9999);
+    expect(find.text('No active connections'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   test('export redacts common credentials', () {

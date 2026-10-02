@@ -47,7 +47,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('import-source')),
-      'proxies: [{name: Local A, type: direct}, {name: Local B, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [Local A, Local B]}]\nrules: [MATCH,Choice]\n',
+      'proxies: [{name: Local A, type: direct}, {name: Local B, type: direct}]\nproxy-groups: [{name: Choice, type: select, proxies: [Local A, Local B]}]\nrules: ["MATCH,Choice"]\n',
     );
     await tester.tap(find.byKey(const Key('import-submit')));
     for (var attempt = 0; attempt < 150 && c.profiles.isEmpty; attempt++) {
