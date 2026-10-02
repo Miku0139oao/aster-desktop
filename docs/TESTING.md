@@ -1,3 +1,15 @@
+# 0.1.1-beta.1 交付補充
+
+交付程式／來源提交：8256e45d4f3086a1bb118b3c4bd0ae4738d6aab2。
+最終四平台 CI 全部成功（Windows、Ubuntu 24.04、macOS Intel、macOS Apple Silicon）：https://github.com/Miku0139oao/aster-desktop/actions/runs/37059923869
+
+Windows LocalSystem 服務回歸已通過：使用 owner SID 驗證的 named pipe，拒絕本機憑證檔案、保留錯誤；含 WebSocket 路徑與 YAML anchor 的設定啟動實際 gVisor TUN，確認 Controller tun.enable 為 true；拒絕 restart API；正常斷線／重連／client EOF 後停止核心；安裝及移除服務成功。這是一次性 GitHub Windows runner 的管理員測試，不涵蓋本機 UAC 互動、乾淨 Windows 10 或睡眠喚醒。
+
+最新核心就緒檢查也在 WSL Arch 的實際隔離 TUN／DNS 攔截／路由還原與 root 服務身份驗證／EOF 清理測試通過。新增 controller 正常但 TUN 未就緒的回歸測試通過。
+
+macOS 本機權限與網路驗證仍待 Mac 實機。
+
+---
 # Aster Desktop 0.1.1 修正驗證
 
 日期：2026-10-03。此版修正 beta.1 的實際 TUN 匯入阻擋：WebSocket／HTTP／H2 request path、DNS geosite 分類及 YAML anchor 範本不再誤判為本機檔案；實際憑證檔案仍拒絕。WireGuard／MASQUE 的 inline private key 不再要求 PEM。節點 provider 的快取路徑仍由桌面管理。
