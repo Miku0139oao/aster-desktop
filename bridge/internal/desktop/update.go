@@ -262,7 +262,7 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 		return nil, err
 	}
 	defer probe.Stop()
-	for _, endpoint := range []string{"/version", "/configs", "/proxies", "/rules", "/connections"} {
+	for _, endpoint := range []string{"/version", "/configs", "/proxies", "/rules", "/connections", "/providers/proxies"} {
 		body, err := probe.Request(ctx, "GET", endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("new core is incompatible: %w", err)
@@ -271,7 +271,7 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 		if json.Unmarshal(body, &value) != nil {
 			return nil, errors.New("new core returned an incompatible API response")
 		}
-		required := map[string]string{"/version": "version", "/configs": "mode", "/proxies": "proxies", "/rules": "rules", "/connections": "connections"}[endpoint]
+		required := map[string]string{"/version": "version", "/configs": "mode", "/proxies": "proxies", "/rules": "rules", "/connections": "connections", "/providers/proxies": "providers"}[endpoint]
 		if _, ok := value[required]; !ok {
 			return nil, fmt.Errorf("new core is missing required API field %s", required)
 		}
@@ -317,7 +317,7 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 		if err != nil {
 			restartErr := restorePrevious()
 			if restartErr != nil {
-				return nil, fmt.Errorf("update failed; reconnect after checking configuration: %w", err)
+				return nil, fmt.Errorf("update failed (%v); previous core could not restart: %w", err, restartErr)
 			}
 			return nil, fmt.Errorf("update failed; previous core restored: %w", err)
 		}

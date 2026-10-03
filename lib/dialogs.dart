@@ -511,139 +511,286 @@ Future<void> showDNSDialog(BuildContext context, AppController c) async {
   edit.dispose();
 }
 
-Future<void> showRuleDialog(BuildContext context, AppController c) async {
+Future<String?> selectApplicationExecutable() async {
+  final file = await openFile(
+    acceptedTypeGroups: Platform.isWindows
+        ? [
+            const XTypeGroup(label: 'Application', extensions: ['exe']),
+          ]
+        : Platform.isMacOS
+        ? [
+            const XTypeGroup(
+              label: 'Application',
+              uniformTypeIdentifiers: [
+                'com.apple.application-bundle',
+                'public.unix-executable',
+              ],
+            ),
+          ]
+        : [],
+  );
+  if (file == null) return null;
+  if (Platform.isMacOS && file.path.endsWith('.app')) {
+    final result = await Process.run('/usr/bin/plutil', [
+      '-extract',
+      'CFBundleExecutable',
+      'raw',
+      '-o',
+      '-',
+      '${file.path}/Contents/Info.plist',
+    ]);
+    final executable = (result.stdout as String).trim();
+    if (result.exitCode != 0 ||
+        executable.isEmpty ||
+        executable == '.' ||
+        executable == '..' ||
+        executable.contains('/') ||
+        executable.contains('\\')) {
+      throw const FormatException('Cannot locate this application executable.');
+    }
+    final path = '${file.path}/Contents/MacOS/$executable';
+    if (!await File(path).exists()) {
+      throw const FormatException('Application executable does not exist.');
+    }
+    return path;
+  }
+  return file.path;
+}
+
+Future<void> showRuleDialog(
+  BuildContext context,
+  AppController c, {
+  bool application = false,
+}) async {
   final p = c.active!;
-  final payload = TextEditingController();
-  String type = 'DOMAIN-SUFFIX', target = 'DIRECT';
+  String type = application ? 'PROCESS-NAME' : 'DOMAIN-SUFFIX';
+  String target = 'DIRECT';
   final targets = <String>{'DIRECT', 'REJECT'};
   try {
     final doc = loadYaml(p.content) as YamlMap;
     for (final g in doc['proxy-groups'] as List? ?? []) {
       targets.add(g['name'] as String);
+      if (application && target == 'DIRECT') target = g['name'] as String;
     }
     for (final node in doc['proxies'] as List? ?? []) {
       targets.add(node['name'] as String);
+    }
+    if (application) {
+      final preferred = c.profileTarget;
+      if (targets.contains(preferred) &&
+          preferred != 'DIRECT' &&
+          preferred != 'REJECT') {
+        target = preferred;
+      } else {
+        final selector = (doc['proxy-groups'] as List? ?? [])
+            .where((g) => g['type'] == 'select')
+            .firstOrNull;
+        if (selector != null) target = selector['name'] as String;
+      }
     }
   } catch (_) {}
   String? error;
   bool working = false;
   await showDialog<void>(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: Text(c.tr('新增分流規則', 'Add routing rule')),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: type,
-                items: [
-                  DropdownMenuItem(
-                    value: 'DOMAIN-SUFFIX',
-                    child: Text(c.tr('網域及其子網域', 'Domain and subdomains')),
+    builder: (context) => _RuleDialogHost(
+      builder: (context, payload) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(
+            application
+                ? c.tr('應用程式分流', 'Application routing')
+                : c.tr('新增分流規則', 'Add routing rule'),
+          ),
+          scrollable: true,
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: type,
+                  items: [
+                    DropdownMenuItem(
+                      value: 'DOMAIN-SUFFIX',
+                      child: Text(c.tr('網域及其子網域', 'Domain and subdomains')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'DOMAIN',
+                      child: Text(c.tr('完整網域', 'Exact domain')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'IP-CIDR',
+                      child: Text(c.tr('IP 範圍', 'IP range')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'PROCESS-NAME',
+                      child: Text(c.tr('應用程式名稱', 'Application name')),
+                    ),
+                    DropdownMenuItem(
+                      value: 'PROCESS-PATH',
+                      child: Text(
+                        c.tr('應用程式完整路徑', 'Application executable path'),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => type = v!),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: payload,
+                  decoration: InputDecoration(
+                    labelText: c.tr('條件', 'Match'),
+                    hintText: type == 'IP-CIDR'
+                        ? '192.168.0.0/16'
+                        : type == 'PROCESS-NAME'
+                        ? 'browser.exe'
+                        : type == 'PROCESS-PATH'
+                        ? c.tr('選擇應用程式執行檔', 'Choose an application executable')
+                        : 'example.com',
                   ),
-                  DropdownMenuItem(
-                    value: 'DOMAIN',
-                    child: Text(c.tr('完整網域', 'Exact domain')),
+                ),
+                if (type.startsWith('PROCESS-')) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: working
+                        ? null
+                        : () async {
+                            try {
+                              final path = await selectApplicationExecutable();
+                              if (path == null || !context.mounted) {
+                                return;
+                              }
+                              setState(() {
+                                payload.text = type == 'PROCESS-NAME'
+                                    ? path.split(RegExp(r'[/\\]')).last
+                                    : path;
+                                error = null;
+                              });
+                            } catch (e) {
+                              if (context.mounted) {
+                                setState(() => error = e.toString());
+                              }
+                            }
+                          },
+                    icon: const Icon(Icons.folder_open),
+                    label: Text(c.tr('選擇應用程式', 'Choose application')),
                   ),
-                  DropdownMenuItem(
-                    value: 'IP-CIDR',
-                    child: Text(c.tr('IP 範圍', 'IP range')),
-                  ),
-                  DropdownMenuItem(
-                    value: 'PROCESS-NAME',
-                    child: Text(c.tr('應用程式名稱', 'Application name')),
+                  const SizedBox(height: 8),
+                  Text(
+                    c.tr(
+                      '請使用「代理所有應用程式」及規則模式。名稱比對會包含同名程序；使用不同執行檔的輔助程式需另加規則。新規則適用於新連線。',
+                      'Use Proxy all applications and Rule mode. Name matches include all processes with that name; helpers with different executables need separate rules. New rules apply to new connections.',
+                    ),
                   ),
                 ],
-                onChanged: (v) => setState(() => type = v!),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: payload,
-                decoration: InputDecoration(
-                  labelText: c.tr('條件', 'Match'),
-                  hintText: type == 'IP-CIDR'
-                      ? '192.168.0.0/16'
-                      : type == 'PROCESS-NAME'
-                      ? 'browser.exe'
-                      : 'example.com',
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: target,
+                  decoration: InputDecoration(
+                    labelText: c.tr('連線方式／節點', 'Route / node'),
+                  ),
+                  items: targets
+                      .map(
+                        (t) => DropdownMenuItem(
+                          value: t,
+                          child: Text(
+                            t == 'DIRECT'
+                                ? c.tr('直連', 'Direct')
+                                : t == 'REJECT'
+                                ? c.tr('封鎖', 'Block')
+                                : t,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => target = v!),
                 ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: target,
-                decoration: InputDecoration(
-                  labelText: c.tr('連線方式／節點', 'Route / node'),
-                ),
-                items: targets
-                    .map(
-                      (t) => DropdownMenuItem(
-                        value: t,
-                        child: Text(t, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => target = v!),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                c.tr(
-                  '新規則會放在最前面，優先套用。',
-                  'New rules are placed first and take priority.',
-                ),
-              ),
-              if (error != null)
+                const SizedBox(height: 12),
                 Text(
-                  error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  c.tr(
+                    '新規則會放在最前面，優先套用。',
+                    'New rules are placed first and take priority.',
+                  ),
                 ),
-            ],
+                if (error != null)
+                  Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: working ? null : () => Navigator.pop(context),
+              child: Text(c.tr('取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: working
+                  ? null
+                  : () async {
+                      final value = payload.text.trim();
+                      if (value.isEmpty ||
+                          value.contains(',') ||
+                          value.contains('\n')) {
+                        setState(
+                          () =>
+                              error = c.tr('請輸入有效條件。', 'Enter a valid match.'),
+                        );
+                        return;
+                      }
+                      setState(() => working = true);
+                      try {
+                        await c.backend.call('patchProfile', {
+                          'id': p.id,
+                          'rule': '$type,$value,$target',
+                          if (type.startsWith('PROCESS-'))
+                            'changes': {'find-process-mode': 'strict'},
+                        });
+                        await c.refresh();
+                        if (c.running) await c.loadRuntime();
+                        if (context.mounted) Navigator.pop(context);
+                      } catch (e) {
+                        setState(() => error = e.toString());
+                      } finally {
+                        if (context.mounted) setState(() => working = false);
+                      }
+                    },
+              child: Text(c.tr('新增並套用', 'Add and apply')),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: working ? null : () => Navigator.pop(context),
-            child: Text(c.tr('取消', 'Cancel')),
-          ),
-          FilledButton(
-            onPressed: working
-                ? null
-                : () async {
-                    final value = payload.text.trim();
-                    if (value.isEmpty ||
-                        value.contains(',') ||
-                        value.contains('\n')) {
-                      setState(
-                        () => error = c.tr('請輸入有效條件。', 'Enter a valid match.'),
-                      );
-                      return;
-                    }
-                    setState(() => working = true);
-                    try {
-                      await c.backend.call('patchProfile', {
-                        'id': p.id,
-                        'rule': '$type,$value,$target',
-                      });
-                      await c.refresh();
-                      if (c.running) await c.loadRuntime();
-                      if (context.mounted) Navigator.pop(context);
-                    } catch (e) {
-                      setState(() => error = e.toString());
-                    } finally {
-                      if (context.mounted) setState(() => working = false);
-                    }
-                  },
-            child: Text(c.tr('新增並套用', 'Add and apply')),
-          ),
-        ],
       ),
     ),
   );
-  payload.dispose();
+}
+
+// The dialog route stays mounted while its dismissal animation runs. Own the
+// text controller here rather than disposing it when showDialog completes.
+class _RuleDialogHost extends StatefulWidget {
+  const _RuleDialogHost({required this.builder});
+  final Widget Function(BuildContext, TextEditingController) builder;
+
+  @override
+  State<_RuleDialogHost> createState() => _RuleDialogHostState();
+}
+
+class _RuleDialogHostState extends State<_RuleDialogHost> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, controller);
 }
 
 Future<void> showUpdateDialog(BuildContext context, AppController c) async {

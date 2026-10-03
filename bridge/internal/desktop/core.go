@@ -97,7 +97,7 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 	cmd := exec.CommandContext(ctx, c.Binary, "-d", c.Dir, "-f", name, "-t")
 	hideCommand(cmd)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("configuration validation failed: %s", bounded(string(output), 3000))
+		return nil, fmt.Errorf("configuration validation failed: %w\n%s", err, bounded(string(output), 3000))
 	}
 	return b, nil
 }
@@ -139,7 +139,7 @@ func (c *Core) Start(ctx context.Context, content string, s Settings, privileged
 	c.Binary = previous
 	if restoreErr := c.start(ctx, content, s, privileged); restoreErr != nil {
 		c.Binary = failed
-		return fmt.Errorf("new core failed and the previous core could not start: %w", err)
+		return fmt.Errorf("new core failed (%v); the previous core could not start: %w", err, restoreErr)
 	}
 	selection["active"] = previous
 	selection["previous"] = c.BundledBinary
@@ -266,7 +266,7 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 			_ = c.Stop()
 			return ctx.Err()
 		case <-done:
-			return fmt.Errorf("core did not start: %s", bounded(strings.Join(c.Logs(), "\n"), 3000))
+			return fmt.Errorf("core did not start: %s", c.Status().Error)
 		case <-deadline.C:
 			_ = c.Stop()
 			if stage == "tun" {

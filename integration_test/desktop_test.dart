@@ -5,6 +5,7 @@ import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/dialogs.dart';
+import 'package:aster_desktop/application_rules.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -114,6 +115,71 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'page $page');
     }
+    // Select the real desktop executable from OS enumeration, then freely
+    // switch its route through the GUI. No manually entered process identifier.
+    unawaited(showApplicationRouting(tester.element(find.byType(Scaffold)), c));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新增應用程式'));
+    await tester.pumpAndSettle();
+    final executableName = Platform.resolvedExecutable
+        .split(RegExp(r'[/\\]'))
+        .last
+        .replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '');
+    await tester.enterText(find.byType(TextField), executableName);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, executableName).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('target:Local A')));
+    for (
+      var attempt = 0;
+      attempt < 150 && (c.active!.json['desktopRules'] as List? ?? []).isEmpty;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(
+      (c.active!.json['desktopRules'] as List).single.toString().endsWith(
+        ',Local A',
+      ),
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('application-route-0')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('route-search')), 'DIRECT');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('target:DIRECT')));
+    for (
+      var attempt = 0;
+      attempt < 150 &&
+          !(c.active!.json['desktopRules'] as List).single.toString().endsWith(
+            ',DIRECT',
+          );
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(
+      (c.active!.json['desktopRules'] as List).single.toString().endsWith(
+        ',DIRECT',
+      ),
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('remove-application-rule-0')));
+    for (
+      var attempt = 0;
+      attempt < 150 &&
+          (c.active!.json['desktopRules'] as List? ?? []).isNotEmpty;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(c.active!.json['desktopRules'] as List? ?? [], isEmpty);
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
     // Edit a large document in the real desktop window while the core runs.
     unawaited(
       showYamlEditor(tester.element(find.byType(Scaffold)), c, c.active!),

@@ -1,3 +1,23 @@
+# 0.1.3 應用程式分流
+
+日期：2026-10-04。
+
+新增進階設定的應用程式管理器：列出目前使用者工作階段中可讀取的執行檔，支援名稱／路徑搜尋及瀏覽其他執行檔。每列可搜尋選取群組、節點、DIRECT 或 REJECT；3,000 節點使用延遲建立清單。沿用核心 PROCESS-PATH／PROCESS-NAME 與 find-process-mode: strict，GUI 不需要輸入程序名稱。
+
+GUI 規則與 provider 選擇有獨立 metadata，更新訂閱時重新合併；同一應用的 GUI 規則覆蓋原出口而不重複，刪除原始訂閱規則有移除紀錄，避免更新後恢復。手動 YAML 明確重新加入該規則時解除移除紀錄。JSON 備份／還原包含 metadata。指定 provider 節點使用獨立、精確 filter 的隱藏群組，節點消失時 empty-fallback=REJECT，不改變共用群組，也不增加核心公開 API。
+
+- Windows Flutter analysis 無問題，21 項元件／單元測試通過，包含大型出口清單搜尋、直接節點／群組／直連／封鎖切換、provider 節點 typed request、應用程式選取與刪除。
+- Windows 真實固定核心測試通過：依測試程式實際名稱／路徑阻擋或允許 loopback HTTP 流量；GUI 改出口、訂閱更新保留、YAML 刪除／還原 metadata、GUI 刪除後更新不復活。HTTP provider 節點不在全域 proxies，仍可選擇且流量正確；含正規表達式特殊字元及反引號名稱只匹配選定節點，遠端節點消失時阻擋。
+- WSL Arch Go race 全部測試與 vet 通過（含真實核心）；Darwin Intel／Apple Silicon Go bridge 交叉編譯通過。這不是 macOS Flutter／Swift 原生建置或應用程式選取實機驗收。
+- Windows 原生 GUI 自動化通過：從實際 OS 清單選擇桌面執行檔、選節點、改直連、刪除規則，再執行既有大型 YAML 編輯與代理流程；只使用獨立資料目錄及 loopback 代理，不修改使用者全域代理或 TUN。WSL Arch／Xvfb 的同一原生 GUI 流程及 21 項元件測試也通過；Arch release GUI、可攜包與 pkg.tar.zst 建置通過。Xvfb 不代表 GNOME／KDE 完整桌面授權與托盤驗收。Windows PowerShell 5.1 安裝器九項回歸通過，含完整 0.1.1 升級檔案雜湊、ACL、鎖定檔與錯誤回復；實際 UAC／SCM 升級互動未測。
+
+Windows 完整真實核心回歸的 TestVerifiedUpdateAndDeferredStartupRollback 兩個 case 未通過：Defender Operational 1116／1117 對其核心驗證啟動命令回報 Trojan:Win32/Commando.A!ml，exec 回報 Access is denied。未停用 Defender／修改排除清單；本版與 0.1.2 核心 SHA-256 相同（6b29dfce3318c91807b76ec82ecb98fb6fbc057717e0363f7d135314a108996a）。保留 OS 執行錯誤、退出碼及回復失敗的兩個原因。其餘核心／管理層測試通過，包括 checksum、架構、下載中斷、API 不相容及新版啟動失敗保留舊核心。不能將此攔截判定為誤報，也不能以 Linux 結果代替 Windows 更新流程。
+
+使用者本機 TUN 顯示已連線但不能上網仍待故障當下路由／DNS／服務日誌。診斷當時 TUN 關閉且核心未執行；WARP／Tailscale 介面存在不能證明路由衝突，沒有修改其設定，也沒有更改使用者 DNS 或節點憑證。
+
+GitHub Actions 帳號付款／花費上限限制尚未解除；Mac／Ubuntu 新版原生建置及 Mac 實機網路／授權沒有完成。先前版本通過的 CI 不代表本版。
+
+---
 # 0.1.2-beta.2 Windows 安裝器修正
 
 日期：2026-10-04。GUI／bridge／core 執行檔維持 0.1.2；此 hotfix 只修改 Windows 安裝器及打包／回歸腳本。

@@ -17,6 +17,260 @@ import (
 	"time"
 )
 
+// This exercises the core's actual process lookup and matching using loopback
+// proxy traffic. It never changes the workstation's proxy, TUN or routes.
+func TestRealCoreApplicationRules(t *testing.T) {
+	binary := os.Getenv("ASTER_TEST_CORE")
+	if binary == "" {
+		t.Skip("requires ASTER_TEST_CORE")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, match := range []struct{ kind, value string }{
+		{"PROCESS-NAME", filepath.Base(executable)},
+		{"PROCESS-PATH", executable},
+	} {
+		t.Run(match.kind, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			a, err := NewApp(t.TempDir(), binary, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer a.Close()
+			s := DefaultSettings()
+			s.SystemProxy = false
+			s.MixedPort = unusedPort()
+			a.Store.State.Settings = s
+			call := func(method string, params any) json.RawMessage {
+				t.Helper()
+				b, _ := json.Marshal(params)
+				result, err := a.Dispatch(ctx, Request{Method: method, Params: b})
+				if err != nil {
+					t.Fatal(method, ": ", err)
+				}
+				return result.(json.RawMessage)
+			}
+			var profile Profile
+			base := "proxies: []\nfind-process-mode: off\nrules: ['PROCESS-NAME,another-app,DIRECT', 'MATCH,DIRECT']\n"
+			subscription := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, base)
+			}))
+			defer subscription.Close()
+			if err = json.Unmarshal(call("import", map[string]any{
+				"name": "Process routing", "url": subscription.URL,
+			}), &profile); err != nil {
+				t.Fatal(err)
+			}
+			call("connect", nil)
+			var hits atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				fmt.Fprint(w, "reachable")
+			}))
+			defer server.Close()
+			proxy, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", s.MixedPort))
+			transport := &http.Transport{Proxy: http.ProxyURL(proxy), DisableKeepAlives: true}
+			defer transport.CloseIdleConnections()
+			client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
+			response, err := client.Get(server.URL)
+			if err != nil {
+				t.Fatal("baseline proxy: ", err)
+			}
+			response.Body.Close()
+			if response.StatusCode != http.StatusOK || hits.Load() != 1 {
+				t.Fatal("baseline did not reach upstream")
+			}
+			call("patchProfile", map[string]any{
+				"id": profile.ID, "rule": match.kind + "," + match.value + ",REJECT",
+			})
+			response, err = client.Get(server.URL)
+			if response != nil {
+				response.Body.Close()
+			}
+			if err == nil && response.StatusCode < 400 {
+				t.Fatal("application REJECT rule did not match")
+			}
+			if hits.Load() != 1 {
+				t.Fatal("application rule allowed traffic to upstream")
+			}
+			// The backend prepends the rule without losing the catch-all route.
+			if !strings.Contains(a.Store.State.Profiles[0].Content, "MATCH,DIRECT") {
+				t.Fatal("existing route lost")
+			}
+			blocked := func() {
+				t.Helper()
+				before := hits.Load()
+				response, err := client.Get(server.URL)
+				if response != nil {
+					response.Body.Close()
+				}
+				if err == nil && response.StatusCode < 400 || hits.Load() != before {
+					t.Fatal("stored application rule did not block traffic")
+				}
+			}
+			// GUI target changes replace a rule atomically instead of adding a
+			// stale lower-priority copy that could reappear during refresh.
+			call("patchProfile", map[string]any{"id": profile.ID, "removeRule": match.kind + "," + match.value + ",REJECT", "rule": match.kind + "," + match.value + ",DIRECT"})
+			response, err = client.Get(server.URL)
+			if err != nil {
+				t.Fatal("changed application route: ", err)
+			}
+			response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatal("DIRECT target change did not take effect")
+			}
+			call("patchProfile", map[string]any{"id": profile.ID, "removeRule": match.kind + "," + match.value + ",DIRECT", "rule": match.kind + "," + match.value + ",REJECT"})
+			blocked()
+			call("refresh", map[string]string{"id": profile.ID})
+			blocked()
+			if len(a.Store.State.Profiles[0].DesktopRules) != 1 {
+				t.Fatal("GUI override not tracked")
+			}
+			// Editing YAML removes the override; undo restores its metadata too.
+			call("edit", map[string]string{"id": profile.ID, "content": base})
+			if len(a.Store.State.Profiles[0].DesktopRules) != 0 {
+				t.Fatal("deleted override remained tracked")
+			}
+			call("restore", map[string]string{"id": profile.ID})
+			call("refresh", map[string]string{"id": profile.ID})
+			blocked()
+			call("patchProfile", map[string]string{"id": profile.ID, "removeRule": match.kind + "," + match.value + ",REJECT"})
+			call("refresh", map[string]string{"id": profile.ID})
+			response, err = client.Get(server.URL)
+			if err != nil {
+				t.Fatal("removed application rule: ", err)
+			}
+			response.Body.Close()
+			if response.StatusCode != http.StatusOK || hits.Load() != 3 {
+				t.Fatal("deleted override was reinserted by subscription refresh")
+			}
+			// Imported process rules can also be removed through the GUI;
+			// fetching the same subscription must not silently restore them.
+			call("patchProfile", map[string]string{"id": profile.ID, "removeRule": "PROCESS-NAME,another-app,DIRECT"})
+			call("refresh", map[string]string{"id": profile.ID})
+			if strings.Contains(a.Store.State.Profiles[0].Content, "PROCESS-NAME,another-app,DIRECT") {
+				t.Fatal("deleted imported application rule reappeared after refresh")
+			}
+		})
+	}
+}
+
+func TestRealCoreApplicationProviderRoutes(t *testing.T) {
+	binary := os.Getenv("ASTER_TEST_CORE")
+	if binary == "" {
+		t.Skip("requires ASTER_TEST_CORE")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	a, err := NewApp(t.TempDir(), binary, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	s := DefaultSettings()
+	s.SystemProxy = false
+	s.MixedPort = unusedPort()
+	a.Store.State.Settings = s
+	call := func(method string, params any) json.RawMessage {
+		t.Helper()
+		b, _ := json.Marshal(params)
+		result, err := a.Dispatch(ctx, Request{Method: method, Params: b})
+		if err != nil {
+			t.Fatal(method, ": ", err)
+		}
+		return result.(json.RawMessage)
+	}
+	// HTTP provider proxies really are absent from the global /proxies catalog.
+	var available atomic.Bool
+	available.Store(true)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if available.Load() {
+			fmt.Fprint(w, "proxies: [{name: 'allow[1]`+', type: direct}, {name: deny, type: reject}]\n")
+		} else {
+			fmt.Fprint(w, "proxies: [{name: deny, type: reject}]\n")
+		}
+	}))
+	defer provider.Close()
+	base := fmt.Sprintf("proxy-providers:\n  remote:\n    type: http\n    url: %s\n    interval: 3600\nproxy-groups: [{name: Shared, type: select, use: [remote]}]\nrules: ['MATCH,DIRECT']\n", provider.URL)
+	sub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, base) }))
+	defer sub.Close()
+	var profile Profile
+	if err = json.Unmarshal(call("import", map[string]any{"name": "Provider app routes", "url": sub.URL}), &profile); err != nil {
+		t.Fatal(err)
+	}
+	call("connect", nil)
+	var catalog map[string]any
+	if err = json.Unmarshal(call("controller", map[string]any{"method": "GET", "path": "/proxies"}), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := catalog["proxies"].(map[string]any)["deny"]; exists {
+		t.Fatal("fixture unexpectedly has a global provider node")
+	}
+	exe, _ := os.Executable()
+	setRoute := func(node, remove string) string {
+		t.Helper()
+		call("patchProfile", map[string]any{"id": profile.ID, "removeRule": remove, "providerRoute": ApplicationRoute{Kind: "PROCESS-PATH", Match: exe, Provider: "remote", Node: node}})
+		return a.Store.State.Profiles[0].DesktopRules[0]
+	}
+	var hits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); fmt.Fprint(w, "ok") }))
+	defer upstream.Close()
+	proxy, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", s.MixedPort))
+	transport := &http.Transport{Proxy: http.ProxyURL(proxy), DisableKeepAlives: true}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	check := func(allowed bool) {
+		t.Helper()
+		before := hits.Load()
+		response, err := client.Get(upstream.URL)
+		if response != nil {
+			response.Body.Close()
+		}
+		if allowed && (err != nil || response.StatusCode != 200 || hits.Load() != before+1) {
+			t.Fatal("provider application route should allow traffic: ", err)
+		}
+		if !allowed && (hits.Load() != before || (err == nil && response.StatusCode < 400)) {
+			t.Fatal("provider application route should block traffic")
+		}
+	}
+	rule := setRoute("deny", "")
+	check(false)
+	var shared map[string]any
+	if err = json.Unmarshal(call("controller", map[string]any{"method": "GET", "path": "/proxies/Shared"}), &shared); err != nil {
+		t.Fatal(err)
+	}
+	if shared["now"] != "allow[1]`+" {
+		t.Fatal("application choice changed the shared group's selected node")
+	}
+	rule = setRoute("allow[1]`+", rule)
+	check(true)
+	call("refresh", map[string]string{"id": profile.ID})
+	check(true)
+	if len(a.Store.State.Profiles[0].DesktopProviderRoutes) != 1 {
+		t.Fatal("obsolete managed group retained")
+	}
+	var group map[string]any
+	if err = json.Unmarshal(call("controller", map[string]any{"method": "GET", "path": "/proxies/" + a.Store.State.Profiles[0].DesktopProviderRoutes[0].Group}), &group); err != nil {
+		t.Fatal(err)
+	}
+	if all := group["all"].([]any); len(all) != 1 || all[0] != "allow[1]`+" {
+		t.Fatal("filter did not select precisely one provider node: ", all)
+	}
+	// A vanished node must block, never silently fall back to direct traffic.
+	available.Store(false)
+	call("controller", map[string]any{"method": "PUT", "path": "/providers/proxies/remote"})
+	check(false)
+	call("patchProfile", map[string]string{"id": profile.ID, "removeRule": rule})
+	if len(a.Store.State.Profiles[0].DesktopProviderRoutes) != 0 || strings.Contains(a.Store.State.Profiles[0].Content, "Aster-App-") {
+		t.Fatal("deleted managed group remained")
+	}
+	call("refresh", map[string]string{"id": profile.ID})
+	check(true)
+}
+
 func TestRealCoreWaitsForSlowRuleProvider(t *testing.T) {
 	binary := os.Getenv("ASTER_TEST_CORE")
 	if binary == "" {

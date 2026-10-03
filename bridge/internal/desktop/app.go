@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -140,6 +142,8 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 	}()
 	s := a.Store
 	switch req.Method {
+	case "listApplications":
+		return ListApplications(ctx)
 	case "state":
 		return map[string]any{"state": s.State, "core": a.status(), "desktopVersion": Version, "coreCommit": CoreCommit, "service": ServiceStatus()}, nil
 	case "settings":
@@ -254,6 +258,18 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		if err != nil {
 			return nil, err
 		}
+		result.Content, err = suppressDesktopRules(result.Content, profile.DesktopSuppressedRules)
+		if err != nil {
+			return nil, err
+		}
+		result.Content, err = mergeDesktopRules(result.Content, profile.DesktopRules)
+		if err != nil {
+			return nil, err
+		}
+		result.Content, err = mergeProviderRoutes(result.Content, profile.DesktopProviderRoutes)
+		if err != nil {
+			return nil, err
+		}
 		if _, err = a.Core.Validate(ctx, result.Content, s.State.Settings, false); err != nil {
 			return nil, err
 		}
@@ -324,8 +340,9 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		return nil, errors.New("configuration not found")
 	case "edit", "validate", "restore", "patchProfile":
 		var p struct {
-			ID, Content, Rule string
-			Changes           map[string]any
+			ID, Content, Rule, RemoveRule string
+			Changes                       map[string]any
+			ProviderRoute                 *ApplicationRoute
 		}
 		if err := decode(req.Params, &p); err != nil {
 			return nil, err
@@ -334,28 +351,106 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		if err != nil {
 			return nil, err
 		}
+		desktopRules := append([]string{}, profile.DesktopRules...)
+		suppressedRules := append([]string{}, profile.DesktopSuppressedRules...)
+		providerRoutes := append([]ProviderRoute{}, profile.DesktopProviderRoutes...)
 		if req.Method == "patchProfile" {
 			var doc map[string]any
 			if err = yaml.Unmarshal([]byte(profile.Content), &doc); err != nil {
 				return nil, err
 			}
 			mergeConfig(doc, p.Changes)
-			if p.Rule != "" {
+			if p.ProviderRoute != nil {
+				route, rule, routeErr := providerRoute(doc, *p.ProviderRoute)
+				if routeErr != nil {
+					return nil, routeErr
+				}
+				p.Rule = rule
+				providerRoutes = append(providerRoutes, route)
+			}
+			if p.RemoveRule != "" {
 				rules, _ := doc["rules"].([]any)
-				doc["rules"] = append([]any{p.Rule}, rules...)
+				remaining := []any{}
+				found := false
+				for _, rule := range rules {
+					if rule == p.RemoveRule {
+						found = true
+					} else {
+						remaining = append(remaining, rule)
+					}
+				}
+				if !found {
+					return nil, errors.New("the rule changed; reload application routing and try again")
+				}
+				doc["rules"] = remaining
+				suppressedRules = append(suppressedRules, p.RemoveRule)
 			}
 			b, err := yaml.Marshal(doc)
 			if err != nil {
 				return nil, err
 			}
 			p.Content = string(b)
-		}
-		if req.Method == "restore" {
-			b, err := os.ReadFile(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".yaml"))
+			desktopRules = retainedDesktopRules(p.Content, desktopRules)
+			if p.Rule != "" {
+				desktopRules = append([]string{p.Rule}, desktopRules...)
+				p.Content, err = mergeDesktopRules(p.Content, desktopRules)
+				if err != nil {
+					return nil, err
+				}
+			}
+			p.Content, err = mergeProviderRoutes(p.Content, providerRoutes)
 			if err != nil {
-				return nil, errors.New("no previous configuration backup available")
+				return nil, err
+			}
+			// Remove unused managed groups when a GUI route is changed/deleted.
+			retained := retainedProviderRoutes(p.Content, providerRoutes)
+			var cleaned map[string]any
+			if err = yaml.Unmarshal([]byte(p.Content), &cleaned); err != nil {
+				return nil, err
+			}
+			groups, _ := cleaned["proxy-groups"].([]any)
+			keep := []any{}
+			for _, val := range groups {
+				group, _ := val.(map[string]any)
+				drop := false
+				for _, route := range providerRoutes {
+					if reflect.DeepEqual(group, route.config()) && !slices.Contains(retained, route) {
+						drop = true
+					}
+				}
+				if !drop {
+					keep = append(keep, val)
+				}
+			}
+			if cleaned["proxy-groups"] != nil {
+				cleaned["proxy-groups"] = keep
+			}
+			b, err = yaml.Marshal(cleaned)
+			if err != nil {
+				return nil, err
 			}
 			p.Content = string(b)
+			providerRoutes = retained
+		}
+		if req.Method == "restore" {
+			b, readErr := os.ReadFile(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".json"))
+			if readErr == nil {
+				var backup Profile
+				if err = json.Unmarshal(b, &backup); err != nil {
+					return nil, err
+				}
+				p.Content, desktopRules = backup.Content, backup.DesktopRules
+				suppressedRules = backup.DesktopSuppressedRules
+				providerRoutes = backup.DesktopProviderRoutes
+			} else if os.IsNotExist(readErr) {
+				b, err = os.ReadFile(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".yaml"))
+				if err != nil {
+					return nil, errors.New("no previous configuration backup available")
+				}
+				p.Content = string(b)
+			} else {
+				return nil, readErr
+			}
 		}
 		if _, err = a.Core.Validate(ctx, p.Content, s.State.Settings, false); err != nil {
 			return nil, err
@@ -373,7 +468,18 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			_ = a.apply(ctx, old.Content, s.State.Settings)
 			return nil, err
 		}
+		backup, err := json.Marshal(old)
+		if err == nil {
+			err = AtomicWrite(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".json"), backup, 0600)
+		}
+		if err != nil {
+			_ = a.apply(ctx, old.Content, s.State.Settings)
+			return nil, err
+		}
 		profile.Content = p.Content
+		profile.DesktopRules = retainedDesktopRules(p.Content, desktopRules)
+		profile.DesktopSuppressedRules = retainedSuppressedRules(p.Content, suppressedRules)
+		profile.DesktopProviderRoutes = retainedProviderRoutes(p.Content, providerRoutes)
 		profile.Updated = time.Now().UTC()
 		if err = s.Save(); err != nil {
 			*profile = old

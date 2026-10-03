@@ -69,6 +69,10 @@ func TestMain(m *testing.M) {
 			if mode == "incompatible" && r.URL.Path == "/configs" {
 				fields[r.URL.Path] = map[string]any{"unsupported": true}
 			}
+			fields["/providers/proxies"] = map[string]any{"providers": map[string]any{}}
+			if mode == "provider-incompatible" && r.URL.Path == "/providers/proxies" {
+				fields[r.URL.Path] = map[string]any{"unsupported": true}
+			}
 			_ = json.NewEncoder(w).Encode(fields[r.URL.Path])
 		})
 		_ = http.ListenAndServe(doc["external-controller"].(string), nil)
@@ -193,14 +197,14 @@ func TestUpdateFailuresKeepRealRunningCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"checksum", "architecture", "interrupted", "incompatible", "startup-failure"} {
+	for _, scenario := range []string{"checksum", "architecture", "interrupted", "incompatible", "provider-incompatible", "startup-failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			candidate := fixture
 			if scenario == "architecture" {
 				candidate = []byte("not a native executable")
 			}
 			mockUpdate(t, candidate, scenario == "checksum", scenario == "interrupted")
-			if scenario == "incompatible" || scenario == "startup-failure" {
+			if scenario == "incompatible" || scenario == "provider-incompatible" || scenario == "startup-failure" {
 				t.Setenv("ASTER_CORE_FIXTURE", scenario)
 			}
 			dir := t.TempDir()

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -226,6 +227,118 @@ func safeName(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// GUI rules are tracked separately so refreshing a subscription cannot erase
+// them. The merged YAML is still validated by the original core before use.
+func mergeDesktopRules(content string, rules []string) (string, error) {
+	if len(rules) == 0 {
+		return content, nil
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return "", err
+	}
+	if doc == nil {
+		return "", errors.New("configuration must be a YAML mapping")
+	}
+	merged := make([]any, 0, len(rules))
+	seen := make(map[string]bool)
+	for _, rule := range rules {
+		if !seen[rule] {
+			merged = append(merged, rule)
+			seen[rule] = true
+		}
+		if strings.HasPrefix(rule, "PROCESS-") {
+			doc["find-process-mode"] = "strict"
+		}
+	}
+	current, _ := doc["rules"].([]any)
+	for _, rule := range current {
+		text, ok := rule.(string)
+		overridden := false
+		if ok && strings.HasPrefix(text, "PROCESS-") {
+			parts := strings.Split(text, ",")
+			if len(parts) == 3 {
+				for _, managed := range rules {
+					p := strings.Split(managed, ",")
+					if len(p) == 3 && p[0] == parts[0] && p[1] == parts[1] {
+						overridden = true
+						break
+					}
+				}
+			}
+		}
+		if !overridden && (!ok || !seen[text]) {
+			merged = append(merged, rule)
+		}
+	}
+	doc["rules"] = merged
+	b, err := yaml.Marshal(doc)
+	return string(b), err
+}
+
+func suppressDesktopRules(content string, rules []string) (string, error) {
+	if len(rules) == 0 {
+		return content, nil
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal([]byte(content), &doc); err != nil {
+		return "", err
+	}
+	if doc == nil {
+		return "", errors.New("configuration must be a YAML mapping")
+	}
+	suppressed := map[string]bool{}
+	for _, rule := range rules {
+		suppressed[rule] = true
+	}
+	current, _ := doc["rules"].([]any)
+	remaining := []any{}
+	for _, val := range current {
+		rule, _ := val.(string)
+		if !suppressed[rule] {
+			remaining = append(remaining, val)
+		}
+	}
+	doc["rules"] = remaining
+	b, err := yaml.Marshal(doc)
+	return string(b), err
+}
+
+func retainedSuppressedRules(content string, rules []string) []string {
+	present := retainedDesktopRules(content, rules)
+	result := []string{}
+	seen := map[string]bool{}
+	for _, rule := range rules {
+		if !slices.Contains(present, rule) && !seen[rule] {
+			result = append(result, rule)
+			seen[rule] = true
+		}
+	}
+	return result
+}
+
+func retainedDesktopRules(content string, rules []string) []string {
+	var doc struct {
+		Rules []string `yaml:"rules"`
+	}
+	if yaml.Unmarshal([]byte(content), &doc) != nil {
+		return nil
+	}
+	present := make(map[string]bool)
+	for _, rule := range doc.Rules {
+		present[rule] = true
+	}
+	result := []string{}
+	seen := make(map[string]bool)
+	for _, rule := range rules {
+		if present[rule] && !seen[rule] {
+			result = append(result, rule)
+			seen[rule] = true
+		}
+	}
+	return result
 }
 
 // Check fields which the core actually uses as files. Request paths (WS/HTTP/H2),

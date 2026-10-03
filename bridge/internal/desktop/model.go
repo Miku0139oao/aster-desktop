@@ -13,7 +13,7 @@ import (
 )
 
 const CoreCommit = "a9a33503b39a03681bc52d9758907316a22df199"
-const Version = "0.1.2"
+const Version = "0.1.3"
 const MaxConfig = 16 << 20
 
 type Settings struct {
@@ -51,14 +51,17 @@ func (s Settings) Validate() error {
 }
 
 type Profile struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	URL       string    `json:"url,omitempty"`
-	Content   string    `json:"content"`
-	Updated   time.Time `json:"updated"`
-	Warnings  []string  `json:"warnings,omitempty"`
-	Usage     string    `json:"usage,omitempty"`
-	LastError string    `json:"lastError,omitempty"`
+	ID                     string          `json:"id"`
+	Name                   string          `json:"name"`
+	URL                    string          `json:"url,omitempty"`
+	Content                string          `json:"content"`
+	Updated                time.Time       `json:"updated"`
+	Warnings               []string        `json:"warnings,omitempty"`
+	Usage                  string          `json:"usage,omitempty"`
+	LastError              string          `json:"lastError,omitempty"`
+	DesktopRules           []string        `json:"desktopRules,omitempty"`
+	DesktopSuppressedRules []string        `json:"desktopSuppressedRules,omitempty"`
+	DesktopProviderRoutes  []ProviderRoute `json:"desktopProviderRoutes,omitempty"`
 }
 type State struct {
 	Settings   Settings          `json:"settings"`

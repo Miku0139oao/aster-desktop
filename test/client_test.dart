@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi' show Abi;
 import 'dart:io';
 
@@ -11,6 +12,8 @@ import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/pages.dart';
 import 'package:aster_desktop/dialogs.dart';
 import 'package:re_editor/re_editor.dart';
+import 'package:yaml/yaml.dart';
+import 'package:aster_desktop/application_rules.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -27,12 +30,17 @@ class FakeBackend implements DesktopBackend {
   bool serviceInstalled = false;
   Completer<dynamic>? pendingValidation;
   String? validatedContent;
+  Json? appliedPatch;
+  final applications = <Json>[
+    {'name': 'Browser', 'path': r'C:\Program Files\Browser\browser.exe'},
+  ];
   final profiles = <Json>[];
   bool running = false;
   bool failImport = false;
   String? coreError;
   Completer<dynamic>? pendingState;
   Json proxyData = {};
+  Json providerData = {};
   Json connectionData = {'connections': []};
   final closedConnections = <String>[];
   final selections = <String, String>{};
@@ -67,6 +75,22 @@ class FakeBackend implements DesktopBackend {
         return profiles.first;
       case 'restore':
         return profiles.first;
+      case 'patchProfile':
+        appliedPatch = params;
+        final doc = Map<String, dynamic>.from(
+          loadYaml(profiles.first['content'] as String) as Map,
+        );
+        doc.addAll(Map<String, dynamic>.from(params?['changes'] as Map? ?? {}));
+        final rules = (doc['rules'] as List? ?? []).toList();
+        if (params?['removeRule'] != null) {
+          rules.removeWhere((e) => e == params!['removeRule']);
+        }
+        if (params?['rule'] != null) rules.insert(0, params!['rule']);
+        doc['rules'] = rules;
+        profiles.first['content'] = jsonEncode(doc);
+        return profiles.first;
+      case 'listApplications':
+        return applications;
       case 'import':
         if (failImport) {
           throw const BackendException('subscription unavailable');
@@ -116,6 +140,9 @@ class FakeBackend implements DesktopBackend {
         if (params['path'] == '/proxies') {
           return {'proxies': proxyData};
         }
+        if (params['path'] == '/providers/proxies') {
+          return {'providers': providerData};
+        }
         if (params['path'] == '/version') return {'version': 'test-core'};
         return {'connections': [], 'rules': []};
       case 'logs':
@@ -151,6 +178,317 @@ Future<AppController> setup(
 }
 
 void main() {
+  testWidgets(
+    'node browser hides managed application groups and GLOBAL members',
+    (tester) async {
+      final backend = FakeBackend()..running = true;
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content':
+            "proxies: [{name: Tokyo, type: direct}]\nrules: ['MATCH,DIRECT']\n",
+        'desktopProviderRoutes': [
+          {
+            'group': 'Aster-App-private',
+            'provider': 'Subscription',
+            'node': 'Tokyo',
+          },
+        ],
+      });
+      backend.proxyData = {
+        'GLOBAL': {
+          'type': 'Selector',
+          'all': ['Tokyo', 'Aster-App-private'],
+          'now': 'Tokyo',
+        },
+        'Aster-App-private': {
+          'type': 'Selector',
+          'all': ['Tokyo'],
+          'now': 'Tokyo',
+        },
+        'Tokyo': {'type': 'Direct'},
+      };
+      final c = await setup(tester, backend);
+      await c.loadRuntime();
+      c.navigate(1);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Tokyo'), findsOneWidget);
+      expect(find.text('Aster-App-private'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'application routes freely choose and search a large node catalog',
+    (tester) async {
+      final backend = FakeBackend();
+      const app = r'C:\Program Files\Browser\browser.exe';
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content': jsonEncode({
+          'proxies': List.generate(
+            3000,
+            (i) => {
+              'name': 'Node-$i',
+              'type': 'socks5',
+              'server': '127.0.0.1',
+              'port': 1000 + i,
+            },
+          ),
+          'proxy-groups': [
+            {
+              'name': 'Proxy',
+              'type': 'select',
+              'proxies': ['DIRECT'],
+            },
+          ],
+          'rules': ['PROCESS-PATH,$app,DIRECT', 'MATCH,Proxy'],
+        }),
+      });
+      final c = await setup(tester, backend);
+      unawaited(
+        showApplicationRouting(tester.element(find.byType(Scaffold)), c),
+      );
+      await tester.pumpAndSettle();
+      var previous = 'DIRECT';
+      for (final target in ['Node-2999', 'REJECT', 'Proxy', 'DIRECT']) {
+        await tester.tap(find.byKey(const ValueKey('application-route-0')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('route-search')), target);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('target:$target')));
+        await tester.pumpAndSettle();
+        expect(backend.appliedPatch, {
+          'id': 'apps',
+          'rule': 'PROCESS-PATH,$app,$target',
+          'removeRule': 'PROCESS-PATH,$app,$previous',
+        });
+        expect(c.profileDocument!['rules'], [
+          'PROCESS-PATH,$app,$target',
+          'MATCH,Proxy',
+        ]);
+        previous = target;
+      }
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'provider node selection sends independent typed application route',
+    (tester) async {
+      final backend = FakeBackend()..running = true;
+      const rule = r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,DIRECT';
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content': jsonEncode({
+          'proxy-providers': {
+            'Subscription': {
+              'type': 'http',
+              'url': 'https://example.com/nodes',
+            },
+          },
+          'proxy-groups': [
+            {
+              'name': 'Proxy',
+              'type': 'select',
+              'use': ['Subscription'],
+            },
+          ],
+          'rules': [rule, 'MATCH,Proxy'],
+        }),
+      });
+      backend.providerData = {
+        'Subscription': {
+          'proxies': [
+            {'name': 'Tokyo', 'type': 'VLESS'},
+          ],
+        },
+      };
+      final c = await setup(tester, backend);
+      unawaited(
+        showApplicationRouting(tester.element(find.byType(Scaffold)), c),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('application-route-0')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('route-search')), 'Tokyo');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('provider:Subscription:Tokyo')),
+      );
+      await tester.pumpAndSettle();
+      expect(backend.appliedPatch, {
+        'id': 'apps',
+        'removeRule': rule,
+        'providerRoute': {
+          'kind': 'PROCESS-PATH',
+          'match': r'C:\Program Files\Browser\browser.exe',
+          'provider': 'Subscription',
+          'node': 'Tokyo',
+        },
+      });
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'application manager selects a running app without process input',
+    (tester) async {
+      final backend = FakeBackend();
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content': "proxies: []\nproxy-groups: [{name: Proxy, type: select, proxies: [DIRECT]}]\nrules: ['MATCH,Proxy']\n",
+      });
+      final c = await setup(tester, backend, size: const Size(900, 640));
+      unawaited(
+        showApplicationRouting(tester.element(find.byType(Scaffold)), c),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add application'));
+      await tester.pumpAndSettle();
+      expect(backend.calls, contains('listApplications'));
+      await tester.enterText(find.byType(TextField), 'browser');
+      await tester.tap(find.text('Browser'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('route-search')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('target:Proxy')));
+      await tester.pumpAndSettle();
+      expect(backend.appliedPatch, {
+        'id': 'apps',
+        'rule': r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,Proxy',
+      });
+      expect(find.text('browser.exe'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('application manager changes and removes the route in GUI', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    const rule = r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,DIRECT';
+    backend.profiles.add({
+      'id': 'apps',
+      'name': 'Apps',
+      'content': jsonEncode({
+        'proxies': [],
+        'proxy-groups': [
+          {
+            'name': 'Proxy',
+            'type': 'select',
+            'proxies': ['DIRECT'],
+          },
+        ],
+        'rules': [rule, 'MATCH,Proxy'],
+      }),
+    });
+    final c = await setup(tester, backend);
+    unawaited(showApplicationRouting(tester.element(find.byType(Scaffold)), c));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('application-route-0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('target:Proxy')));
+    await tester.pumpAndSettle();
+    expect(backend.appliedPatch, {
+      'id': 'apps',
+      'rule': r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,Proxy',
+      'removeRule': rule,
+    });
+    await tester.tap(find.byKey(const ValueKey('remove-application-rule-0')));
+    await tester.pumpAndSettle();
+    expect(backend.appliedPatch, {
+      'id': 'apps',
+      'removeRule': r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,Proxy',
+    });
+    expect(find.text('No application rules yet'), findsOneWidget);
+    expect(c.profileDocument!['rules'], ['MATCH,Proxy']);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'application routing uses core process rules and enables lookup',
+    (tester) async {
+      final backend = FakeBackend();
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Applications',
+        'content': 'proxies: []\nproxy-groups: [{name: Proxy, type: select, proxies: [DIRECT]}]\nfind-process-mode: off\nrules: [MATCH,DIRECT]\n',
+      });
+      final c = await setup(tester, backend, size: const Size(900, 620));
+      unawaited(
+        showRuleDialog(
+          tester.element(find.byType(Scaffold)),
+          c,
+          application: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Choose application'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'browser.exe');
+      await tester.ensureVisible(find.text('Add and apply'));
+      await tester.tap(find.text('Add and apply'));
+      await tester.pumpAndSettle();
+      expect(backend.appliedPatch, {
+        'id': 'apps',
+        'rule': 'PROCESS-NAME,browser.exe,Proxy',
+        'changes': {'find-process-mode': 'strict'},
+      });
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'application path routing preserves spaces and rejects rule delimiters',
+    (tester) async {
+      final backend = FakeBackend();
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Applications',
+        'content': 'proxies: []\nrules: [MATCH,DIRECT]\n',
+      });
+      final c = await setup(tester, backend);
+      unawaited(
+        showRuleDialog(
+          tester.element(find.byType(Scaffold)),
+          c,
+          application: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Application name'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Application executable path').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'bad,rule');
+      await tester.tap(find.text('Add and apply'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a valid match.'), findsOneWidget);
+      expect(backend.appliedPatch, isNull);
+      await tester.enterText(
+        find.byType(TextField),
+        r'C:\Program Files\Browser\browser.exe',
+      );
+      await tester.tap(find.text('Add and apply'));
+      await tester.pumpAndSettle();
+      expect(
+        backend.appliedPatch!['rule'],
+        r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,DIRECT',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('large YAML edits survive polling, validation, undo and save', (
     tester,
   ) async {

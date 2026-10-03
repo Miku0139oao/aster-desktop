@@ -11,6 +11,7 @@ Bridge stdin/stdout uses NDJSON `{id,method,params}` → `{id,result}` or `{id,e
 | state, settings | Core/service status, settings, profiles, selections |
 | import, refresh, activate, deleteProfile | Subscription/profile lifecycle |
 | validate, edit, restore, patchProfile | YAML validation, editing, backup |
+| listApplications | Read executable names/paths from running processes, without arguments or environment |
 | connect, disconnect | Local or privileged core lifecycle |
 | controller, logs | Restricted controller operations and bounded logs |
 | installService, uninstallService | OS-authorized helper lifecycle |
@@ -46,3 +47,5 @@ Offline choices are saved before the first connection and replayed after core st
 ## Release verification
 
 No remote repository/release is created automatically. Native CI must actually run before Mac packages can be claimed as built. Ad-hoc signed DMGs contain a root-owned installation PKG. Real network, authorization, TUN, tray, desktop proxy and suspend/resume require per-platform results in `TESTING.md`.
+
+Application routing keeps GUI override rules and explicitly removed subscription rules in Profile metadata. Refresh merges overrides before validating/applying, replacing process rules for the same kind and match. Provider node choices use a separate, exact-filtered hidden select group for each application; an empty group rejects traffic. patchProfile accepts a typed providerRoute {kind,match,provider,node} plus removeRule for atomic replacement. These are desktop operations using existing core configuration and controller endpoints. Full-profile JSON backups preserve routing metadata alongside legacy YAML backups.

@@ -8,6 +8,7 @@ import 'package:yaml/yaml.dart';
 import 'backend.dart';
 import 'controller.dart';
 import 'dialogs.dart';
+import 'application_rules.dart';
 export 'dialogs.dart' show showImportDialog;
 
 class PageBody extends StatelessWidget {
@@ -536,8 +537,16 @@ class _NodesPageState extends State<NodesPage> {
   @override
   Widget build(BuildContext context) {
     final all = c.running ? c.proxies : _offline();
+    final applicationGroups =
+        (c.active?.json['desktopProviderRoutes'] as List? ?? [])
+            .map((route) => route['group'])
+            .toSet();
     final groups = all.entries
-        .where((e) => (e.value as Json)['all'] is List)
+        .where(
+          (e) =>
+              (e.value as Json)['all'] is List &&
+              !applicationGroups.contains(e.key),
+        )
         .toList();
     if (groups.isEmpty) {
       return EmptyMessage(
@@ -564,7 +573,11 @@ class _NodesPageState extends State<NodesPage> {
     final selected = all[group] as Json;
     final nodes = (selected['all'] as List)
         .cast<String>()
-        .where((name) => name.toLowerCase().contains(search.toLowerCase()))
+        .where(
+          (name) =>
+              !applicationGroups.contains(name) &&
+              name.toLowerCase().contains(search.toLowerCase()),
+        )
         .toList();
     return Column(
       children: [
@@ -1324,6 +1337,13 @@ class AdvancedPage extends StatelessWidget {
                       : () => showRuleDialog(context, c),
                   icon: const Icon(Icons.alt_route),
                   label: Text(c.tr('新增分流規則', 'Add routing rule')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: c.busy || c.active == null
+                      ? null
+                      : () => showApplicationRouting(context, c),
+                  icon: const Icon(Icons.apps),
+                  label: Text(c.tr('應用程式分流', 'Application routing')),
                 ),
                 OutlinedButton.icon(
                   onPressed: c.busy || c.active == null

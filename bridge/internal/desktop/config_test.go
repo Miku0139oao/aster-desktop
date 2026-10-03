@@ -255,6 +255,26 @@ func TestSettingsValidation(t *testing.T) {
 	}
 }
 
+func TestApplicationOverridesAndDeletedSubscriptionRules(t *testing.T) {
+	const remote = "PROCESS-NAME,browser.exe,Proxy"
+	const local = "PROCESS-NAME,browser.exe,DIRECT"
+	content := "rules: ['" + remote + "', 'MATCH,DIRECT']\n"
+	merged, err := mergeDesktopRules(content, []string{local})
+	if err != nil || strings.Contains(merged, remote) || !strings.Contains(merged, local) || !strings.Contains(merged, "MATCH,DIRECT") {
+		t.Fatal("duplicate application route after refresh: ", err, merged)
+	}
+	deleted, err := suppressDesktopRules(content, []string{remote})
+	if err != nil || strings.Contains(deleted, remote) || !strings.Contains(deleted, "MATCH,DIRECT") {
+		t.Fatal("deleted subscription rule resurrected: ", err, deleted)
+	}
+	if len(retainedSuppressedRules(content, []string{remote})) != 0 {
+		t.Fatal("explicit YAML rule reinsertion remained suppressed")
+	}
+	if len(retainedSuppressedRules(deleted, []string{remote, remote})) != 1 {
+		t.Fatal("rule deletion metadata not retained/deduplicated")
+	}
+}
+
 func TestSemanticallyInvalidLinksDoNotDiscardGoodNodes(t *testing.T) {
 	data := "trojan://good@example.com:443#Auto\nss://" + base64.RawStdEncoding.EncodeToString([]byte("not-a-cipher:password")) + "@example.com:443#bad\n"
 	result, err := Import([]byte(data))
