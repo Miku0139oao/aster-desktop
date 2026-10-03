@@ -50,3 +50,4 @@ app.*.map.json
 /test/failures/
 /packaging/windows/setup/payload.zip
 /packaging/windows/setup/install.ps1
+/packaging/windows/setup/install-files.ps1

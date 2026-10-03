@@ -20,7 +20,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//go:embed payload.zip install.ps1
+//go:embed payload.zip install.ps1 install-files.ps1
 var files embed.FS
 
 func main() {
@@ -113,7 +113,7 @@ func install() error {
 			_ = os.RemoveAll(dir)
 		}
 	}()
-	for _, name := range []string{"payload.zip", "install.ps1"} {
+	for _, name := range []string{"payload.zip", "install.ps1", "install-files.ps1"} {
 		data, err := files.ReadFile(name)
 		if err != nil {
 			return err
@@ -135,7 +135,11 @@ func install() error {
 	command.Env = append(os.Environ(), "ProgramFiles="+programFiles, "SystemRoot="+filepath.Dir(system), "WINDIR="+filepath.Dir(system))
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("close Aster Desktop and retry; %s", strings.TrimSpace(string(output)))
+		detail := strings.TrimSpace(string(output))
+		if detail == "" {
+			return fmt.Errorf("installer failed: %w", err)
+		}
+		return errors.New(detail)
 	}
 	return nil
 }
@@ -173,7 +177,9 @@ func elevate() error {
 		return err
 	}
 	if code != 0 {
-		return errors.New("installer did not complete; close the app and try again")
+		// The elevated installer already displayed the actual failure. Preserve
+		// its status without replacing it with a second, misleading dialog.
+		os.Exit(int(code))
 	}
 	return nil
 }

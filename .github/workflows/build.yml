@@ -48,6 +48,10 @@ jobs:
       - name: Build Unix packages
         if: runner.os != 'Windows'
         run: bash scripts/build.sh
+      - name: Windows installer extraction and rollback (PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1 -PayloadPath "$pwd/packaging/windows/setup/payload.zip"
       - name: Real core lifecycle and rollback tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

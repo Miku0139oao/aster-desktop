@@ -1,4 +1,6 @@
 $ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+try {
 $asterPrincipal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if(!$asterPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
   $asterElevated=Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$PSCommandPath+'"') -WindowStyle Hidden -Wait -PassThru
@@ -8,15 +10,30 @@ $asterInstall=Join-Path $env:ProgramFiles 'Aster Desktop'
 $asterExpected=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'Aster Desktop'))
 if([IO.Path]::GetFullPath($asterInstall) -ne $asterExpected){throw 'Invalid installation directory'}
 $asterApp=Get-Process -Name aster_desktop -ErrorAction SilentlyContinue
-if($asterApp){Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show('Close Aster Desktop from its tray menu, then run this installer again.','Aster Desktop') | Out-Null;exit 1}
-New-Item -ItemType Directory -Path $asterInstall -Force | Out-Null
+if($asterApp){throw 'Please exit Aster Desktop from its tray menu, then run this installer again.'}
+. (Join-Path $PSScriptRoot 'install-files.ps1')
 $asterService=Get-Service -Name AsterDesktop -ErrorAction SilentlyContinue
-if($asterService -and $asterService.Status -ne 'Stopped'){
-  Stop-Service -Name AsterDesktop
-  $asterService.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+$asterWasRunning=$asterService -and $asterService.Status -ne 'Stopped'
+function Stop-AsterInstallerService {
+  $asterCurrent=Get-Service -Name AsterDesktop -ErrorAction SilentlyContinue
+  if(!$asterCurrent){return}
+  $asterSCM=Get-CimInstance Win32_Service -Filter "Name='AsterDesktop'"
+  $asterProcess=if($asterSCM.ProcessId){Get-Process -Id $asterSCM.ProcessId -ErrorAction SilentlyContinue}
+  if($asterCurrent.Status -ne 'Stopped'){
+    Stop-Service -Name AsterDesktop -ErrorAction Stop
+    $asterCurrent.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+  }
+  # SCM may report Stopped just before the executable releases its handles.
+  if($asterProcess -and !$asterProcess.WaitForExit(30000)){throw 'Background service process did not exit within 30 seconds; previous files are preserved.'}
 }
-Expand-Archive -LiteralPath (Join-Path $PSScriptRoot 'payload.zip') -DestinationPath $asterInstall -Force
-if($asterService){Start-Service -Name AsterDesktop}
+function Start-AsterInstallerService {
+  if(!$asterWasRunning){return}
+  Start-Service -Name AsterDesktop -ErrorAction Stop
+  (Get-Service -Name AsterDesktop).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
+}
+Install-AsterPayload -ArchivePath (Join-Path $PSScriptRoot 'payload.zip') -InstallPath $asterInstall `
+  -BeforeSwitch {Stop-AsterInstallerService} -AfterSwitch {Start-AsterInstallerService} `
+  -BeforeRollback {Stop-AsterInstallerService} -AfterRollback {Start-AsterInstallerService}
 $asterUninstall=Join-Path $asterInstall 'uninstall.ps1'
 $asterRemoval=@'
 $ErrorActionPreference='Stop'
@@ -47,3 +64,7 @@ New-ItemProperty -Path $asterRegistry -Name UninstallString -Value ('powershell.
 New-ItemProperty -Path $asterRegistry -Name InstallLocation -Value $asterInstall -PropertyType String -Force | Out-Null
 Add-Type -AssemblyName PresentationFramework
 [System.Windows.MessageBox]::Show('Aster Desktop is installed. Open it from the Start menu. Your profiles stay in your user account.','Aster Desktop') | Out-Null
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}

@@ -1,3 +1,22 @@
+# 0.1.2-beta.2 Windows 安裝器修正
+
+日期：2026-10-04。GUI／bridge／core 執行檔維持 0.1.2；此 hotfix 只修改 Windows 安裝器及打包／回歸腳本。
+
+使用者截圖的 `Microsoft.PowerShell.Archive.psm1:411 / Remove-Item / LICENSE` 是 `Expand-Archive` 失敗後的清理錯誤。payload 內該授權檔案存在；原安裝包在獨立目錄首次解壓及重複覆蓋均通過，尚未確定使用者機器上最初觸發解壓失敗的原因。不能據此判定授權檔遺失或要求使用者刪除設定。
+
+改為在同一磁碟的全新目錄完整解壓、保留既有安裝 ACL、等待服務 SCM Stopped **以及實際程序退出**後切換目錄。服務原本執行時才重新啟動，等待 Running；切換或啟動失敗回復舊目錄並嘗試重啟舊服務。回復失敗保留備份且回報兩個原因；清理拒絕路徑越界及 reparse point，遇到舊檔案鎖定可保留備份。移除固定「close the app」錯誤前綴及提權後重複的泛用錯誤對話框。使用者 AppData／服務 ProgramData 設定未參與目錄切換。
+
+Windows PowerShell **5.1** 本機回歸通過：完整 payload 首次安裝、0.1.1 升級、殘缺舊目錄修復（每份安裝的全部檔案逐一 SHA-256 比對）；受保護 ACL 保留；真實 Windows 檔案鎖定；模擬服務無法停止／新版無法啟動及回復失敗；無效 ZIP 的原始錯誤；清理越界／根與子目錄 junction 拒絕。服務故障使用回呼 fixture，沒有改動本機服務或執行 UAC 安裝。這些測試不代表乾淨 Windows 10／11 的 SCM／UAC／解除安裝實機验收已完成。
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1 -PayloadPath "$pwd/packaging/windows/setup/payload.zip" -PreviousArchivePath "$pwd/dist/Aster-Desktop-0.1.1-windows-x64-portable.zip"
+```
+
+`PreviousArchivePath` 可省略，CI 使用同一測試腳本及 Windows PowerShell 5.1。新原生安裝器 `--verify`（ZIP 每個檔案 CRC、必要檔案及路徑）通過。本次沒有更動 Dart 或 Go 管理層，因此不重複前一版的介面／核心驗證；GitHub Actions 的帳號付款／花費上限問題仍另列，不宣稱本機檔案 fixture 等同 CI 系統服務驗證。
+
+交付：[v0.1.2-beta.2](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.2-beta.2)，含新 Windows 安裝器、對應桌面及固定核心來源與 SHA-256。原 beta.1 可攜包／Arch 包不受本次安裝器修正影響。
+
+---
 # 0.1.2 啟動及 YAML 編輯修正
 
 日期：2026-10-04。
