@@ -56,11 +56,12 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        if (kind == 'CodeEditor')
+        if (kind == 'CodeEditor') {
           code.selection = CodeLineSelection.collapsed(
             index: count - 1,
             offset: code.codeLines.last.text.length,
           );
+        }
         await tester.pumpAndSettle();
         final times = <int>[];
         for (var i = 0; i < 35; i++) {
