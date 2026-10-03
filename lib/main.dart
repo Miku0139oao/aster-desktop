@@ -114,7 +114,7 @@ ThemeData asterTheme(Brightness brightness) {
   );
 }
 
-class AsterApp extends StatelessWidget {
+class AsterApp extends StatefulWidget {
   const AsterApp({
     super.key,
     required this.controller,
@@ -123,22 +123,65 @@ class AsterApp extends StatelessWidget {
   final AppController controller;
   final bool desktopLifecycle;
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
-    builder: (context, _) => MaterialApp(
-      title: 'Aster Desktop',
-      debugShowCheckedModeBanner: false,
-      theme: asterTheme(Brightness.light),
-      darkTheme: asterTheme(Brightness.dark),
-      themeMode: controller.themeMode,
-      locale: controller.settings.language == 'en'
-          ? const Locale('en')
-          : const Locale('zh', 'TW'),
-      supportedLocales: const [Locale('en'), Locale('zh', 'TW')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      home: AppShell(
+  State<AsterApp> createState() => _AsterAppState();
+}
+
+class _AsterAppState extends State<AsterApp> {
+  late String _theme, _language;
+  AppController get controller => widget.controller;
+  @override
+  void initState() {
+    super.initState();
+    _theme = controller.settings.theme;
+    _language = controller.settings.language;
+    controller.addListener(_settingsChanged);
+  }
+
+  void _settingsChanged() {
+    if (_theme == controller.settings.theme &&
+        _language == controller.settings.language) {
+      return;
+    }
+    setState(() {
+      _theme = controller.settings.theme;
+      _language = controller.settings.language;
+    });
+  }
+
+  @override
+  void didUpdateWidget(AsterApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != controller) {
+      oldWidget.controller.removeListener(_settingsChanged);
+      controller.addListener(_settingsChanged);
+      _theme = controller.settings.theme;
+      _language = controller.settings.language;
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_settingsChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'Aster Desktop',
+    debugShowCheckedModeBanner: false,
+    theme: asterTheme(Brightness.light),
+    darkTheme: asterTheme(Brightness.dark),
+    themeMode: controller.themeMode,
+    locale: controller.settings.language == 'en'
+        ? const Locale('en')
+        : const Locale('zh', 'TW'),
+    supportedLocales: const [Locale('en'), Locale('zh', 'TW')],
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    home: ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => AppShell(
         controller: controller,
-        desktopLifecycle: desktopLifecycle,
+        desktopLifecycle: widget.desktopLifecycle,
       ),
     ),
   );

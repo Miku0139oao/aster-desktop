@@ -13,7 +13,7 @@ import (
 )
 
 const CoreCommit = "a9a33503b39a03681bc52d9758907316a22df199"
-const Version = "0.1.1"
+const Version = "0.1.2"
 const MaxConfig = 16 << 20
 
 type Settings struct {

@@ -42,7 +42,7 @@ $asterShortcut.TargetPath=Join-Path $asterInstall 'aster_desktop.exe';$asterShor
 $asterRegistry='HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AsterDesktop'
 New-Item -Path $asterRegistry -Force | Out-Null
 New-ItemProperty -Path $asterRegistry -Name DisplayName -Value 'Aster Desktop' -PropertyType String -Force | Out-Null
-New-ItemProperty -Path $asterRegistry -Name DisplayVersion -Value '0.1.1' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $asterRegistry -Name DisplayVersion -Value '0.1.2' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $asterRegistry -Name UninstallString -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+$asterUninstall+'"') -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $asterRegistry -Name InstallLocation -Value $asterInstall -PropertyType String -Force | Out-Null
 Add-Type -AssemblyName PresentationFramework

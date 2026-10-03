@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
+import 'package:aster_desktop/dialogs.dart';
+import 'package:re_editor/re_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -111,6 +114,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'page $page');
     }
+    // Edit a large document in the real desktop window while the core runs.
+    unawaited(
+      showYamlEditor(tester.element(find.byType(Scaffold)), c, c.active!),
+    );
+    await tester.pumpAndSettle();
+    final editor = tester
+        .widget<CodeEditor>(find.byKey(const Key('yaml-editor')))
+        .controller!;
+    editor.text =
+        '${editor.text}\n${List.generate(10000, (i) => '# YAML 設定 $i').join('\n')}';
+    editor.selection = const CodeLineSelection.collapsed(index: 100, offset: 0);
+    await tester.pumpAndSettle();
+    final before = editor.text;
+    for (var i = 0; i < 30; i++) {
+      editor.replaceSelection('#');
+      await tester.pump();
+    }
+    final draft = editor.text;
+    await c.poll();
+    await tester.pump();
+    expect(
+      editor.text == draft,
+      isTrue,
+      reason: 'poll replaced the YAML draft',
+    );
+    editor.undo();
+    await tester.pump();
+    expect(editor.text == draft, isFalse);
+    editor.text =
+        before; // Keep the fixture configuration valid for real validation.
+    await tester.tap(find.text('儲存並套用'));
+    for (
+      var attempt = 0;
+      attempt < 150 &&
+          find.byKey(const Key('yaml-editor')).evaluate().isNotEmpty;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('yaml-editor')), findsNothing);
+    expect(c.running, isTrue, reason: c.error);
+    expect(c.active!.content == before, isTrue);
     c.navigate(0);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('primary-connect')));

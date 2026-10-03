@@ -1,14 +1,14 @@
-# Aster Desktop 0.1.1 測試版
+# Aster Desktop 0.1.2 測試版
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
-[下載 v0.1.1-beta.1 測試包](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.1-beta.1)：Windows 安裝器／可攜版、Intel／Apple Silicon DMG、Ubuntu deb、Arch 套件及各 Linux 可攜版，附 SHA-256 與對應來源碼。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
+[下載 v0.1.2-beta.1 測試包](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.2-beta.1)：Windows 安裝器／可攜版、Intel／Apple Silicon DMG、Ubuntu deb、Arch 套件及各 Linux 可攜版，附 SHA-256 與對應來源碼。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
 
-0.1.1 修正 TUN 對 WebSocket／HTTP／H2 路徑、DNS 分類與 YAML 範本的誤判，以及舊狀態輪詢覆蓋連線結果和錯誤原因。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
+0.1.2 修正遠端規則仍在載入時，15 秒啟動期限提前停止核心並誤報 TUN 未就緒的問題。大型 YAML 改用按可見行繪製的編輯器，避免背景輪詢反覆解析設定或重建整個應用程式，並顯示實際安裝版本。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
 
 ## 安裝與第一次使用
 
-1. Windows：執行 `Aster-Desktop-0.1.1-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
+1. Windows：執行 `Aster-Desktop-0.1.2-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。此流程及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。

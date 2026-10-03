@@ -9,6 +9,8 @@ import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/pages.dart';
+import 'package:aster_desktop/dialogs.dart';
+import 'package:re_editor/re_editor.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -21,6 +23,10 @@ class FakeBackend implements DesktopBackend {
   final calls = <String>[];
   final changes = StreamController<Json>.broadcast();
   Json settings = const AppSettings(language: 'en', theme: 'light').toJson();
+  String desktopVersion = '0.1.0'; // Stable version in the visual fixtures.
+  bool serviceInstalled = false;
+  Completer<dynamic>? pendingValidation;
+  String? validatedContent;
   final profiles = <Json>[];
   bool running = false;
   bool failImport = false;
@@ -49,8 +55,18 @@ class FakeBackend implements DesktopBackend {
             'running': running,
             if (coreError != null) 'error': coreError,
           },
-          'service': {'installed': false},
+          'service': {'installed': serviceInstalled},
+          'desktopVersion': desktopVersion,
         };
+      case 'validate':
+        validatedContent = params!['content'] as String;
+        if (pendingValidation != null) return pendingValidation!.future;
+        return true;
+      case 'edit':
+        profiles.first['content'] = params!['content'];
+        return profiles.first;
+      case 'restore':
+        return profiles.first;
       case 'import':
         if (failImport) {
           throw const BackendException('subscription unavailable');
@@ -135,6 +151,149 @@ Future<AppController> setup(
 }
 
 void main() {
+  testWidgets('large YAML edits survive polling, validation, undo and save', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    final content =
+        '${List.generate(10000, (i) => '# 設定 $i · https://example.test/a-long-path/$i').join('\n')}\nproxies: []\nrules: ["MATCH,DIRECT"]\n';
+    backend.profiles.add({
+      'id': 'large',
+      'name': 'Large YAML',
+      'content': content,
+    });
+    final c = await setup(tester, backend);
+    unawaited(
+      showYamlEditor(tester.element(find.byType(Scaffold)), c, c.active!),
+    );
+    await tester.pumpAndSettle();
+    final widget = tester.widget<CodeEditor>(
+      find.byKey(const Key('yaml-editor')),
+    );
+    final editor = widget.controller!;
+    final lastLine = editor.codeLines.length - 1;
+    editor.selection = CodeLineSelection.collapsed(index: lastLine, offset: 0);
+    editor.replaceSelection('# user draft');
+    final draft = editor.text;
+    editor.undo();
+    expect(editor.text, content);
+    editor.redo();
+    expect(editor.text, draft);
+    await tester.pump();
+    // Exercise the desktop text input channel, including a Chinese IME commit.
+    final input = tester.testTextInput.editingState!['text'] as String;
+    final offset = tester.testTextInput.editingState!['selectionExtent'] as int;
+    final client =
+        (tester.testTextInput.log
+                    .lastWhere((call) => call.method == 'TextInput.setClient')
+                    .arguments
+                as List)
+            .first;
+    tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      SystemChannels.textInput.name,
+      SystemChannels.textInput.codec.encodeMethodCall(
+        MethodCall('TextInputClient.updateEditingStateWithDeltas', [
+          client,
+          {
+            'deltas': [
+              {
+                'oldText': input,
+                'deltaText': ' · 中文',
+                'deltaStart': offset,
+                'deltaEnd': offset,
+                'selectionBase': offset + 5,
+                'selectionExtent': offset + 5,
+                'selectionAffinity': 'TextAffinity.downstream',
+                'selectionIsDirectional': false,
+                'composingBase': -1,
+                'composingExtent': -1,
+              },
+            ],
+          },
+        ]),
+      ),
+      (_) {},
+    );
+    await tester.pump();
+    expect(editor.text.endsWith('# user draft · 中文'), isTrue);
+    final edited = editor.text;
+    for (var i = 0; i < 5; i++) {
+      await c.poll();
+      backend.changes.add({
+        'event': 'traffic',
+        'data': {'up': i, 'down': i},
+      });
+      await tester.pump();
+    }
+    expect(editor.text, edited);
+    expect(backend.calls, isNot(contains('validate')));
+    final validation = Completer<dynamic>();
+    backend.pendingValidation = validation;
+    await tester.tap(find.text('Validate'));
+    await tester.pump();
+    expect(
+      tester.widget<CodeEditor>(find.byKey(const Key('yaml-editor'))).readOnly,
+      isTrue,
+    );
+    expect(backend.validatedContent, edited);
+    validation.complete(true);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<CodeEditor>(find.byKey(const Key('yaml-editor'))).readOnly,
+      isFalse,
+    );
+    await tester.tap(find.text('Save and apply'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('yaml-editor')), findsNothing);
+    expect(c.active!.content, edited);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('profile parsing is reused until the content changes', () async {
+    final backend = FakeBackend();
+    backend.profiles.add({
+      'id': 'cache',
+      'name': 'Cache',
+      'content': 'rules: ["MATCH,First"]',
+    });
+    final c = AppController(backend);
+    addTearDown(c.dispose);
+    addTearDown(backend.close);
+    await c.refresh();
+    final parsed = c.profileDocument;
+    await c.refresh();
+    expect(identical(c.profileDocument, parsed), isTrue);
+    expect(c.profileTarget, 'First');
+    backend.profiles.first['content'] = 'rules: ["MATCH,Second"]';
+    await c.refresh();
+    expect(identical(c.profileDocument, parsed), isFalse);
+    expect(c.profileTarget, 'Second');
+  });
+
+  testWidgets(
+    'installed service and slow controller failures have accurate guidance',
+    (tester) async {
+      final backend = FakeBackend()
+        ..serviceInstalled = true
+        ..desktopVersion = '0.1.2';
+      final c = await setup(tester, backend);
+      expect(find.text('Aster Desktop 0.1.2'), findsOneWidget);
+      c.reportError(
+        'TUN adapter did not become ready; check the background service',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Install the background service'),
+        findsNothing,
+      );
+      expect(find.textContaining('Try system proxy'), findsOneWidget);
+      c.reportError(
+        'core startup timed out while waiting for controller; remote providers may be unavailable',
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('loading remote rules'), findsOneWidget);
+    },
+  );
   test(
     'poll preserves the core failure and retrieves logs while stopped',
     () async {

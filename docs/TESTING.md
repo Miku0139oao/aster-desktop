@@ -1,3 +1,19 @@
+# 0.1.2 啟動及 YAML 編輯修正
+
+日期：2026-10-04。
+
+根因已在獨立 Linux network namespace 使用使用者設定的私人副本重現：TUN adapter 成功建立，但核心要完成 HTTP rule/proxy provider 的初次載入才開 Controller。遠端 provider 的 20 秒下載逾時超過桌面原本 15 秒限制，導致桌面主動停止核心，並錯誤提示服務未安裝。修正後同一份設定約 20 秒完成 Controller 及 TUN 就緒檢查。沒有更動主機系統代理、路由、既有 VPN 或使用者原始設定；私人副本不納入來源與套件。
+
+- 有 HTTP provider 的設定允許最多 75 秒啟動；沒有遠端 provider 仍維持 15 秒。保留 Controller、代理端口及實際 tun.enable 的就緒檢查，依等待階段區分錯誤。每次 Controller 探測有一秒期限。
+- Windows 實際原核心回歸通過：延遲 17 秒的 HTTP 規則 provider 成功啟動並載入一條規則，重連沿用快取；Controller 正常但 TUN 失敗仍被拒絕。
+- Windows Go 全部測試及 vet 通過；Dart analysis 無問題，14 項元件／單元測試通過。
+- YAML 編輯器固定使用 Re-Editor 0.10.0，按可見行繪製、支援水平捲動及行號。設定解析按內容快取；流量事件不再重建 MaterialApp、Navigator 與對話框。
+- 一萬行 YAML 的逐行編輯、中文輸入 delta、undo/redo、輪詢保留草稿、驗證期間唯讀及儲存回歸通過。此元件測試不代表所有實體 IME 都已驗證。
+- 四平台 CI 加入慢速 provider 回歸；Windows LocalSystem TUN fixture 同時使用 mixed stack、warning 日誌、respect-rules/redir-host DNS、LAN listener 及 17 秒 HTTP 規則下載。Windows/Linux 原生 GUI 測試加入一萬行 YAML 編輯及真實核心儲存／套用。
+
+Windows/Linux 原生測試、跨平台建置與服務回歸結果待本次執行完成補入。macOS 實機網路與權限仍待 Mac 主機。使用者日誌中的遠端 REALITY authentication failed 與 TCP timeout 不代表 TUN 建立失敗；本修正沒有改寫遠端節點憑證。
+
+---
 # 0.1.1-beta.1 交付補充
 
 交付程式／來源提交：8256e45d4f3086a1bb118b3c4bd0ae4738d6aab2。

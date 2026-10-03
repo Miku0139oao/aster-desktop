@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Core struct {
@@ -247,10 +249,17 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 		close(done)
 		c.mu.Unlock()
 	}()
-	deadline := time.NewTimer(15 * time.Second)
+	// The core starts its controller after loading proxy and rule providers.
+	// Each HTTP provider phase may take 20 seconds with a cold cache. Do not
+	// kill an already-created TUN while those two phases are still running.
+	startupLimit := startupTimeout(b)
+	startupCtx, cancelStartup := context.WithTimeout(ctx, startupLimit)
+	defer cancelStartup()
+	deadline := time.NewTimer(startupLimit)
 	defer deadline.Stop()
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	stage := "controller"
 	for {
 		select {
 		case <-ctx.Done():
@@ -260,12 +269,15 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 			return fmt.Errorf("core did not start: %s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-deadline.C:
 			_ = c.Stop()
-			if s.Tun {
+			if stage == "tun" {
 				return fmt.Errorf("TUN adapter did not become ready; check the background service and conflicting VPN software\n%s", bounded(strings.Join(c.Logs(), "\n"), 3000))
 			}
-			return fmt.Errorf("core startup timed out; check the configuration or conflicting proxy software\n%s", bounded(strings.Join(c.Logs(), "\n"), 3000))
+			return fmt.Errorf("core startup timed out while waiting for %s; remote providers may be unavailable\n%s", stage, bounded(strings.Join(c.Logs(), "\n"), 3000))
 		case <-ticker.C:
-			if body, err := c.Request(ctx, "GET", "/version", nil); err == nil {
+			probeCtx, cancelProbe := context.WithTimeout(startupCtx, time.Second)
+			body, err := c.Request(probeCtx, "GET", "/version", nil)
+			cancelProbe()
+			if err == nil {
 				var version struct {
 					Version string `json:"version"`
 				}
@@ -273,6 +285,7 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 					continue
 				}
 				// Controller readiness precedes binding the proxy listeners.
+				stage = "proxy listener"
 				listener, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", s.MixedPort), 250*time.Millisecond)
 				if err != nil {
 					continue
@@ -282,7 +295,10 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 					// The HTTP controller and proxy listeners can start even when
 					// the OS rejects creating TUN. Report connected only after the
 					// core reports the successfully applied TUN listener config.
-					config, err := c.Request(ctx, "GET", "/configs", nil)
+					stage = "tun"
+					probeCtx, cancelProbe := context.WithTimeout(startupCtx, time.Second)
+					config, err := c.Request(probeCtx, "GET", "/configs", nil)
+					cancelProbe()
 					var active struct {
 						Tun struct {
 							Enable bool `json:"enable"`
@@ -299,6 +315,29 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 			}
 		}
 	}
+}
+
+func startupTimeout(content []byte) time.Duration {
+	var config struct {
+		Proxies map[string]struct {
+			Type string `yaml:"type"`
+		} `yaml:"proxy-providers"`
+		Rules map[string]struct {
+			Type string `yaml:"type"`
+		} `yaml:"rule-providers"`
+	}
+	if yaml.Unmarshal(content, &config) == nil {
+		for _, providers := range []map[string]struct {
+			Type string `yaml:"type"`
+		}{config.Proxies, config.Rules} {
+			for _, provider := range providers {
+				if provider.Type == "http" {
+					return 75 * time.Second
+				}
+			}
+		}
+	}
+	return 15 * time.Second
 }
 func (c *Core) Stop() error {
 	c.mu.Lock()

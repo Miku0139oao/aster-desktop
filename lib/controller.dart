@@ -74,6 +74,25 @@ class AppController extends ChangeNotifier {
   String? error;
   String updateProgress = '';
   String coreVersion = '';
+  String desktopVersion = '';
+  String? _parsedContent;
+  YamlMap? _parsedProfile;
+
+  // Status/traffic updates leave the profile text unchanged. Parsing it on
+  // every rebuild blocks keyboard input for large subscriptions.
+  YamlMap? get profileDocument {
+    final content = active?.content ?? '';
+    if (content != _parsedContent) {
+      _parsedContent = content;
+      try {
+        _parsedProfile = loadYaml(content) as YamlMap?;
+      } catch (_) {
+        _parsedProfile = null;
+      }
+    }
+    return _parsedProfile;
+  }
+
   void reportError(String? message) {
     error = message;
     notifyListeners();
@@ -91,14 +110,14 @@ class AppController extends ChangeNotifier {
   Profile? get active => profiles.where((p) => p.id == activeId).firstOrNull;
   String get profileTarget {
     try {
-      final doc = loadYaml(active?.content ?? '') as YamlMap;
-      for (final rule in (doc['rules'] as List? ?? []).reversed) {
+      final doc = profileDocument;
+      for (final rule in (doc?['rules'] as List? ?? []).reversed) {
         final parts = (rule as String).split(',');
         if (parts.length > 1 && ['MATCH', 'FINAL'].contains(parts.first)) {
           return parts[1].trim();
         }
       }
-      final groups = doc['proxy-groups'] as List? ?? [];
+      final groups = doc?['proxy-groups'] as List? ?? [];
       return groups.where((g) => g['type'] == 'select').firstOrNull?['name']
               as String? ??
           'DIRECT';
@@ -113,10 +132,7 @@ class AppController extends ChangeNotifier {
         ? (running ? 'GLOBAL' : selections['GLOBAL'] ?? profileTarget)
         : profileTarget;
     final seen = <String>{};
-    YamlMap? doc;
-    try {
-      doc = loadYaml(active?.content ?? '') as YamlMap?;
-    } catch (_) {}
+    final doc = profileDocument;
     while (seen.add(node)) {
       final live = running ? proxies[node] as Json? : null;
       final group = (doc?['proxy-groups'] as List? ?? [])
@@ -174,6 +190,7 @@ class AppController extends ChangeNotifier {
       (group, node) => MapEntry(group, node as String),
     );
     service = result['service'] as Json? ?? {};
+    desktopVersion = result['desktopVersion'] as String? ?? '';
     final core = result['core'] as Json;
     running = core['running'] == true;
     if (core['error'] != null) error = core['error'] as String;

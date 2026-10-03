@@ -264,7 +264,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                           ),
                         const SizedBox(height: 12),
                         Text(
-                          compact ? '0.1.0' : 'Aster Desktop 0.1.0',
+                          compact
+                              ? c.desktopVersion
+                              : 'Aster Desktop ${c.desktopVersion}',
                           style: TextStyle(fontSize: 11, color: cs.outline),
                         ),
                         if (widget.desktopLifecycle)
@@ -429,14 +431,32 @@ class ErrorCard extends StatelessWidget {
         'Stop the other proxy or choose another port in Advanced.',
       );
     }
+    if (message.contains('waiting for controller') ||
+        message.contains('remote providers')) {
+      return c.tr(
+        '核心仍在載入遠端規則或訂閱，請檢查網路與目前節點後重試。',
+        'The core is loading remote rules or providers. Check your network and selected node, then retry.',
+      );
+    }
+    if (message.contains('tun adapter')) {
+      return c.tr(
+        '全應用程式代理未能就緒；可先改用系統代理。請展開詳細原因檢查 TUN 設定及其他 VPN。',
+        'TUN could not become ready. Try system proxy and expand the details to check TUN settings and other VPNs.',
+      );
+    }
     if (message.contains('service') ||
         message.contains('permission') ||
         message.contains('authorization') ||
         message.contains('approve')) {
-      return c.tr(
-        '請到進階設定安裝背景服務，並完成系統授權。',
-        'Install the background service in Advanced and approve the system prompt.',
-      );
+      return c.service['installed'] == true
+          ? c.tr(
+              '背景服務已安裝。請確認服務正在執行及系統授權已完成。',
+              'The background service is installed. Check that it is running and system authorization is approved.',
+            )
+          : c.tr(
+              '請到進階設定安裝背景服務，並完成系統授權。',
+              'Install the background service in Advanced and approve the system prompt.',
+            );
     }
     if (message.contains('subscription') || message.contains('download')) {
       return c.tr(

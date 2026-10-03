@@ -2,6 +2,9 @@ package desktop
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,6 +55,7 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 	defer client.Close()
 	s := DefaultSettings()
 	s.Tun, s.SystemProxy = true, false
+	s.AllowLAN = true
 	s.MixedPort = unusedPort()
 	bad := map[string]any{"content": "tls: {certificate: /private/file}", "settings": s}
 	if err = client.Call("start", bad, nil); err == nil || !strings.Contains(err.Error(), "inline certificate") {
@@ -61,7 +65,16 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 	if err = client.Call("status", nil, &status); err != nil || status.Running || status.Error == "" {
 		t.Fatalf("failed startup cause was lost: %+v %v", status, err)
 	}
-	content := `template: &ws
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(17 * time.Second):
+		}
+		fmt.Fprint(w, "payload: ['DOMAIN,slow.example']\n")
+	}))
+	defer provider.Close()
+	content := fmt.Sprintf(`template: &ws
   type: vmess
   server: example.com
   port: 443
@@ -71,10 +84,13 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
   network: ws
   ws-opts: {path: /websocket}
 proxies: [{<<: *ws, name: WS}]
-rules: ['MATCH,DIRECT']
-dns: {enable: true, enhanced-mode: fake-ip, nameserver: [system]}
-tun: {device: AsterSvcTest, stack: gvisor}
-`
+log-level: warning
+rule-providers:
+  slow: {type: http, behavior: classical, url: %q, interval: 3600}
+rules: ['RULE-SET,slow,DIRECT', 'MATCH,DIRECT']
+dns: {enable: true, respect-rules: true, enhanced-mode: redir-host, nameserver: [system], proxy-server-nameserver: [system]}
+tun: {device: AsterSvcTest}
+`, provider.URL)
 	params := map[string]any{"content": content, "settings": s}
 	if err = client.Call("start", params, nil); err != nil {
 		t.Fatal(err)
@@ -87,9 +103,13 @@ tun: {device: AsterSvcTest, stack: gvisor}
 	if err = client.Call("controller", map[string]string{"method": "GET", "path": "/version"}, &version); err != nil {
 		t.Fatal(err)
 	}
-	var logs []string
-	if err = client.Call("logs", nil, &logs); err != nil || !strings.Contains(strings.Join(logs, "\n"), "Tun adapter listening") {
-		t.Fatalf("TUN did not initialize: %v %v", logs, err)
+	var config struct {
+		Tun struct {
+			Enable bool `json:"enable"`
+		} `json:"tun"`
+	}
+	if err = client.Call("controller", map[string]string{"method": "GET", "path": "/configs"}, &config); err != nil || !config.Tun.Enable {
+		t.Fatalf("TUN did not initialize with a cold provider: %+v %v", config, err)
 	}
 	if err = client.Call("controller", map[string]string{"method": "POST", "path": "/restart"}, nil); err == nil {
 		t.Fatal("unsupported privileged controller operation accepted")

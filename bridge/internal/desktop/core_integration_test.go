@@ -17,6 +17,57 @@ import (
 	"time"
 )
 
+func TestRealCoreWaitsForSlowRuleProvider(t *testing.T) {
+	binary := os.Getenv("ASTER_TEST_CORE")
+	if binary == "" {
+		t.Skip("requires ASTER_TEST_CORE")
+	}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(17 * time.Second):
+		}
+		fmt.Fprint(w, "payload: ['DOMAIN,slow.example']\n")
+	}))
+	defer server.Close()
+	c := NewCore(binary, t.TempDir())
+	defer c.Stop()
+	s := DefaultSettings()
+	s.MixedPort = unusedPort()
+	s.SystemProxy = false
+	content := fmt.Sprintf("log-level: warning\nproxies: []\nrule-providers:\n slow: {type: http, behavior: classical, url: %q, interval: 3600}\nrules: ['RULE-SET,slow,DIRECT', 'MATCH,DIRECT']\n", server.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := c.Start(ctx, content, s, false); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Status().Running || requests.Load() != 1 {
+		t.Fatal("cold provider did not finish loading")
+	}
+	var data struct {
+		Providers map[string]struct {
+			RuleCount int `json:"ruleCount"`
+		} `json:"providers"`
+	}
+	body, err := c.Request(ctx, "GET", "/providers/rules", nil)
+	if err != nil || json.Unmarshal(body, &data) != nil || data.Providers["slow"].RuleCount != 1 {
+		t.Fatalf("rule provider not applied: %s %v", body, err)
+	}
+	if err = c.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if err = c.Start(ctx, content, s, false); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) > 5*time.Second || requests.Load() != 1 {
+		t.Fatal("reconnect failed to reuse the valid provider cache")
+	}
+}
+
 func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	binary := os.Getenv("ASTER_TEST_CORE")
 	if binary == "" {

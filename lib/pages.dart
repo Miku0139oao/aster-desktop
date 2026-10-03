@@ -476,10 +476,10 @@ class _NodesPageState extends State<NodesPage> {
   AppController get c => widget.c;
   Json _offline() {
     try {
-      final doc = loadYaml(c.active?.content ?? '') as YamlMap;
+      final doc = c.profileDocument;
       final result = <String, dynamic>{};
       final providerNodes = <String, List<String>>{};
-      final providers = doc['proxy-providers'] as YamlMap?;
+      final providers = doc?['proxy-providers'] as YamlMap?;
       if (providers != null) {
         for (final entry in providers.entries) {
           final nodes = (entry.value as YamlMap)['payload'] as YamlList?;
@@ -495,13 +495,13 @@ class _NodesPageState extends State<NodesPage> {
           }
         }
       }
-      for (final node in (doc['proxies'] as YamlList? ?? [])) {
+      for (final node in (doc?['proxies'] as YamlList? ?? [])) {
         result[node['name'] as String] = {
           'name': node['name'],
           'type': node['type'],
         };
       }
-      for (final g in (doc['proxy-groups'] as YamlList? ?? [])) {
+      for (final g in (doc?['proxy-groups'] as YamlList? ?? [])) {
         final names = <String>[
           ...List<String>.from(g['proxies'] as List? ?? []),
           for (final provider in (g['use'] as List? ?? []))
@@ -1375,7 +1375,7 @@ class AdvancedPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(c.tr('版本與更新', 'Versions and updates')),
-            Text('Aster Desktop 0.1.0'),
+            Text('Aster Desktop ${c.desktopVersion}'),
             if (c.coreVersion.isNotEmpty) Text('Aster Core ${c.coreVersion}'),
             const SizedBox(height: 8),
             Text(

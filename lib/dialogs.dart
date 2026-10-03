@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yaml/yaml.dart';
+import 'package:re_editor/re_editor.dart';
 
 import 'backend.dart';
 import 'controller.dart';
@@ -230,7 +231,9 @@ class _YamlDialog extends StatefulWidget {
 }
 
 class _YamlDialogState extends State<_YamlDialog> {
-  late final editor = TextEditingController(text: widget.profile.content);
+  late final editor = CodeLineEditingController.fromText(
+    widget.profile.content,
+  );
   String? message;
   bool working = false;
   AppController get c => widget.c;
@@ -244,6 +247,7 @@ class _YamlDialogState extends State<_YamlDialog> {
         'id': widget.profile.id,
         'content': editor.text,
       });
+      if (!mounted) return;
       if (method == 'validate') {
         setState(() => message = c.tr('設定檢查通過。', 'Configuration is valid.'));
       } else {
@@ -283,14 +287,27 @@ class _YamlDialogState extends State<_YamlDialog> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: TextField(
+            child: CodeEditor(
+              key: const Key('yaml-editor'),
               controller: editor,
-              enabled: !working,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              decoration: const InputDecoration(),
+              readOnly: working,
+              wordWrap: false,
+              autocompleteSymbols: false,
+              padding: const EdgeInsets.all(12),
+              borderRadius: BorderRadius.circular(14),
+              style: CodeEditorStyle(
+                fontFamily: Platform.isWindows ? 'Consolas' : 'monospace',
+                fontSize: 13,
+                fontHeight: 1.5,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest,
+              ),
+              indicatorBuilder: (context, controller, chunks, notifier) =>
+                  DefaultCodeLineNumber(
+                    controller: controller,
+                    notifier: notifier,
+                  ),
             ),
           ),
           if (message != null)
@@ -666,7 +683,7 @@ Future<void> showUpdateDialog(BuildContext context, AppController c) async {
             ),
             const SizedBox(height: 16),
             Text(
-              'Aster Desktop · ${(info!['gui'] as Json?)?['tag_name'] ?? '0.1.0'}',
+              'Aster Desktop · ${(info!['gui'] as Json?)?['tag_name'] ?? c.desktopVersion}',
             ),
             const SizedBox(height: 8),
             Text('Aster Core · ${coreAsset?['name'] ?? 'Prerelease-main'}'),
