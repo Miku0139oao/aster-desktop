@@ -2,7 +2,7 @@
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
-[下載 v0.1.2-beta.1 測試包](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.2-beta.1)：Windows 安裝器／可攜版、Intel／Apple Silicon DMG、Ubuntu deb、Arch 套件及各 Linux 可攜版，附 SHA-256 與對應來源碼。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
+[下載 v0.1.2-beta.1 測試包](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.2-beta.1)：本次提供已完成本機驗證的 Windows 安裝器／可攜版、Arch 套件／可攜包，附 SHA-256 與對應來源碼。GitHub Actions 因帳號付款／花費上限未啟動，Ubuntu 及 Mac 的 0.1.2 套件待原生建置；[0.1.1 其他平台套件](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.1-beta.1) 仍可取得，但尚未包含本次修正。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
 
 0.1.2 修正遠端規則仍在載入時，15 秒啟動期限提前停止核心並誤報 TUN 未就緒的問題。大型 YAML 改用按可見行繪製的編輯器，避免背景輪詢反覆解析設定或重建整個應用程式，並顯示實際安裝版本。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
 

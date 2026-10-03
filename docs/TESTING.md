@@ -11,7 +11,13 @@
 - 一萬行 YAML 的逐行編輯、中文輸入 delta、undo/redo、輪詢保留草稿、驗證期間唯讀及儲存回歸通過。此元件測試不代表所有實體 IME 都已驗證。
 - 四平台 CI 加入慢速 provider 回歸；Windows LocalSystem TUN fixture 同時使用 mixed stack、warning 日誌、respect-rules/redir-host DNS、LAN listener 及 17 秒 HTTP 規則下載。Windows/Linux 原生 GUI 測試加入一萬行 YAML 編輯及真實核心儲存／套用。
 
-Windows/Linux 原生測試、跨平台建置與服務回歸結果待本次執行完成補入。macOS 實機網路與權限仍待 Mac 主機。使用者日誌中的遠端 REALITY authentication failed 與 TCP timeout 不代表 TUN 建立失敗；本修正沒有改寫遠端節點憑證。
+程式提交：75cb40e93bb98ba5b4440fb15d4081b674092405。Windows 原生 GUI 測試通過，包含一萬行 YAML 輸入、輪詢期間草稿保存、undo、真實核心驗證／套用、HTTP 代理及停止；release GUI、安裝器、可攜 ZIP 與來源包已建置，安裝器嵌入 payload 驗證通過。
+
+WSL Arch 的 Go race tests／vet、14 項元件測試、原生 GUI 流程、隔離 TUN DNS 攔截／路由還原及 root 服務身份驗證／EOF 清理全部通過。Arch release GUI、套件及可攜包已建置。
+
+Windows widget debug harness 的 YAML 編輯更新中位數／p95（包含控制器更新與 pump frame；不是 release FPS）：1,800 行舊 TextField 68.14／80.51 ms，新 CodeEditor 5.41／9.59 ms；10,000 行舊 363.75／379.49 ms，新 4.53／6.38 ms。各取 5 次暖機後 30 次更新。可用 `flutter test scripts/benchmark_yaml.dart` 重現，數值隨機器及負載改變。
+
+[本次四平台 CI 37142202463](https://github.com/Miku0139oao/aster-desktop/actions/runs/37142202463) **沒有啟動任何步驟**：GitHub annotation 回報 recent account payments have failed or your spending limit needs to be increased。因此本版 Windows LocalSystem 慢速 provider/TUN 回歸、Ubuntu 原生建置、Mac Intel/Apple Silicon 編譯與 DMG 尚未驗證，也未交付 0.1.2 的 Ubuntu/Mac 套件。先前 0.1.1 CI 結果不能替代本版驗證。macOS 實機網路與權限仍待 Mac 主機。使用者日誌中的遠端 REALITY authentication failed 與 TCP timeout 不代表 TUN 建立失敗；本修正沒有改寫遠端節點憑證。
 
 ---
 # 0.1.1-beta.1 交付補充
