@@ -38,7 +38,12 @@ func TestStartMenuCatalogResolvesFriendlyShortcutWithoutLaunching(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(apps) != 1 || apps[0].Name != "友善瀏覽器" || !strings.EqualFold(apps[0].Path, exe) {
+	if len(apps) != 1 || apps[0].Name != "友善瀏覽器" {
 		t.Fatalf("incorrect shortcut identity: %v", apps)
+	}
+	actual, actualErr := os.Stat(apps[0].Path)
+	wanted, wantedErr := os.Stat(exe)
+	if actualErr != nil || wantedErr != nil || !os.SameFile(actual, wanted) {
+		t.Fatalf("shortcut resolved to a different executable: %q", apps[0].Path)
 	}
 }

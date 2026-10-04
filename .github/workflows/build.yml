@@ -3,6 +3,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Platform to build and verify
+        default: all
+        type: choice
+        options: [all, windows-2022, ubuntu-24.04, macos-15-intel, macos-15]
 permissions:
   contents: read
 jobs:
@@ -10,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, ubuntu-24.04, macos-15-intel, macos-15]
+        os: ${{ fromJSON(inputs.runner != '' && inputs.runner != 'all' && format('["{0}"]', inputs.runner) || '["windows-2022","ubuntu-24.04","macos-15-intel","macos-15"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
