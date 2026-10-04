@@ -69,7 +69,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           plutil -lint "$app/Contents/Info.plist" "$app/Contents/Library/LaunchDaemons/app.astercore.desktop.helper.plist"
           for path in "$app/Contents/MacOS/Aster Desktop" "$app/Contents/Resources/aster-core" "$app/Contents/Resources/aster-bridge" "$app/Contents/Library/HelperTools/aster-helper"; do
-            lipo -verify_arch "$EXPECTED_ARCH" "$path"
+            lipo "$path" -verify_arch "$EXPECTED_ARCH"
             [[ "$(stat -f '%u' "$path")" == 0 ]]
             file "$path"
           done
