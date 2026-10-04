@@ -24,7 +24,7 @@ const startMenuCatalogScript = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
-$shell = New-Object -ComObject WScript.Shell
+$shell = New-Object -ComObject Shell.Application
 Add-Type -AssemblyName System.Drawing
 $roots = @([Console]::In.ReadToEnd() | ConvertFrom-Json)
 $seen = @{}
@@ -35,7 +35,11 @@ foreach ($root in $roots) {
   foreach ($link in (Get-ChildItem -LiteralPath $root -Filter '*.lnk' -Recurse -File -ErrorAction SilentlyContinue)) {
     if ($apps.Count -ge 1000) { break }
     try {
-      $target = $shell.CreateShortcut($link.FullName).TargetPath
+      $folder = $shell.NameSpace($link.DirectoryName)
+      if ($null -eq $folder) { continue }
+      $item = $folder.ParseName($link.Name)
+      if ($null -eq $item -or -not $item.IsLink) { continue }
+      $target = $item.GetLink.Path
       if (-not [IO.Path]::IsPathRooted($target) -or [IO.Path]::GetExtension($target) -ine '.exe') { continue }
       if ($target.StartsWith('\\')) { continue }
       if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { continue }
