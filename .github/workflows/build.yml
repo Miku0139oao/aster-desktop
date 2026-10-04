@@ -84,8 +84,9 @@ jobs:
         run: xvfb-run -a flutter test integration_test -d linux
       - name: Native GUI workflow (macOS)
         if: runner.os == 'macOS'
-        run: flutter test integration_test -d macos
+        run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: aster-desktop-${{ matrix.os }}
           path: dist/*

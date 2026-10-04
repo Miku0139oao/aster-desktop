@@ -14,7 +14,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('native desktop imports, proxies HTTP and stops with real core', (
     tester,
   ) async {
@@ -255,5 +255,6 @@ void main() {
     ).then<Socket?>((s) => s, onError: (_) => null);
     expect(socket, isNull, reason: 'proxy port should close after stopping');
     socket?.destroy();
+    binding.reportData = {'desktopWorkflowCompleted': true};
   });
 }

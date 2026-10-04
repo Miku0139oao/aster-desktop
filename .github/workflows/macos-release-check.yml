@@ -97,8 +97,10 @@ jobs:
         run: |
           git fetch --depth=1 origin "$VALIDATION_SHA"
           git show "$VALIDATION_SHA:integration_test/desktop_test.dart" > integration_test/desktop_test.dart
+          mkdir -p test_driver
+          git show "$VALIDATION_SHA:test_driver/desktop_test.dart" > test_driver/desktop_test.dart
       - name: Native macOS GUI with the installed package binaries
-        run: flutter test integration_test -d macos
+        run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
       - name: Record validation scope
         if: always()
         env:
