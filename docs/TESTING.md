@@ -1,4 +1,19 @@
-# 0.1.3 應用程式分流
+# 0.1.3-beta.2 Mac 交付
+
+日期：2026-10-04。Repository 已依使用者指示公開；公開前 gitleaks 掃描既有 18 筆提交，未發現秘密。GitHub Actions 隨後恢復執行。
+
+交付程式來源：`0bede51d4281b96c46a44fc49c3068df54616595`。[四平台 CI 37190314007](https://github.com/Miku0139oao/aster-desktop/actions/runs/37190314007) 全部成功。Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 原生編譯、Flutter analyze、Go 管理層與真實核心測試通過；Mac 22 項元件／單元測試，Windows／Linux 21 項加一項 Mac 專用跳過。Windows PowerShell 5.1 安裝器、LocalSystem／TUN 回歸與原生 GUI，Ubuntu 原生 GUI 也通過。先前本機 Defender 攔截仍保留在 beta.1 紀錄，沒有變更防毒設定；本次乾淨 Windows runner 的更新／回復測試通過。
+
+Mac 程序清單改用 `PROC_PIDPATHINFO`，與固定核心取得執行檔路徑的方式一致。原先 `ps comm` 取到的是啟動名稱，Mac 暫存目錄別名也可能與核心路徑不同；現在以實際執行檔身份測試。新增含空格執行檔／不同 argv[0] 的程序列舉回歸。Mac `.app` 解析、執行檔及 bundle 別名、非法 CFBundleExecutable 路徑的 Flutter 測試通過。真實核心的 PROCESS-NAME／PROCESS-PATH 放行／阻擋、provider 精確節點與更新持久化在兩種 Mac 架構上通過。
+
+[Mac 安裝及 GUI CI 37191793412](https://github.com/Miku0139oao/aster-desktop/actions/runs/37191793412) Intel／Apple Silicon 兩個 job 全部成功。使用實際 DMG 的 PKG 在乾淨 runner 安裝到 `/Applications`；DMG 校驗、PKG 安裝、完整 codesign 驗證、GUI／核心／bridge／Swift 助手架構、root 所有權與目錄權限通過。GUI 由套件來源編譯，搭配已安裝套件的核心／bridge，驗證匯入、OS 程式選取、搜尋節點、改直連、刪除規則、萬行 YAML 編輯／undo／驗證／套用、loopback HTTP 代理、停止後連接埠關閉。驗證 harness `57ef60a` 只補上搜尋可見節點的操作，應用程式來源維持套件提交。Intel job 確認退出碼為 0，不能用先前非零退出碼但列出 passing tests 的結果代替。
+
+交付 Mac Intel／Apple Silicon DMG、Windows 安裝器／可攜版、Ubuntu deb／可攜版、對應桌面／固定核心來源及 SHA256SUMS。下載後核對各平台 CI 校驗碼；上傳後九份 release assets 的 GitHub SHA-256 digest 均與本機檔案相符。對應來源包中的 Mac 執行檔識別、`.app` 解析、測試及建置腳本與交付提交逐檔比對相符。[下載 beta.2](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.2)。Arch 套件仍使用 beta.1。兩份 Mac DMG 的公開、未登入 HTTP 下載檢查均回傳 200；release tag 指向上述已驗證程式提交。
+
+Mac 的實際網路系統代理／TUN、SMAppService／XPC 授權與拒絕、Gatekeeper 互動、既有安裝升級、睡眠喚醒仍待 Mac 實機。CI 使用 Mac 15、獨立資料與 loopback，沒有代替 Mac 13+ 使用者環境驗收。本機簽署測試包尚未正式簽章／公證，保留既有簽署／公證建置入口。
+
+---
+# 0.1.3-beta.1 應用程式分流（原始交付紀錄）
 
 日期：2026-10-04。
 

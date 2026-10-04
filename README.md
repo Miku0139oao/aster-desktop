@@ -2,16 +2,16 @@
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
-[下載 v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。新增「進階設定 → 應用程式分流」：從正在執行的程式選取，或瀏覽執行檔，再搜尋並選擇代理群組、具體節點、直連或封鎖；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
+[下載 v0.1.3-beta.2](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.2)，提供 Mac Intel／Apple Silicon DMG、Windows 安裝器／可攜版、Ubuntu deb／可攜版與來源／SHA-256。Arch 套件見 [v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。新增「進階設定 → 應用程式分流」：從正在執行的程式選取，或瀏覽執行檔，再搜尋並選擇代理群組、具體節點、直連或封鎖；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
 
-Repository 已依使用者指示公開，GitHub Actions 已恢復執行。新版 Intel／Apple Silicon Mac 套件正在原生建置與安裝驗證；結果見 [本次 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37189757028)。[0.1.1 其他平台套件](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.1-beta.1) 尚未包含後續修正。
+Repository 已依使用者指示公開，GitHub Actions 已恢復執行。[四平台 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37190314007) 全部通過，包含 Mac 原生 Flutter／Swift／Go 編譯、22 項元件測試與真實核心分流／更新回復。[Mac 安裝及 GUI 驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37191793412) 的 Intel／Apple Silicon 兩個 job 都通過，包含 DMG／PKG、簽署、架構、安裝所有權、應用程式分流、萬行 YAML 編輯及代理啟停；Mac 實際網路／TUN、服務授權與睡眠喚醒仍待實機驗收。
 
 0.1.2 修正遠端規則仍在載入時，15 秒啟動期限提前停止核心並誤報 TUN 未就緒的問題。大型 YAML 改用按可見行繪製的編輯器，避免背景輪詢反覆解析設定或重建整個應用程式，並顯示實際安裝版本。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
 
 ## 安裝與第一次使用
 
 1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.1.3-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
-2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。此流程及背景服務授權需實機驗證。
+2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。
 5. 預設使用系統代理。macOS 首次使用系統代理也會引導授權背景服務，由助手變更網路設定，一般核心仍以使用者權限執行。需要其他應用程式走代理時，開啟「代理所有應用程式」，按提示到進階設定安裝並授權背景服務，再連線。切換這項功能前先斷線。
@@ -27,7 +27,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。新版
 - **日誌**：搜尋、等級過濾、複製／匯出，匯出遮蔽常見密碼與分享連結憑證。
 - **進階**：DNS、連接埠、區域網路存取、網域／IP／程序分流、規則、背景服務、語言／外觀／自啟、更新；完整 YAML 編輯器提供驗證／套用／備份／還原。
 
-**應用程式分流**：使用「代理所有應用程式」及規則模式，才能接管不遵循系統代理的程式；規則變更適用於新連線。GUI 用實際執行檔路徑比對，使用另一個執行檔的輔助程序可另外加入。選擇群組時跟隨該群組，選擇具體 provider 節點時每個應用各自固定節點，不更改共用群組；節點消失時封鎖流量，可在 GUI 改出口。Mac `.app` 選取與實機權限仍待 Mac 驗證。
+**應用程式分流**：使用「代理所有應用程式」及規則模式，才能接管不遵循系統代理的程式；規則變更適用於新連線。GUI 用實際執行檔路徑比對，使用另一個執行檔的輔助程序可另外加入。選擇群組時跟隨該群組，選擇具體 provider 節點時每個應用各自固定節點，不更改共用群組；節點消失時封鎖流量，可在 GUI 改出口。Mac 使用核心相同的程序執行檔介面，瀏覽 `.app` 會解析其執行檔及路徑別名；含空格路徑及 `.app` 別名已通過原生測試，權限／TUN 仍待實機驗收。
 
 使用者回報的 TUN「顯示已連線但無法上網」尚未定位根因；已有的隔離 TUN 測試不能代替故障當下的路由、DNS 及節點驗證。
 
