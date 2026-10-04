@@ -4,7 +4,7 @@ Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁
 
 [下載 v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。新增「進階設定 → 應用程式分流」：從正在執行的程式選取，或瀏覽執行檔，再搜尋並選擇代理群組、具體節點、直連或封鎖；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
 
-GitHub Actions 因帳號付款／花費上限未啟動；Ubuntu 及 Mac 新版套件仍待原生建置。[0.1.1 其他平台套件](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.1-beta.1) 尚未包含後續修正。此 repository 為私人專案，下載需登入有存取權的 GitHub 帳號。
+Repository 已依使用者指示公開，GitHub Actions 已恢復執行。新版 Intel／Apple Silicon Mac 套件正在原生建置與安裝驗證；結果見 [本次 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37189757028)。[0.1.1 其他平台套件](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.1-beta.1) 尚未包含後續修正。
 
 0.1.2 修正遠端規則仍在載入時，15 秒啟動期限提前停止核心並誤報 TUN 未就緒的問題。大型 YAML 改用按可見行繪製的編輯器，避免背景輪詢反覆解析設定或重建整個應用程式，並顯示實際安裝版本。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
 
@@ -39,7 +39,7 @@ GitHub Actions 因帳號付款／花費上限未啟動；Ubuntu 及 Mac 新版�
 
 ## 更新與資料
 
-GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，目前的私人測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
+GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
 
 資料位於系統應用程式支援目錄，由 `path_provider` 取得，包含 `state.json`、`backup-*.yaml`／`backup-*.json`、`runtime/` 與 `cores/`。JSON 備份保存 GUI 分流 metadata，還原時一併復原。設定含訂閱 token、節點密碼，請勿公開。解除安裝保留使用者設定；服務私人狀態位於 ProgramData／`/var/lib/aster-desktop`／`/Library/Application Support/AsterDesktop/service`。
 

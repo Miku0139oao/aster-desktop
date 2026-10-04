@@ -24,10 +24,7 @@ func TestRealCoreApplicationRules(t *testing.T) {
 	if binary == "" {
 		t.Skip("requires ASTER_TEST_CORE")
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	executable := currentApplicationExecutable(t)
 	for _, match := range []struct{ kind, value string }{
 		{"PROCESS-NAME", filepath.Base(executable)},
 		{"PROCESS-PATH", executable},
@@ -209,7 +206,7 @@ func TestRealCoreApplicationProviderRoutes(t *testing.T) {
 	if _, exists := catalog["proxies"].(map[string]any)["deny"]; exists {
 		t.Fatal("fixture unexpectedly has a global provider node")
 	}
-	exe, _ := os.Executable()
+	exe := currentApplicationExecutable(t)
 	setRoute := func(node, remove string) string {
 		t.Helper()
 		call("patchProfile", map[string]any{"id": profile.ID, "removeRule": remove, "providerRoute": ApplicationRoute{Kind: "PROCESS-PATH", Match: exe, Provider: "remote", Node: node}})

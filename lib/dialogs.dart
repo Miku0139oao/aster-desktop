@@ -530,14 +530,18 @@ Future<String?> selectApplicationExecutable() async {
         : [],
   );
   if (file == null) return null;
-  if (Platform.isMacOS && file.path.endsWith('.app')) {
+  return resolveApplicationExecutable(file.path);
+}
+
+Future<String> resolveApplicationExecutable(String selectedPath) async {
+  if (Platform.isMacOS && selectedPath.endsWith('.app')) {
     final result = await Process.run('/usr/bin/plutil', [
       '-extract',
       'CFBundleExecutable',
       'raw',
       '-o',
       '-',
-      '${file.path}/Contents/Info.plist',
+      '$selectedPath/Contents/Info.plist',
     ]);
     final executable = (result.stdout as String).trim();
     if (result.exitCode != 0 ||
@@ -548,13 +552,15 @@ Future<String?> selectApplicationExecutable() async {
         executable.contains('\\')) {
       throw const FormatException('Cannot locate this application executable.');
     }
-    final path = '${file.path}/Contents/MacOS/$executable';
+    final path = '$selectedPath/Contents/MacOS/$executable';
     if (!await File(path).exists()) {
       throw const FormatException('Application executable does not exist.');
     }
-    return path;
+    return File(path).resolveSymbolicLinks();
   }
-  return file.path;
+  return Platform.isMacOS
+      ? File(selectedPath).resolveSymbolicLinks()
+      : selectedPath;
 }
 
 Future<void> showRuleDialog(
