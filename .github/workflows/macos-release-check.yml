@@ -95,22 +95,8 @@ jobs:
         run: |
           git fetch --depth=1 origin "$VALIDATION_SHA"
           git show "$VALIDATION_SHA:integration_test/desktop_test.dart" > integration_test/desktop_test.dart
-          mkdir -p test_driver
-          git show "$VALIDATION_SHA:test_driver/desktop_test.dart" > test_driver/desktop_test.dart
       - name: Native macOS GUI with the installed package binaries
-        timeout-minutes: 15
-        run: |
-          set -o pipefail
-          flutter drive --driver test_driver/desktop_test.dart --target integration_test/desktop_test.dart -d macos --no-dds --dart-define=INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE=false 2>&1 | tee .build/mac-gui.log
-      - name: Preserve native GUI validation results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-gui-validation-${{ matrix.asset }}
-          path: |
-            .build/mac-gui.log
-            .build/integration_response_data.json
-          if-no-files-found: ignore
+        run: flutter test integration_test -d macos
       - name: Record validation scope
         if: always()
         env:
