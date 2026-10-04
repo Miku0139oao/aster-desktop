@@ -24,7 +24,11 @@ func applicationPaths(ctx context.Context) ([]string, error) {
 		paths := []string{}
 		for _, line := range strings.Split(string(output), "\n") {
 			if path := strings.TrimSpace(line); filepath.IsAbs(path) {
-				paths = append(paths, path)
+				// ps reports argv[0], which can use /var while the actual
+				// executable and core process lookup resolve /private/var.
+				if resolved, err := filepath.EvalSymlinks(path); err == nil {
+					paths = append(paths, resolved)
+				}
 			}
 		}
 		return paths, nil
