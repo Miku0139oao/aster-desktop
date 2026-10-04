@@ -129,6 +129,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ListTile, executableName).first);
     await tester.pumpAndSettle();
+    // Different native font metrics can put a later route below the viewport.
+    // Follow the user search flow before tapping rather than an offscreen row.
+    await tester.enterText(find.byKey(const Key('route-search')), 'Local A');
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('target:Local A')));
     await tester.tap(find.byKey(const ValueKey('target:Local A')));
     for (
       var attempt = 0;

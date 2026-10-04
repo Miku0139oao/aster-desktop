@@ -89,6 +89,12 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Use the reviewed validation harness with the package application sources
+        env:
+          VALIDATION_SHA: ${{ github.sha }}
+        run: |
+          git fetch --depth=1 origin "$VALIDATION_SHA"
+          git show "$VALIDATION_SHA:integration_test/desktop_test.dart" > integration_test/desktop_test.dart
       - name: Native macOS GUI with the installed package binaries
         run: flutter test integration_test -d macos
       - name: Record validation scope
@@ -97,4 +103,5 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           printf 'Package source: `%s`\n\n' "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Validation harness: `%s`; application sources are the package source commit.\n\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           printf 'This disposable runner checks the DMG, PKG installation, signing, executable architecture and native GUI import/routing/YAML/proxy lifecycle. Background-service authorization, real network system proxy/TUN and sleep/wake remain physical-Mac checks.\n' >> "$GITHUB_STEP_SUMMARY"
