@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -20,7 +19,10 @@ func TestListApplicationsIncludesCurrentExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	exe, _ = filepath.EvalSymlinks(exe)
+	executableInfo, err := os.Stat(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
 	found := false
 	seen := map[string]bool{}
 	for _, app := range apps {
@@ -28,11 +30,13 @@ func TestListApplicationsIncludesCurrentExecutable(t *testing.T) {
 			t.Fatal("invalid or duplicate application identity")
 		}
 		seen[app.Path] = true
-		if strings.EqualFold(app.Path, exe) {
+		// CI temp directories may have aliases or short Windows names. Compare
+		// executable file identities rather than their textual spelling.
+		if info, err := os.Stat(app.Path); err == nil && os.SameFile(info, executableInfo) {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("current executable was not enumerated")
+		t.Fatalf("current executable %q was not enumerated in %v", exe, apps)
 	}
 }
