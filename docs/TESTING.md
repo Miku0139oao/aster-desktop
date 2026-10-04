@@ -1,3 +1,20 @@
+# 0.1.4-beta.1 應用程式選取
+
+日期：2026-10-05。新版清單合併已安裝／正在執行的程式，使用易讀名稱、圖示、執行狀態與篩選；程式路徑保留在詳細資訊。Core／轉換器提交維持 `a9a33503b39a03681bc52d9758907316a22df199`。
+
+交付程式來源 `9e21074ea7ce4fea07109183f8341fa8a9d5919a`，其產品程式碼與 `08ad1576ab2368ad27b7cbc446d274ed18424e54` 相同，差異只有 Windows 路徑別名測試及 CI 平台選擇。驗證 harness `92df856` 加入 Flutter 官方 integration driver 與完成標記；`6ba3128` 將套件保存提前、加入 GUI 步驟期限及獨立建置選項，產品程式碼均不變。
+
+- 本機 Flutter analyze、23 項元件／單元測試及 Windows／WSL Go 單元測試、vet 通過。涵蓋未啟動程式、背景程序篩選、鍵盤 Enter、防止同名誤選、2,500 筆清單、原有 provider 節點自由選擇、含空格路徑與既有 YAML 編輯測試。
+- Windows 中文捷徑／路徑與短路徑別名測試通過；改用 Unicode Shell.Application 讀取捷徑，以實際檔案身分驗證別名。WScript.Shell 的 ANSI fixture 寫入限制已隔離於測試建立步驟，探索不啟動程式。
+- [Windows CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235393501) 全部通過：原生編譯、安裝器 9 項 PowerShell 5.1 回歸、真實核心分流／更新回復、LocalSystem／TUN 及原生 GUI。
+- [Ubuntu CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235035823/job/111532332147) 與 [Apple Silicon CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235035823/job/111532331958) 成功；包含 Go 真實核心、原生 GUI 與套件建置。Mac 24 項元件／單元測試通過。
+- Intel 的原生 GUI 在 `flutter test` 操作執行後，工具發生 listener 暫存目錄收尾錯誤（退出 79、計數 0），沒有將該結果列為通過。改用官方 `flutter drive`，檢查 allTestsPassed 及最後一項斷線／連接埠關閉檢查後送出的完成標記；[Intel 重驗](https://github.com/Miku0139oao/aster-desktop/actions/runs/37237233641) 驅動器未完成連線，等待後取消，仍列為未通過。另以 [Intel 建置 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37240456510) 成功通過原生編譯、24 項元件／單元測試、Go／真實核心與套件建置，跳過原生 GUI；建置通過不代表 Intel GUI 已驗證。
+- 本機 Windows 原生 GUI 及 driver（完成標記 true）通過；WSL 使用校驗過的 Ubuntu CI 核心進行真實核心完整 Go 測試通過。本機兩個更新回復案例被 Defender 拒絕執行，已保留私人測試紀錄；未更動防護設定，乾淨 Windows CI 的對應案例通過。
+
+[下載 0.1.4-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.4-beta.1)。Windows 安裝器／可攜版、Ubuntu deb／可攜版、Mac Intel／Apple Silicon DMG、桌面／固定核心來源及 SHA256SUMS 共九份 release 資產，GitHub SHA-256 digest 均與本機檔案相符；Intel 下載亦逐份核對 CI checksums.txt。標籤指向上述交付提交，Intel 套件建置提交為 `6ba3128`，差異只有測試與 CI。
+
+Mac 0.1.4 原生 GUI／建置測試與 0.1.3 的實際 DMG／PKG 安裝驗證分開記錄。Mac 實機系統代理／TUN、SMAppService 授權、Gatekeeper、睡眠喚醒，以及 GNOME／KDE 完整桌面仍依下方表格待驗收。Arch 安裝包目前維持 beta.1 的 0.1.3；0.1.4 提供 Ubuntu 套件及可自行建置的來源。
+
 # 0.1.3-beta.2 Mac 交付
 
 日期：2026-10-04。Repository 已依使用者指示公開；公開前 gitleaks 掃描既有 18 筆提交，未發現秘密。GitHub Actions 隨後恢復執行。

@@ -4,15 +4,15 @@ Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁
 
 0.1.4 改善選程式流程：使用開始功能表／Applications／Linux 桌面入口的易讀名稱，顯示應用程式圖示及執行狀態，未開啟的已安裝程式也能加入。提供「應用程式／正在執行／所有程序」篩選，預設收起背景程序；完整路徑可在詳細資訊查看，搜尋仍支援路徑。同名程式保持各自執行檔身分，規則清單也顯示易讀名稱。下一步可自由選群組、具體節點、直連或封鎖。找不到的程式可先啟動後重新整理，或瀏覽執行檔；啟動器及使用不同執行檔的網路輔助程序需另選，避免錯誤套用。詳見 [應用程式分流](docs/APPLICATION_ROUTING.md)。
 
-[下載 v0.1.3-beta.2](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.2)，提供 Mac Intel／Apple Silicon DMG、Windows 安裝器／可攜版、Ubuntu deb／可攜版與來源／SHA-256。Arch 套件見 [v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。新增「進階設定 → 應用程式分流」：從正在執行的程式選取，或瀏覽執行檔，再搜尋並選擇代理群組、具體節點、直連或封鎖；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
+[下載 v0.1.4-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.4-beta.1)，提供 Mac Intel／Apple Silicon DMG、Windows 安裝器／可攜版、Ubuntu deb／可攜版與來源／SHA-256。Arch 套件仍見 [v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。從「進階設定 → 應用程式分流」選程式，再選出口；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
 
-Repository 已依使用者指示公開，GitHub Actions 已恢復執行。[四平台 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37190314007) 全部通過，包含 Mac 原生 Flutter／Swift／Go 編譯、22 項元件測試與真實核心分流／更新回復。[Mac 安裝及 GUI 驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37191793412) 的 Intel／Apple Silicon 兩個 job 都通過，包含 DMG／PKG、簽署、架構、安裝所有權、應用程式分流、萬行 YAML 編輯及代理啟停；Mac 實際網路／TUN、服務授權與睡眠喚醒仍待實機驗收。
+Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 的 [Windows CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235393501)、[Ubuntu CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235035823/job/111532332147) 與 [Apple Silicon CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37235035823/job/111532331958) 通過原生 GUI、核心與套件建置。Intel 原生 GUI 驅動器未完成驗證，另以 [Intel 建置 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37240456510) 驗證編譯、元件／核心測試及套件。Mac 實際網路／TUN、服務授權與睡眠喚醒仍待實機驗收；完整結果見測試紀錄。
 
 0.1.2 修正遠端規則仍在載入時，15 秒啟動期限提前停止核心並誤報 TUN 未就緒的問題。大型 YAML 改用按可見行繪製的編輯器，避免背景輪詢反覆解析設定或重建整個應用程式，並顯示實際安裝版本。已安裝 Windows 背景服務者請使用新安裝器覆蓋更新，讓服務一起更新；只更換可攜版 GUI 仍會使用舊服務。訂閱與使用者設定會保留。
 
 ## 安裝與第一次使用
 
-1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.1.3-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
+1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.1.4-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。
