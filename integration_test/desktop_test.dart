@@ -126,8 +126,20 @@ void main() {
         .last
         .replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '');
     await tester.enterText(find.byType(TextField), executableName);
+    await tester.tap(find.byKey(const ValueKey('application-filter-all')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, executableName).first);
+    final application = find.byWidgetPredicate(
+      (widget) =>
+          widget is ListTile &&
+          widget.key is ValueKey<String> &&
+          (widget.key as ValueKey<String>).value.startsWith('application:') &&
+          (widget.key as ValueKey<String>).value
+                  .split(RegExp(r'[/\\]'))
+                  .last
+                  .replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '') ==
+              executableName,
+    );
+    await tester.tap(application.first);
     await tester.pumpAndSettle();
     // Different native font metrics can put a later route below the viewport.
     // Follow the user search flow before tapping rather than an offscreen row.

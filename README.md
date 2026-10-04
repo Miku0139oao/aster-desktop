@@ -1,6 +1,8 @@
-# Aster Desktop 0.1.3 測試版
+# Aster Desktop 0.1.4 測試版
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
+
+0.1.4 改善選程式流程：使用開始功能表／Applications／Linux 桌面入口的易讀名稱，顯示應用程式圖示及執行狀態，未開啟的已安裝程式也能加入。提供「應用程式／正在執行／所有程序」篩選，預設收起背景程序；完整路徑可在詳細資訊查看，搜尋仍支援路徑。同名程式保持各自執行檔身分，規則清單也顯示易讀名稱。下一步可自由選群組、具體節點、直連或封鎖。找不到的程式可先啟動後重新整理，或瀏覽執行檔；啟動器及使用不同執行檔的網路輔助程序需另選，避免錯誤套用。詳見 [應用程式分流](docs/APPLICATION_ROUTING.md)。
 
 [下載 v0.1.3-beta.2](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.2)，提供 Mac Intel／Apple Silicon DMG、Windows 安裝器／可攜版、Ubuntu deb／可攜版與來源／SHA-256。Arch 套件見 [v0.1.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.1.3-beta.1)。新增「進階設定 → 應用程式分流」：從正在執行的程式選取，或瀏覽執行檔，再搜尋並選擇代理群組、具體節點、直連或封鎖；可直接修改／刪除，GUI 新增的規則在訂閱更新後保留。遠端 provider 節點在連線後載入。
 

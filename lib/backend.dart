@@ -136,6 +136,26 @@ class ProcessBackend implements DesktopBackend {
   @override
   Future<dynamic> call(String method, [Json? params]) async {
     if (!Platform.isMacOS) return _rpc(method, params);
+    if (method == 'listApplications') {
+      final applications = await _rpc(method, params) as List;
+      try {
+        final paths = applications
+            .where((app) => app['installed'] == true)
+            .take(256)
+            .map((app) => app['path'] as String)
+            .toList();
+        final icons = await _native.invokeMapMethod<String, String>(
+          'applicationIcons',
+          paths,
+        );
+        for (final app in applications) {
+          if (icons?[app['path']] != null) app['icon'] = icons![app['path']];
+        }
+      } on PlatformException {
+        /* Names and selection work without icons. */
+      }
+      return applications;
+    }
     if (method == 'state') {
       final result = await _rpc(method, params) as Json;
       result['service'] =

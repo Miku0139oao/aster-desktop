@@ -22,6 +22,32 @@ class MainFlutterWindow: NSWindow {
       guard let self = self else { return }
       let service = SMAppService.daemon(plistName: "app.astercore.desktop.helper.plist")
       switch call.method {
+      case "applicationIcons":
+        guard let paths = call.arguments as? [String], paths.count <= 256 else {
+          result(FlutterError(code: "applications", message: "Invalid application list.", details: nil)); return
+        }
+        var icons: [String: String] = [:]
+        var iconBudget = 1048576
+        for path in paths {
+          guard path.hasPrefix("/"), let range = path.range(of: ".app/Contents/", options: .backwards) else { continue }
+          let bundle = String(path[..<range.lowerBound]) + ".app"
+          autoreleasepool {
+            let image = NSWorkspace.shared.icon(forFile: bundle)
+            guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 48, pixelsHigh: 48,
+              bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+              colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let graphics = NSGraphicsContext(bitmapImageRep: bitmap) else { return }
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = graphics
+            image.draw(in: NSRect(x: 0, y: 0, width: 48, height: 48), from: .zero, operation: .copy, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
+            if let png = bitmap.representation(using: .png, properties: [:]), png.count <= 32768, png.count <= iconBudget {
+              icons[path] = png.base64EncodedString()
+              iconBudget -= png.count
+            }
+          }
+        }
+        result(icons)
       case "serviceStatus":
         result(["installed": service.status != .notRegistered, "approved": service.status == .enabled, "platform": "macos"])
       case "installService":

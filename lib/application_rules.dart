@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -18,6 +20,48 @@ class _ApplicationRule {
   String get name => match.split(RegExp(r'[/\\]')).last;
 }
 
+Future<List<Json>> _loadApplications(AppController c) async =>
+    (await c.backend.call('listApplications') as List).map((entry) {
+      final app = Map<String, dynamic>.from(entry as Map);
+      final icon = app['icon'];
+      if (icon is String && icon.isNotEmpty && icon.length <= 45000) {
+        try {
+          app['iconBytes'] = base64Decode(icon);
+        } on FormatException {
+          /* Fall back to initials. */
+        }
+      }
+      return app;
+    }).toList();
+
+String _pathKey(String path) => Platform.isWindows ? path.toLowerCase() : path;
+
+class _ApplicationAvatar extends StatelessWidget {
+  const _ApplicationAvatar(this.app);
+  final Json app;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final name = app['name'] as String? ?? '?';
+    final bytes = app['iconBytes'] as Uint8List?;
+    final initials = Text(
+      name.characters.take(1).toString().toUpperCase(),
+      style: TextStyle(color: colors.onSecondaryContainer),
+    );
+    return CircleAvatar(
+      backgroundColor: colors.secondaryContainer,
+      child: bytes == null
+          ? initials
+          : Image.memory(
+              bytes,
+              width: 32,
+              height: 32,
+              errorBuilder: (_, _, _) => initials,
+            ),
+    );
+  }
+}
+
 class _ApplicationRouting extends StatefulWidget {
   const _ApplicationRouting({required this.c});
   final AppController c;
@@ -29,12 +73,32 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
   late final String profileId;
   bool working = false;
   String? error;
+  List<Json> applications = [];
   AppController get c => widget.c;
   @override
   void initState() {
     super.initState();
     profileId = c.active!.id;
+    _loadApplications(c).then(
+      (value) {
+        if (mounted) setState(() => applications = value);
+      },
+      onError: (Object _) {
+        /* Existing rules remain editable offline. */
+      },
+    );
   }
+
+  Json applicationFor(_ApplicationRule rule) =>
+      applications
+          .where(
+            (app) => rule.kind == 'PROCESS-PATH'
+                ? _pathKey(app['path'] as String) == _pathKey(rule.match)
+                : (app['path'] as String).split(RegExp(r'[/\\]')).last ==
+                      rule.match,
+          )
+          .firstOrNull ??
+      {'name': rule.name, 'path': rule.match};
 
   List<_ApplicationRule> get rules {
     final result = <_ApplicationRule>[];
@@ -75,7 +139,7 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
       context: context,
       builder: (_) => _RoutePicker(
         c: c,
-        application: rule.name,
+        application: applicationFor(rule)['name'] as String,
         current: currentRoute(rule.target),
       ),
     );
@@ -134,10 +198,15 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
   Future<void> add() async {
     final app = await showDialog<Json>(
       context: context,
-      builder: (_) => _ApplicationPicker(c: c),
+      builder: (_) => _ApplicationPicker(c: c, initial: applications),
     );
     if (app == null || !mounted) return;
     final path = app['path'] as String;
+    if (!applications.any(
+      (item) => _pathKey(item['path'] as String) == _pathKey(path),
+    )) {
+      setState(() => applications = [...applications, app]);
+    }
     final name = app['name'] as String;
     final selected = await showDialog<_Route>(
       context: context,
@@ -220,18 +289,19 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final rule = entries[index];
+                        final app = applicationFor(rule);
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(
                             children: [
-                              const Icon(Icons.apps),
+                              _ApplicationAvatar(app),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      rule.name,
+                                      app['name'] as String,
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium,
@@ -240,7 +310,15 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
                                     Tooltip(
                                       message: '${rule.kind}: ${rule.match}',
                                       child: Text(
-                                        rule.match,
+                                        rule.kind == 'PROCESS-NAME'
+                                            ? c.tr(
+                                                '依程式名稱比對',
+                                                'Match by executable name',
+                                              )
+                                            : c.tr(
+                                                '依此應用程式分流',
+                                                'Route this application',
+                                              ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: Theme.of(context)
@@ -547,20 +625,87 @@ class _RoutePickerState extends State<_RoutePicker> {
 }
 
 class _ApplicationPicker extends StatefulWidget {
-  const _ApplicationPicker({required this.c});
+  const _ApplicationPicker({required this.c, this.initial = const []});
   final AppController c;
+  final List<Json> initial;
   @override
   State<_ApplicationPicker> createState() => _ApplicationPickerState();
 }
 
 class _ApplicationPickerState extends State<_ApplicationPicker> {
   final search = TextEditingController();
-  late Future<List<Json>> applications = load();
+  late Future<List<Json>> applications = widget.initial.isEmpty
+      ? load()
+      : Future.value(widget.initial);
+  String category = 'apps';
   AppController get c => widget.c;
-  Future<List<Json>> load() async =>
-      (await c.backend.call('listApplications') as List)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+  Future<List<Json>> load() => _loadApplications(c);
+
+  List<Json> filtered(List<Json> apps) {
+    final query = search.text.trim().toLowerCase();
+    return apps.where((app) {
+      if (category == 'apps' && app['background'] == true) return false;
+      if (category == 'running' && app['running'] == false) return false;
+      return '${app['name']} ${app['path']}'.toLowerCase().contains(query);
+    }).toList()..sort((a, b) {
+      final running =
+          (b['running'] == true ? 1 : 0) - (a['running'] == true ? 1 : 0);
+      return running != 0
+          ? running
+          : (a['name'] as String).toLowerCase().compareTo(
+              (b['name'] as String).toLowerCase(),
+            );
+    });
+  }
+
+  String status(Json app) => app['running'] == true
+      ? c.tr('正在執行', 'Running')
+      : app['installed'] == true
+      ? c.tr('已安裝・不必先開啟', 'Installed · no need to launch')
+      : c.tr('應用程式', 'Application');
+
+  Future<void> details(Json app) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          _ApplicationAvatar(app),
+          const SizedBox(width: 12),
+          Expanded(child: Text(app['name'] as String)),
+        ],
+      ),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(status(app)),
+            const SizedBox(height: 16),
+            Text(
+              c.tr('比對的執行檔', 'Executable used for matching'),
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            SelectableText(app['path'] as String),
+            const SizedBox(height: 16),
+            Text(
+              c.tr(
+                '此規則適用於使用這個執行檔的新連線。若應用程式另有網路輔助程序，可從「所有程序」加入。',
+                'This rule applies to new connections from this executable. Add separate network helpers from All processes if needed.',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(c.tr('關閉', 'Close')),
+        ),
+      ],
+    ),
+  );
   @override
   void dispose() {
     search.dispose();
@@ -588,19 +733,64 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
   Widget build(BuildContext context) => AlertDialog(
     title: Text(c.tr('選擇應用程式', 'Choose application')),
     content: SizedBox(
-      width: 620,
-      height: MediaQuery.sizeOf(context).height * .5,
+      width: 700,
+      height: MediaQuery.sizeOf(context).height * .58,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: search,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: c.tr('搜尋正在執行的應用程式', 'Search running applications'),
+          Text(
+            c.tr(
+              '選擇程式，下一步決定它走哪個出口。',
+              'Choose an app, then choose where its traffic goes.',
             ),
           ),
           const SizedBox(height: 12),
+          TextField(
+            key: const Key('application-search'),
+            autofocus: true,
+            controller: search,
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) async {
+              try {
+                final entries = filtered(await applications);
+                if (mounted && entries.length == 1) {
+                  Navigator.pop(this.context, entries.single);
+                }
+              } catch (_) {
+                /* Retry and browsing remain available. */
+              }
+            },
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: c.tr('搜尋應用程式名稱', 'Search applications'),
+              suffixIcon: search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: c.tr('清除搜尋', 'Clear search'),
+                      onPressed: () => setState(search.clear),
+                      icon: const Icon(Icons.close),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final item in {
+                'apps': c.tr('應用程式', 'Applications'),
+                'running': c.tr('正在執行', 'Running'),
+                'all': c.tr('所有程序', 'All processes'),
+              }.entries)
+                ChoiceChip(
+                  key: ValueKey('application-filter-${item.key}'),
+                  label: Text(item.value),
+                  selected: category == item.key,
+                  onSelected: (_) => setState(() => category = item.key),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: FutureBuilder<List<Json>>(
               future: applications,
@@ -618,21 +808,26 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final query = search.text.toLowerCase();
-                final entries = snapshot.data!
-                    .where(
-                      (e) => '${e['name']} ${e['path']}'.toLowerCase().contains(
-                        query,
-                      ),
-                    )
-                    .toList();
+                final entries = filtered(snapshot.data!);
                 if (entries.isEmpty) {
                   return Center(
-                    child: Text(
-                      c.tr(
-                        '沒有符合的應用程式；可先啟動它，或選擇執行檔。',
-                        'No matching applications. Start the application or choose its executable.',
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.search_off, size: 40),
+                        const SizedBox(height: 12),
+                        Text(
+                          c.tr(
+                            '找不到程式？先開啟它，再重新整理。',
+                            'App missing? Open it, then refresh.',
+                          ),
+                        ),
+                        if (category != 'all')
+                          TextButton(
+                            onPressed: () => setState(() => category = 'all'),
+                            child: Text(c.tr('搜尋所有程序', 'Search all processes')),
+                          ),
+                      ],
                     ),
                   );
                 }
@@ -641,12 +836,22 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
                   itemBuilder: (context, index) {
                     final app = entries[index];
                     return ListTile(
-                      leading: const Icon(Icons.apps),
-                      title: Text(app['name'] as String),
-                      subtitle: Text(
-                        app['path'] as String,
+                      key: ValueKey('application:${app['path']}'),
+                      leading: _ApplicationAvatar(app),
+                      title: Text(
+                        app['name'] as String,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        '${status(app)} · ${(app['path'] as String).split(RegExp(r'[/\\]')).last}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.info_outline),
+                        tooltip: c.tr('查看應用程式詳細資訊', 'Application details'),
+                        onPressed: () => details(app),
                       ),
                       onTap: () => Navigator.pop(context, app),
                     );

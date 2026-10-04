@@ -128,6 +128,16 @@ func allowedController(method, path string) bool {
 	return method == "PATCH" && p == "/rules/disable"
 }
 func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchError error) {
+	// Catalog discovery reads only OS metadata. It must not hold the core/store
+	// lock while a desktop shell discovers shortcuts or application bundles.
+	if req.Method == "listApplications" {
+		apps, err := ListApplications(ctx)
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := json.Marshal(apps)
+		return json.RawMessage(encoded), err
+	}
 	a.mu.Lock()
 	defer func() {
 		if dispatchError == nil {
@@ -142,8 +152,6 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 	}()
 	s := a.Store
 	switch req.Method {
-	case "listApplications":
-		return ListApplications(ctx)
 	case "state":
 		return map[string]any{"state": s.State, "core": a.status(), "desktopVersion": Version, "coreCommit": CoreCommit, "service": ServiceStatus()}, nil
 	case "settings":

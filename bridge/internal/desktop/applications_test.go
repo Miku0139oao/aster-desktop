@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +40,38 @@ func TestListApplicationsIncludesCurrentExecutable(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("current executable %q was not enumerated in %v", exe, apps)
+	}
+}
+
+func TestApplicationCatalogMergesLiveIdentityAndRetainsOfflineApps(t *testing.T) {
+	root := t.TempDir()
+	browser := filepath.Join(root, "browser.exe")
+	other := filepath.Join(root, "other.exe")
+	apps := mergeApplications([]string{browser, browser, "relative"}, []Application{
+		{Name: "Friendly Browser", Path: browser, Icon: "png"},
+		{Name: "Offline App", Path: other},
+		{Name: "Duplicate", Path: browser},
+		{Name: "Invalid", Path: "relative"},
+	})
+	if len(apps) != 2 {
+		t.Fatalf("expected exactly two distinct executable identities: %v", apps)
+	}
+	for _, app := range apps {
+		if !app.Installed || app.Background {
+			t.Fatal("catalog entries should be selectable without running")
+		}
+		if app.Path == browser && (!app.Running || app.Name != "Friendly Browser" || app.Icon != "png") {
+			t.Fatalf("catalog metadata lost: %v", app)
+		}
+		if app.Path == other && app.Running {
+			t.Fatal("offline installed application marked running")
+		}
+	}
+	if runtime.GOOS == "windows" {
+		apps := mergeApplications([]string{strings.ToUpper(browser)}, []Application{{Name: "Browser", Path: browser}})
+		if len(apps) != 1 || !apps[0].Running || apps[0].Path != strings.ToUpper(browser) {
+			t.Fatal("Windows casing produced duplicate or incorrect core identity")
+		}
 	}
 }
 

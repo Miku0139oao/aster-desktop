@@ -58,7 +58,9 @@ jobs:
           set -euo pipefail
           cd .build/mac-download
           shasum -a 256 -c checksums.txt
-          dmg="Aster-Desktop-0.1.3-macos-$ASSET_ARCH.dmg"
+          dmgs=(Aster-Desktop-*-macos-"$ASSET_ARCH".dmg)
+          [[ ${#dmgs[@]} == 1 && -f "${dmgs[0]}" ]]
+          dmg="${dmgs[0]}"
           hdiutil verify "$dmg"
           mount="$RUNNER_TEMP/aster-dmg"
           mkdir -p "$mount"

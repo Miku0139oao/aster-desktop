@@ -40,7 +40,7 @@ else
   staging="$root/.build/pkgroot"
   mkdir -p "$staging/Applications"
   ditto "$app" "$staging/Applications/Aster Desktop.app"
-  pkgbuild --root "$staging" --identifier app.astercore.desktop --version 0.1.3 --ownership recommended .build/Aster-Desktop.pkg
+  pkgbuild --root "$staging" --identifier app.astercore.desktop --version 0.1.4 --ownership recommended .build/Aster-Desktop.pkg
   diskstage="$root/.build/dmg-$arch"
   mkdir -p "$diskstage"
   cp .build/Aster-Desktop.pkg "$diskstage/Install Aster Desktop.pkg"
@@ -48,10 +48,10 @@ else
   # Leave filesystem space for the large installer rather than relying on the
   # default estimate, which can be too small for compressed Go/Flutter bundles.
   disksize=$(( $(du -sk "$diskstage" | awk '{print $1}') / 1024 + 64 ))
-  hdiutil create -volname 'Aster Desktop' -srcfolder "$diskstage" -size "${disksize}m" -fs HFS+ -ov -format UDZO "dist/Aster-Desktop-0.1.3-macos-$arch.dmg"
+  hdiutil create -volname 'Aster Desktop' -srcfolder "$diskstage" -size "${disksize}m" -fs HFS+ -ov -format UDZO "dist/Aster-Desktop-0.1.4-macos-$arch.dmg"
   if [ -n "${ASTER_NOTARY_PROFILE:-}" ]; then
-    xcrun notarytool submit "dist/Aster-Desktop-0.1.3-macos-$arch.dmg" --keychain-profile "$ASTER_NOTARY_PROFILE" --wait
-    xcrun stapler staple "dist/Aster-Desktop-0.1.3-macos-$arch.dmg"
+    xcrun notarytool submit "dist/Aster-Desktop-0.1.4-macos-$arch.dmg" --keychain-profile "$ASTER_NOTARY_PROFILE" --wait
+    xcrun stapler staple "dist/Aster-Desktop-0.1.4-macos-$arch.dmg"
   fi
 fi
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then bash scripts/package-source.sh "$source"; fi

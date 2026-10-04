@@ -32,7 +32,13 @@ class FakeBackend implements DesktopBackend {
   String? validatedContent;
   Json? appliedPatch;
   final applications = <Json>[
-    {'name': 'Browser', 'path': r'C:\Program Files\Browser\browser.exe'},
+    {
+      'name': 'Browser',
+      'path': r'C:\Program Files\Browser\browser.exe',
+      'installed': true,
+      'running': true,
+      'background': false,
+    },
   ];
   final profiles = <Json>[];
   bool running = false;
@@ -178,6 +184,165 @@ Future<AppController> setup(
 }
 
 void main() {
+  testWidgets(
+    'app chooser separates apps from helpers and selects an offline installed app by keyboard',
+    (tester) async {
+      final backend = FakeBackend();
+      if (const bool.fromEnvironment('ASTER_CAPTURE_APPLICATION_PICKER')) {
+        final font = FontLoader('NotoSansTC')
+          ..addFont(rootBundle.load('assets/NotoSansTC.ttf'));
+        await font.load();
+        final icons = FontLoader('MaterialIcons')
+          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+        await icons.load();
+      }
+      backend.applications.addAll([
+        {
+          'name': 'Photo Studio',
+          'path': r'C:\Apps\Photo Studio\photo.exe',
+          'installed': true,
+          'running': false,
+          'background': false,
+        },
+        {
+          'name': 'Network Helper',
+          'path': r'C:\Apps\helper.exe',
+          'installed': false,
+          'running': true,
+          'background': true,
+        },
+      ]);
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content': 'proxies: []\nrules: [MATCH,DIRECT]\n',
+      });
+      final c = await setup(tester, backend, size: const Size(900, 640));
+      unawaited(
+        showApplicationRouting(tester.element(find.byType(Scaffold)), c),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add application'));
+      await tester.pumpAndSettle();
+      expect(find.text('Photo Studio'), findsOneWidget);
+      expect(find.text('Network Helper'), findsNothing);
+      if (const bool.fromEnvironment('ASTER_CAPTURE_APPLICATION_PICKER')) {
+        await expectLater(
+          find.byType(AsterApp),
+          matchesGoldenFile('../.build/application-picker-preview.png'),
+        );
+      }
+      expect(find.text(r'C:\Apps\Photo Studio\photo.exe'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('application-filter-running')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Photo Studio'), findsNothing);
+      expect(find.text('Network Helper'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('application-filter-apps')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey(r'application:C:\Apps\Photo Studio\photo.exe'),
+          ),
+          matching: find.byTooltip('Application details'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(r'C:\Apps\Photo Studio\photo.exe'), findsOneWidget);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('application-search')),
+        'Photo Studio',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('target:DIRECT')));
+      await tester.pumpAndSettle();
+      expect(
+        backend.appliedPatch!['rule'],
+        r'PROCESS-PATH,C:\Apps\Photo Studio\photo.exe,DIRECT',
+      );
+      expect(find.text('Photo Studio'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'large app catalog searches exact identities without mixing same-name applications',
+    (tester) async {
+      final backend = FakeBackend();
+      backend.applications.addAll(
+        List.generate(
+          2500,
+          (i) => {
+            'name': 'Application $i',
+            'path': 'C:\\Apps\\$i\\app.exe',
+            'installed': true,
+            'running': false,
+            'background': false,
+          },
+        ),
+      );
+      backend.applications.addAll([
+        {
+          'name': 'Twin App',
+          'path': r'C:\Apps\first\app.exe',
+          'installed': true,
+        },
+        {
+          'name': 'Twin App',
+          'path': r'C:\Apps\second\app.exe',
+          'installed': true,
+        },
+      ]);
+      backend.profiles.add({
+        'id': 'apps',
+        'name': 'Apps',
+        'content': 'proxies: []\nrules: [MATCH,DIRECT]\n',
+      });
+      final c = await setup(tester, backend);
+      unawaited(
+        showApplicationRouting(tester.element(find.byType(Scaffold)), c),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add application'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ListTile).evaluate().length, lessThan(40));
+      await tester.enterText(
+        find.byKey(const Key('application-search')),
+        'Twin App',
+      );
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(ListTile, 'Twin App'), findsNWidgets(2));
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('route-search')), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('application-search')),
+        r'C:\Apps\second',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey(r'application:C:\Apps\second\app.exe')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('target:REJECT')));
+      await tester.pumpAndSettle();
+      expect(
+        backend.appliedPatch!['rule'],
+        r'PROCESS-PATH,C:\Apps\second\app.exe,REJECT',
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets(
     'node browser hides managed application groups and GLOBAL members',
     (tester) async {
@@ -364,7 +529,7 @@ void main() {
         'id': 'apps',
         'rule': r'PROCESS-PATH,C:\Program Files\Browser\browser.exe,Proxy',
       });
-      expect(find.text('browser.exe'), findsOneWidget);
+      expect(find.text('Browser'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
