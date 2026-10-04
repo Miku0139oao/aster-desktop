@@ -56,6 +56,8 @@ class _ApplicationAvatar extends StatelessWidget {
               bytes,
               width: 32,
               height: 32,
+              cacheWidth: 64,
+              cacheHeight: 64,
               errorBuilder: (_, _, _) => initials,
             ),
     );

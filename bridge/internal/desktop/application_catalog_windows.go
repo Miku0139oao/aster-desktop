@@ -43,6 +43,7 @@ foreach ($root in $roots) {
       if (-not [IO.Path]::IsPathRooted($target) -or [IO.Path]::GetExtension($target) -ine '.exe') { continue }
       if ($target.StartsWith('\\')) { continue }
       if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { continue }
+      if ((Get-Item -LiteralPath $target).Length -eq 0) { continue }
       if ([IO.Path]::GetFileName($target) -match '(?i)^(update|uninstall|cmd|powershell|pwsh|rundll32|explorer|wscript|cscript)\.exe$') { continue }
       $key = $target.ToLowerInvariant()
       if ($seen.ContainsKey($key) -or $link.BaseName -match '(?i)uninstall|remove|解除安裝|卸載') { continue }
@@ -78,7 +79,18 @@ func installedApplications(ctx context.Context) ([]Application, error) {
 			roots = append(roots, root)
 		}
 	}
-	return startMenuApplications(ctx, roots)
+	apps, err := startMenuApplications(ctx, roots)
+	if err != nil {
+		return nil, err
+	}
+	for index := range apps {
+		// Several shortcuts (e.g. browser web apps) may share one executable.
+		// Use its product identity so the displayed app matches rule scope.
+		if name := executableDescription(apps[index].Path); name != "" {
+			apps[index].Name = name
+		}
+	}
+	return apps, nil
 }
 
 func startMenuApplications(ctx context.Context, roots []string) ([]Application, error) {
