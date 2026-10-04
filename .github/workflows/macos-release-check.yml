@@ -3,9 +3,15 @@ on:
   workflow_dispatch:
     inputs:
       build_run_id:
-        description: Completed Desktop checks and packages run containing the Mac artifacts
+        description: Desktop checks and packages run whose selected Mac jobs have uploaded artifacts
         required: true
         type: string
+      architecture:
+        description: Mac architecture to verify
+        required: true
+        default: both
+        type: choice
+        options: [both, arm64, amd64]
 permissions:
   contents: read
   actions: read
@@ -14,13 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runner: macos-15-intel
-            arch: x86_64
-            asset: amd64
-          - runner: macos-15
-            arch: arm64
-            asset: arm64
+        include: ${{ fromJSON(inputs.architecture == 'arm64' && '[{"runner":"macos-15","arch":"arm64","asset":"arm64"}]' || inputs.architecture == 'amd64' && '[{"runner":"macos-15-intel","arch":"x86_64","asset":"amd64"}]' || '[{"runner":"macos-15-intel","arch":"x86_64","asset":"amd64"},{"runner":"macos-15","arch":"arm64","asset":"arm64"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -38,7 +38,7 @@ jobs:
           run = json.load(open(sys.argv[1]))
           assert run['name'] == 'Desktop checks and packages'
           assert run['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY']
-          assert run['status'] == 'completed'
+          assert run['status'] in ('in_progress', 'completed')
           print('sha=' + run['head_sha'])
           PY
       - uses: actions/checkout@v4
