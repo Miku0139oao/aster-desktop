@@ -9,6 +9,10 @@ on:
         default: all
         type: choice
         options: [all, windows-2022, ubuntu-24.04, macos-15-intel, macos-15]
+      verify_gui:
+        description: Run native macOS GUI validation after packaging
+        default: true
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -54,6 +58,11 @@ jobs:
       - name: Build Unix packages
         if: runner.os != 'Windows'
         run: bash scripts/build.sh
+      - name: Preserve built packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: aster-desktop-${{ matrix.os }}
+          path: dist/*
       - name: Windows installer extraction and rollback (PowerShell 5.1)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -83,10 +92,6 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a flutter test integration_test -d linux
       - name: Native GUI workflow (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verify_gui)
+        timeout-minutes: 15
         run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: aster-desktop-${{ matrix.os }}
-          path: dist/*
