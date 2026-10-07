@@ -16,7 +16,7 @@
 - 首次圖片擷取 run 的 Windows 安裝器資源格式失敗，改以固定 akavel/rsrc v0.10.2 產生 Go 相容資源後，重新建置並通過安裝器與最終 CI。圖片擷取只用於人工檢視；已檢查 Linux／Mac 三種平台的明暗／繁中畫面並提交基準，最終 run 使用正常圖片比對。
 - 加入訂閱新規則保持在 `MATCH` 前面的回歸後，重跑 Windows 全部真實核心測試與上述最終四平台 CI。來源 diff 經 gitleaks 遮蔽掃描，未發現秘密；私人診斷與建置資料未加入 Git。
 
-發行資產附 `SHA256SUMS`、GPL-3.0 及對應桌面／固定核心來源。使用者 Wi-Fi TUN 未重試；Windows disposable runner 的服務測試不代表其實際節點連通性已驗收。
+發行資產附 `SHA256SUMS`、GPL-3.0 及對應桌面／固定核心來源。 [0.2.0-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.0-beta.1) 已公開，13 份資產的 GitHub SHA-256 digest／大小均與本機校驗檔案相符；release tag 指向上述產品提交。使用者 Wi-Fi TUN 未重試；Windows disposable runner 的服務測試不代表其實際節點連通性已驗收。
 
 ---
 
