@@ -37,6 +37,19 @@ func TestYAMLEditsFollowExistingDesktopOverlays(t *testing.T) {
 	}
 }
 
+func TestRefreshedRulesRemainReachableWithSavedOrder(t *testing.T) {
+	content, err := mergeWorkspace("rules: ['DOMAIN,old.example,DIRECT','DOMAIN,new.example,REJECT','MATCH,DIRECT']", Profile{RuleOrder: []string{"DOMAIN,old.example,DIRECT", "MATCH,DIRECT"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	_ = yaml.Unmarshal([]byte(content), &doc)
+	rules := doc["rules"].([]any)
+	if len(rules) != 3 || rules[1] != "DOMAIN,new.example,REJECT" || rules[2] != "MATCH,DIRECT" {
+		t.Fatal("new subscription rule hidden by MATCH", rules)
+	}
+}
+
 func TestWorkspaceOverlayTransactionsWithRealCore(t *testing.T) {
 	binary := os.Getenv("ASTER_TEST_CORE")
 	if binary == "" {

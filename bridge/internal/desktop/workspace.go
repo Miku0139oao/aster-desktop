@@ -197,7 +197,17 @@ func mergeWorkspace(content string, p Profile) (string, error) {
 		for _, raw := range rules {
 			rule, _ := raw.(string)
 			if !seen[rule] && !slices.Contains(p.DisabledRules, rule) {
-				next = append(next, raw)
+				// Newly downloaded rules must remain reachable after a saved
+				// custom order; appending them after MATCH would hide them.
+				at := slices.IndexFunc(next, func(value any) bool {
+					text, _ := value.(string)
+					return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(text)), "MATCH,")
+				})
+				if at < 0 {
+					next = append(next, raw)
+				} else {
+					next = slices.Insert(next, at, raw)
+				}
 				seen[rule] = true
 			}
 		}
