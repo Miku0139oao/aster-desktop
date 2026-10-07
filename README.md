@@ -1,5 +1,7 @@
 # Aster Desktop 0.2.0 測試版
 
+[下載 0.2.0-beta.1 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.0-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
 0.2.0 補齊日常操作：節點收藏／最近使用／類型與來源篩選、可調測速參數，表單管理節點、群組與兩種 provider。訂閱可編輯來源、複製成獨立設定、設定個別排程；手動更新先預覽變更，過期預覽不會覆蓋新設定。GUI 管理的節點、DNS、分流與停用規則會在訂閱更新後保留，完整 YAML 編輯仍可使用。

@@ -4,9 +4,19 @@
 
 新增訂閱預覽與過期防護、個別排程、節點／群組／provider 表單、跨更新桌面覆寫、規則停用與排序、多程式批次出口、連線彙整／欄位與規則建立、歷史流量及分層診斷。原創 Aster 圖示涵蓋 GUI、托盤、Windows 安裝器與 Mac App。
 
-本機 Flutter analyze、36 項單元／元件測試通過（Mac 專用一項跳過）。Windows 真實固定核心完整 Go 測試通過；原生 GUI 匯入／代理／程式分流／萬行 YAML／停止流程通過。Windows release 編譯、安裝器 payload 校验及 9 項 PowerShell 5.1 安裝／回復測試通過，已確認 PE 安裝器含原創圖示。跨平台 CI 結果於完成後追加。測試使用獨立資料與 loopback，未變更使用者系統代理、TUN、DNS 或服務。新增回歸涵蓋訂閱失敗／過期、節點刪除引用驗證、批次交易、YAML 與 GUI metadata 一致性、流量重啟／重複取樣／清除／儲存、限制範圍的 DNS API，以及窄視窗放大字體操作。
+本機 Flutter analyze、36 項單元／元件測試通過（Mac 專用一項跳過）。Windows 真實固定核心完整 Go 測試通過；原生 GUI 匯入／代理／程式分流／萬行 YAML／停止流程通過。Windows release 編譯、安裝器 payload 校驗及 9 項 PowerShell 5.1 安裝／回復測試通過，已確認 PE 安裝器含原創圖示。跨平台 CI 結果於完成後追加。測試使用獨立資料與 loopback，未變更使用者系統代理、TUN、DNS 或服務。新增回歸涵蓋訂閱失敗／過期、節點刪除引用驗證、批次交易、YAML 與 GUI metadata 一致性、流量重啟／重複取樣／清除／儲存、限制範圍的 DNS API，以及窄視窗放大字體操作。
 
-流量分類為抽樣，短連線可能遺漏；異常退出最多遺失約 20 秒。Mac 實機 TUN、系統代理、SMAppService 授權／拒絕、Gatekeeper 與睡眠喚醒仍待驗收，CI 不代替這些測試。使用者 Wi-Fi TUN 尚未重試，不宣稱已修復實際上網。
+流量分類為抽樣，短連線可能遺漏；異常退出可能遺失最近尚未寫入的資料（通常約 20 秒）。Mac 實機 TUN、系統代理、SMAppService 授權／拒絕、Gatekeeper 與睡眠喚醒仍待驗收，CI 不代替這些測試。使用者 Wi-Fi TUN 尚未重試，不宣稱已修復實際上網。
+
+交付產品來源：`866e346b7af0795fc2344cb9ae5bd3932747b97d`。後續 `ecef464` 僅增加 Mac 安裝驗證的 GUI driver 選項；`lib`／`bridge`／資產及建置腳本與交付來源逐目錄比對一致。
+
+- [最終四平台 CI 37694113783](https://github.com/Miku0139oao/aster-desktop/actions/runs/37694113783) 全部通過：Windows／Ubuntu 24.04／Mac Intel／Apple Silicon 原生 release 建置、Flutter analyze、單元／元件及平台圖片比對、Go 管理層與真實固定核心測試。Windows PowerShell 5.1 安裝器回歸、LocalSystem 服務／TUN 及原生 GUI；Ubuntu 原生 GUI 也通過。
+- [Apple Silicon 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37695199189) 與 [Intel 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37695262923) 均通過：下載實際 DMG，核對全部套件 SHA-256、校驗 DMG、以 PKG 安裝到 `/Applications`、完整 codesign 驗證、GUI／Go／Swift 助手架構、root 所有權與目錄權限。本版兩處 Mac 原生 GUI driver 均明確跳過，沒有借用舊版通過結果；Mac Widget／Go／建置／安裝與實機網路驗收分開。
+- WSL Arch 使用 Go 1.26.3、真實固定核心的完整 Go 測試通過；Flutter analyze、release GUI、Arch 可攜包與 `.pkg.tar.zst` 建置及 Xvfb 原生 GUI 流程通過。Xvfb 不代表 GNOME／KDE 的托盤、polkit 互動及桌面代理實機驗收。Arch bridge 的 VCS 記錄為產品提交，工作目錄差異是上述 CI 檔；產品來源一致。
+- 首次圖片擷取 run 的 Windows 安裝器資源格式失敗，改以固定 akavel/rsrc v0.10.2 產生 Go 相容資源後，重新建置並通過安裝器與最終 CI。圖片擷取只用於人工檢視；已檢查 Linux／Mac 三種平台的明暗／繁中畫面並提交基準，最終 run 使用正常圖片比對。
+- 加入訂閱新規則保持在 `MATCH` 前面的回歸後，重跑 Windows 全部真實核心測試與上述最終四平台 CI。來源 diff 經 gitleaks 遮蔽掃描，未發現秘密；私人診斷與建置資料未加入 Git。
+
+發行資產附 `SHA256SUMS`、GPL-3.0 及對應桌面／固定核心來源。使用者 Wi-Fi TUN 未重試；Windows disposable runner 的服務測試不代表其實際節點連通性已驗收。
 
 ---
 
