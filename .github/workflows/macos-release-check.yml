@@ -12,6 +12,10 @@ on:
         default: both
         type: choice
         options: [both, arm64, amd64]
+      verify_gui:
+        description: Run the native GUI driver after validating the installer
+        default: true
+        type: boolean
 permissions:
   contents: read
   actions: read
@@ -86,12 +90,15 @@ jobs:
           "$app/Contents/Resources/aster-core" -v
           cp "$app/Contents/Resources/aster-core" "$app/Contents/Resources/aster-bridge" ../
       - uses: subosito/flutter-action@v2
+        if: inputs.verify_gui
         with:
           flutter-version: '3.47.6'
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+        if: inputs.verify_gui
       - name: Use the reviewed validation harness with the package application sources
+        if: inputs.verify_gui
         env:
           VALIDATION_SHA: ${{ github.sha }}
         run: |
@@ -100,12 +107,15 @@ jobs:
           mkdir -p test_driver
           git show "$VALIDATION_SHA:test_driver/desktop_test.dart" > test_driver/desktop_test.dart
       - name: Native macOS GUI with the installed package binaries
+        if: inputs.verify_gui
+        timeout-minutes: 15
         run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
       - name: Record validation scope
         if: always()
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          VERIFIED_GUI: ${{ inputs.verify_gui }}
         run: |
           printf 'Package source: `%s`\n\n' "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
           printf 'Validation harness: `%s`; application sources are the package source commit.\n\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          printf 'This disposable runner checks the DMG, PKG installation, signing, executable architecture and native GUI import/routing/YAML/proxy lifecycle. Background-service authorization, real network system proxy/TUN and sleep/wake remain physical-Mac checks.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'This disposable runner checks the DMG, PKG installation, signing and executable architecture. Native GUI driver requested: %s; skipped GUI is not a pass. Background-service authorization, real network system proxy/TUN and sleep/wake remain physical-Mac checks.\n' "$VERIFIED_GUI" >> "$GITHUB_STEP_SUMMARY"
