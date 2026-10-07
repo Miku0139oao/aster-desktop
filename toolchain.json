@@ -2,6 +2,7 @@
   "flutter": "3.47.6",
   "flutterCommit": "5fc346839b5d0eef006ed8404392afb4dfae428d",
   "go": "1.26.3",
+  "windowsResourceTool": "v0.10.2",
   "coreCommit": "a9a33503b39a03681bc52d9758907316a22df199",
   "coreModule": "github.com/Miku0139oao/aster-core",
   "coreVersion": "v0.0.0-20260907022528-a9a33503b39a"
