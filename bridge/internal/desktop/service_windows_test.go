@@ -57,6 +57,11 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 	s.Tun, s.SystemProxy = true, false
 	s.AllowLAN = true
 	s.MixedPort = unusedPort()
+	interfaces, err := ListNetworkInterfaces()
+	if err != nil || len(interfaces) == 0 {
+		t.Fatalf("runner has no available outbound network: %v", err)
+	}
+	s.TunInterface = interfaces[0].Name
 	bad := map[string]any{"content": "tls: {certificate: /private/file}", "settings": s}
 	if err = client.Call("start", bad, nil); err == nil || !strings.Contains(err.Error(), "inline certificate") {
 		t.Fatalf("file resource validation: %v", err)
@@ -104,12 +109,17 @@ tun: {device: AsterSvcTest}
 		t.Fatal(err)
 	}
 	var config struct {
-		Tun struct {
-			Enable bool `json:"enable"`
+		Interface string `json:"interface-name"`
+		Tun       struct {
+			Enable     bool `json:"enable"`
+			AutoDetect bool `json:"auto-detect-interface"`
 		} `json:"tun"`
 	}
 	if err = client.Call("controller", map[string]string{"method": "GET", "path": "/configs"}, &config); err != nil || !config.Tun.Enable {
 		t.Fatalf("TUN did not initialize with a cold provider: %+v %v", config, err)
+	}
+	if config.Interface != s.TunInterface || config.Tun.AutoDetect {
+		t.Fatalf("service did not bind to the chosen uplink: %+v", config)
 	}
 	if err = client.Call("controller", map[string]string{"method": "POST", "path": "/restart"}, nil); err == nil {
 		t.Fatal("unsupported privileged controller operation accepted")

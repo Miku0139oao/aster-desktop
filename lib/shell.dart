@@ -438,6 +438,12 @@ class ErrorCard extends StatelessWidget {
         'The core is loading remote rules or providers. Check your network and selected node, then retry.',
       );
     }
+    if (message.contains('tun outbound network')) {
+      return c.tr(
+        '所選出口網路未連接，請到首頁選擇可用的 Wi-Fi 或其他網路，再重新連線。',
+        'The selected outbound network is unavailable. Choose an available Wi-Fi or other network on Home, then reconnect.',
+      );
+    }
     if (message.contains('tun adapter')) {
       return c.tr(
         '全應用程式代理未能就緒；可先改用系統代理。請展開詳細原因檢查 TUN 設定及其他 VPN。',

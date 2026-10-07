@@ -6,6 +6,7 @@ import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/dialogs.dart';
 import 'package:aster_desktop/application_rules.dart';
+import 'package:aster_desktop/network_settings.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -67,6 +68,28 @@ void main() {
     expect(c.running, isFalse);
     c.navigate(0);
     await tester.pumpAndSettle();
+    final networks = await backend.call('listNetworkInterfaces') as List;
+    expect(networks, isNotEmpty);
+    final uplink = networks.first['name'] as String;
+    expect(await c.saveSettings({'tun': true}), isTrue, reason: c.error);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(TunNetworkSelector));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(TunNetworkSelector),
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text(uplink).last);
+    await tester.tap(find.text(uplink).last);
+    await tester.pumpAndSettle();
+    expect(c.settings.tunInterface, uplink);
+    // The workstation workflow only checks UI/persistence. Real privileged TUN
+    // is exercised separately on the disposable Windows service runner.
+    expect(await c.saveSettings({'tun': false}), isTrue, reason: c.error);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('primary-connect')));
     await tester.tap(find.byKey(const Key('primary-connect')));
     for (var attempt = 0; attempt < 150 && !c.running; attempt++) {
       await tester.pump(const Duration(milliseconds: 100));

@@ -128,6 +128,14 @@ func allowedController(method, path string) bool {
 	return method == "PATCH" && p == "/rules/disable"
 }
 func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchError error) {
+	if req.Method == "listNetworkInterfaces" {
+		interfaces, err := ListNetworkInterfaces()
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := json.Marshal(interfaces)
+		return json.RawMessage(encoded), err
+	}
 	// Catalog discovery reads only OS metadata. It must not hold the core/store
 	// lock while a desktop shell discovers shortcuts or application bundles.
 	if req.Method == "listApplications" {
@@ -164,7 +172,7 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		old := s.State.Settings
 		if a.status().Running {
-			if next.Tun != old.Tun || next.MixedPort != old.MixedPort || next.SystemProxy != old.SystemProxy {
+			if next.Tun != old.Tun || next.MixedPort != old.MixedPort || next.SystemProxy != old.SystemProxy || next.TunInterface != old.TunInterface {
 				return nil, errors.New("disconnect before changing how applications connect")
 			}
 			p, err := s.Profile(s.State.ActiveID)

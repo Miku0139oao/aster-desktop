@@ -12,13 +12,14 @@ class AppSettings {
     this.theme = 'system',
     this.systemProxy = true,
     this.tun = false,
+    this.tunInterface = '',
     this.allowLan = false,
     this.mixedPort = 7890,
     this.mode = 'rule',
     this.autoStart = false,
     this.subscriptionHours = 24,
   });
-  final String language, theme, mode;
+  final String language, theme, mode, tunInterface;
   final bool systemProxy, tun, allowLan, autoStart;
   final int mixedPort, subscriptionHours;
   factory AppSettings.fromJson(Json j) => AppSettings(
@@ -27,6 +28,7 @@ class AppSettings {
     mode: j['mode'] as String,
     systemProxy: j['systemProxy'] == true,
     tun: j['tun'] == true,
+    tunInterface: j['tunInterface'] as String? ?? '',
     allowLan: j['allowLan'] == true,
     autoStart: j['autoStart'] == true,
     mixedPort: j['mixedPort'] as int,
@@ -38,6 +40,7 @@ class AppSettings {
     'mode': mode,
     'systemProxy': systemProxy,
     'tun': tun,
+    'tunInterface': tunInterface,
     'allowLan': allowLan,
     'autoStart': autoStart,
     'mixedPort': mixedPort,

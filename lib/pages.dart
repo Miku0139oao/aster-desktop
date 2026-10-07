@@ -9,6 +9,7 @@ import 'backend.dart';
 import 'controller.dart';
 import 'dialogs.dart';
 import 'application_rules.dart';
+import 'network_settings.dart';
 export 'dialogs.dart' show showImportDialog;
 
 class PageBody extends StatelessWidget {
@@ -340,6 +341,7 @@ class OverviewPage extends StatelessWidget {
                     ? null
                     : (v) => c.saveSettings({'tun': v}),
               ),
+              if (c.settings.tun) TunNetworkSelector(controller: c),
               const Divider(),
               const SizedBox(height: 8),
               Wrap(

@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 const CoreCommit = "a9a33503b39a03681bc52d9758907316a22df199"
-const Version = "0.1.4"
+const Version = "0.1.5"
 const MaxConfig = 16 << 20
 
 type Settings struct {
@@ -21,6 +23,7 @@ type Settings struct {
 	Theme             string `json:"theme"`
 	SystemProxy       bool   `json:"systemProxy"`
 	Tun               bool   `json:"tun"`
+	TunInterface      string `json:"tunInterface"`
 	AllowLAN          bool   `json:"allowLan"`
 	MixedPort         int    `json:"mixedPort"`
 	Mode              string `json:"mode"`
@@ -32,6 +35,9 @@ func DefaultSettings() Settings {
 	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: true, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
 }
 func (s Settings) Validate() error {
+	if utf8.RuneCountInString(s.TunInterface) > 256 || stringsContainControl(s.TunInterface) {
+		return errors.New("invalid TUN outbound interface")
+	}
 	if s.MixedPort < 1024 || s.MixedPort > 65535 {
 		return errors.New("proxy port must be between 1024 and 65535")
 	}
@@ -48,6 +54,15 @@ func (s Settings) Validate() error {
 		return errors.New("invalid subscription interval")
 	}
 	return nil
+}
+
+func stringsContainControl(value string) bool {
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
 }
 
 type Profile struct {

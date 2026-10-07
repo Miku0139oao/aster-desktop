@@ -309,7 +309,9 @@ class ProcessBackend implements DesktopBackend {
         if (method == 'settings' &&
             (params!['tun'] != true ||
                 params['mixedPort'] !=
-                    (state['settings'] as Json)['mixedPort'])) {
+                    (state['settings'] as Json)['mixedPort'] ||
+                (params['tunInterface'] ?? '') !=
+                    ((state['settings'] as Json)['tunInterface'] ?? ''))) {
           throw const BackendException(
             'Disconnect before changing how applications connect.',
           );

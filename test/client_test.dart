@@ -14,6 +14,7 @@ import 'package:aster_desktop/dialogs.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:yaml/yaml.dart';
 import 'package:aster_desktop/application_rules.dart';
+import 'package:aster_desktop/network_settings.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -26,6 +27,10 @@ class FakeBackend implements DesktopBackend {
   final calls = <String>[];
   final changes = StreamController<Json>.broadcast();
   Json settings = const AppSettings(language: 'en', theme: 'light').toJson();
+  List<Json> networkInterfaces = [
+    {'name': 'Wi-Fi'},
+    {'name': 'Ethernet'},
+  ];
   String desktopVersion = '0.1.0'; // Stable version in the visual fixtures.
   bool serviceInstalled = false;
   Completer<dynamic>? pendingValidation;
@@ -56,6 +61,8 @@ class FakeBackend implements DesktopBackend {
   Future<dynamic> call(String method, [Json? params]) async {
     calls.add(method);
     switch (method) {
+      case 'listNetworkInterfaces':
+        return networkInterfaces;
       case 'state':
         if (pendingState != null) return pendingState!.future;
         return {
@@ -184,6 +191,68 @@ Future<AppController> setup(
 }
 
 void main() {
+  testWidgets(
+    'TUN network choice persists, locks while running and retains unavailable selection',
+    (tester) async {
+      final backend = FakeBackend();
+      final c = AppController(backend);
+      addTearDown(c.dispose);
+      await c.refresh();
+      Future<void> mount() => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 650,
+              child: TunNetworkSelector(controller: c),
+            ),
+          ),
+        ),
+      );
+      await mount();
+      await tester.pumpAndSettle();
+      expect(
+        backend.calls.where((e) => e == 'listNetworkInterfaces').length,
+        1,
+      );
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Wi-Fi').last);
+      await tester.pumpAndSettle();
+      expect(backend.settings['tunInterface'], 'Wi-Fi');
+      expect(c.settings.tunInterface, 'Wi-Fi');
+      expect(backend.settings['tun'], false);
+      c.running = true;
+      await mount();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<String>>(
+              find.byType(DropdownButtonFormField<String>),
+            )
+            .onChanged,
+        isNull,
+      );
+      expect(
+        backend.calls.where((e) => e == 'listNetworkInterfaces').length,
+        1,
+      );
+      c.running = false;
+      backend.networkInterfaces = [
+        {'name': 'Ethernet'},
+      ];
+      await tester.tap(find.byTooltip('Refresh networks'));
+      await tester.pumpAndSettle();
+      expect(find.text('Wi-Fi (unavailable)'), findsOneWidget);
+      expect(c.settings.tunInterface, 'Wi-Fi');
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Automatic (system routes)').last);
+      await tester.pumpAndSettle();
+      expect(backend.settings['tunInterface'], '');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'app chooser separates apps from helpers and selects an offline installed app by keyboard',
     (tester) async {

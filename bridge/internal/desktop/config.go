@@ -192,6 +192,12 @@ func Runtime(content string, s Settings, controller, secret, dir string, privile
 	tun["enable"] = s.Tun
 	tun["auto-route"] = true
 	tun["auto-detect-interface"] = true
+	if s.Tun && s.TunInterface != "" {
+		// A connected adapter can have a preferred route without working internet.
+		// Bind node, DNS and provider sockets to the user's chosen uplink instead.
+		doc["interface-name"] = s.TunInterface
+		tun["auto-detect-interface"] = false
+	}
 	tun["dns-hijack"] = []string{"any:53"}
 	if tun["stack"] == nil {
 		tun["stack"] = "mixed"

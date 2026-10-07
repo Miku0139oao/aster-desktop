@@ -162,6 +162,12 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	if _, err := c.Validate(ctx, content, s, privileged); err != nil {
 		return err
 	}
+	if s.Tun && s.TunInterface != "" {
+		if err := validateTunInterface(s.TunInterface); err != nil {
+			return err
+		}
+		c.appendLog("Desktop: TUN outbound interface: " + s.TunInterface)
+	}
 	bind := "127.0.0.1"
 	if s.AllowLAN {
 		bind = ""

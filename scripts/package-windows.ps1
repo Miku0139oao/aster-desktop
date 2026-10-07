@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $asterRoot=Split-Path -Parent $PSScriptRoot
 $asterStage=Join-Path $asterRoot '.build\installer-stage'
 $asterSource=Join-Path $asterRoot 'packaging\windows\setup'
-$asterTarget=if($OutputPath){[IO.Path]::GetFullPath($OutputPath)}else{Join-Path $asterRoot 'dist\Aster-Desktop-0.1.4-windows-x64-setup.exe'}
+$asterTarget=if($OutputPath){[IO.Path]::GetFullPath($OutputPath)}else{Join-Path $asterRoot 'dist\Aster-Desktop-0.1.5-windows-x64-setup.exe'}
 New-Item -ItemType Directory -Path $asterStage -Force | Out-Null
 Compress-Archive -Path "$ReleasePath\*" -DestinationPath (Join-Path $asterStage 'payload.zip') -Force
 Copy-Item -LiteralPath (Join-Path $asterRoot 'packaging\windows\install.ps1'),(Join-Path $asterRoot 'packaging\windows\install-files.ps1') -Destination $asterStage
