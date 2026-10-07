@@ -25,7 +25,7 @@ func TestTunOutboundNetworkRuntime(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			s := DefaultSettings()
 			s.Tun, s.TunInterface = test.tun, test.selected
-			input := "proxies: []\nrules: [MATCH,DIRECT]\ndns: {enable: true, nameserver: [system]}\n"
+			input := "proxies: []\nrules: ['MATCH,DIRECT']\ndns: {enable: true, nameserver: [system]}\n"
 			if test.original != "" {
 				input += "interface-name: " + test.original + "\n"
 			}
@@ -94,7 +94,7 @@ func TestTunNetworkChangeRequiresDisconnectAndPersists(t *testing.T) {
 	s.SystemProxy = false
 	s.MixedPort = unusedPort()
 	app.Store.State.Settings = s
-	if err = app.Core.Start(context.Background(), "proxies: []\nrules: [MATCH,DIRECT]\n", s, false); err != nil {
+	if err = app.Core.Start(context.Background(), "proxies: []\nrules: ['MATCH,DIRECT']\n", s, false); err != nil {
 		t.Fatal(err)
 	}
 	s.TunInterface = "Wi-Fi"

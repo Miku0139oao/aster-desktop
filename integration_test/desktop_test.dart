@@ -7,6 +7,7 @@ import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/dialogs.dart';
 import 'package:aster_desktop/application_rules.dart';
 import 'package:aster_desktop/network_settings.dart';
+import 'package:aster_desktop/pages.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -89,7 +90,16 @@ void main() {
     // is exercised separately on the disposable Windows service runner.
     expect(await c.saveSettings({'tun': false}), isTrue, reason: c.error);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('primary-connect')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('primary-connect')),
+      -400,
+      scrollable: find
+          .descendant(
+            of: find.byType(OverviewPage),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.byKey(const Key('primary-connect')));
     for (var attempt = 0; attempt < 150 && !c.running; attempt++) {
       await tester.pump(const Duration(milliseconds: 100));
