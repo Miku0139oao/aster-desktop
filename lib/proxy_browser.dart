@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'controller.dart';
+import 'desktop_components.dart';
 
 enum ProxySort { configuration, latency, name }
 
@@ -30,10 +31,12 @@ class ProxySection {
     required this.title,
     required this.choices,
     this.detail = '',
+    this.current,
     this.onTest,
     this.onReset,
   });
   final String id, title, detail;
+  final String? current;
   final List<ProxyChoice> choices;
   final VoidCallback? onTest;
   final VoidCallback? onReset;
@@ -115,10 +118,37 @@ class ProxyBrowserControls extends StatelessWidget {
           ),
         ),
       ),
-      IconButton(
-        tooltip: c.tr(list ? '卡片排列' : '列表排列', list ? 'Card view' : 'List view'),
-        onPressed: () => onLayout(!list),
-        icon: Icon(list ? Icons.grid_view : Icons.view_list),
+      Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final value in [false, true])
+              IconButton(
+                tooltip: c.tr(
+                  value ? '列表排列' : '卡片排列',
+                  value ? 'List view' : 'Card view',
+                ),
+                isSelected: list == value,
+                style: IconButton.styleFrom(
+                  backgroundColor: list == value
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () => onLayout(value),
+                icon: Icon(
+                  value ? Icons.view_list_outlined : Icons.grid_view_outlined,
+                  size: 19,
+                ),
+              ),
+          ],
+        ),
       ),
     ],
   );
@@ -152,128 +182,192 @@ class _ProxyBrowserState extends State<ProxyBrowser> {
       return Center(child: Text(widget.c.tr('沒有符合的節點', 'No matching nodes')));
     }
     final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final colors = Theme.of(context).colorScheme;
     return CustomScrollView(
       slivers: [
-        for (final section in widget.sections) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
-              child: Material(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(14),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () => setState(
-                          () => collapsed.contains(section.id)
-                              ? collapsed.remove(section.id)
-                              : collapsed.add(section.id),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                folded(section)
-                                    ? Icons.chevron_right
-                                    : Icons.expand_more,
+        for (final section in widget.sections)
+          SliverPadding(
+            padding: const EdgeInsets.only(bottom: 16),
+            sliver: DecoratedSliver(
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              sliver: SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: widget.c.tr(
+                              folded(section) ? '展開群組' : '收起群組',
+                              folded(section)
+                                  ? 'Expand group'
+                                  : 'Collapse group',
+                            ),
+                            onPressed: () => setState(
+                              () => collapsed.contains(section.id)
+                                  ? collapsed.remove(section.id)
+                                  : collapsed.add(section.id),
+                            ),
+                            icon: Icon(
+                              folded(section)
+                                  ? Icons.chevron_right
+                                  : Icons.expand_more,
+                              size: 20,
+                            ),
+                          ),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setState(
+                                () => collapsed.contains(section.id)
+                                    ? collapsed.remove(section.id)
+                                    : collapsed.add(section.id),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${section.title} · ${section.choices.length}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleSmall,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (section.detail.isNotEmpty)
-                                      Text(
-                                        section.detail,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          section.title,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      DetailBadge('${section.choices.length}'),
+                                    ],
+                                  ),
+                                  if (section.current != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        '${widget.c.tr('目前', 'Current')} · ${section.current}',
                                         style: Theme.of(context)
                                             .textTheme
-                                            .bodySmall,
+                                            .bodySmall
+                                            ?.copyWith(color: colors.primary),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                  ],
-                                ),
+                                    )
+                                  else if (section.detail.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text(
+                                        section.detail,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: colors.onSurfaceVariant,
+                                            ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          if (section.onReset != null)
+                            IconButton(
+                              tooltip: widget.c.tr(
+                                '恢復自動選擇',
+                                'Restore automatic selection',
+                              ),
+                              onPressed: section.onReset,
+                              icon: const Icon(Icons.autorenew, size: 19),
+                            ),
+                          if (section.onTest != null)
+                            IconButton(
+                              tooltip: widget.c.tr('測試此群組', 'Test this group'),
+                              onPressed: section.onTest,
+                              icon: const Icon(Icons.speed_outlined, size: 19),
+                            ),
+                        ],
                       ),
                     ),
-                    if (section.onReset != null)
-                      IconButton(
-                        tooltip: widget.c.tr(
-                          '恢復自動選擇',
-                          'Restore automatic selection',
-                        ),
-                        onPressed: section.onReset,
-                        icon: const Icon(Icons.autorenew),
+                  ),
+                  if (!folded(section))
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      sliver: SliverLayoutBuilder(
+                        builder: (context, constraints) {
+                          final choices = sortProxyChoices(
+                            section.choices,
+                            widget.sort,
+                          );
+                          final columns = widget.list
+                              ? 1
+                              : math.max(
+                                  1,
+                                  math.min(
+                                    5,
+                                    (constraints.crossAxisExtent /
+                                            (250 * math.min(scale, 1.5)))
+                                        .floor(),
+                                  ),
+                                );
+                          return SliverGrid(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: columns,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                  mainAxisExtent:
+                                      (widget.list ? 76 : 104) *
+                                      math.max(1, scale),
+                                ),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) => ProxyChoiceCard(
+                                key: ValueKey(choices[index].id),
+                                c: widget.c,
+                                choice: choices[index],
+                                list: widget.list,
+                              ),
+                              childCount: choices.length,
+                            ),
+                          );
+                        },
                       ),
-                    if (section.onTest != null)
-                      IconButton(
-                        tooltip: widget.c.tr('測試此群組', 'Test this group'),
-                        onPressed: section.onTest,
-                        icon: const Icon(Icons.speed),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           ),
-          if (!folded(section))
-            SliverLayoutBuilder(
-              builder: (context, constraints) {
-                final choices = sortProxyChoices(section.choices, widget.sort);
-                final columns = widget.list
-                    ? 1
-                    : math.max(
-                        1,
-                        math.min(
-                          6,
-                          (constraints.crossAxisExtent /
-                                  (225 * math.min(scale, 1.5)))
-                              .floor(),
-                        ),
-                      );
-                return SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    mainAxisExtent: 92 * math.max(1, scale),
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => ProxyChoiceCard(
-                      key: ValueKey(choices[index].id),
-                      c: widget.c,
-                      choice: choices[index],
-                    ),
-                    childCount: choices.length,
-                  ),
-                );
-              },
-            ),
-        ],
-        const SliverToBoxAdapter(child: SizedBox(height: 20)),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
       ],
     );
   }
 }
 
 class ProxyChoiceCard extends StatelessWidget {
-  const ProxyChoiceCard({super.key, required this.c, required this.choice});
+  const ProxyChoiceCard({
+    super.key,
+    required this.c,
+    required this.choice,
+    this.list = false,
+  });
   final AppController c;
   final ProxyChoice choice;
+  final bool list;
+
+  String get detail => choice.detail
+      .replaceAll('Selector', c.tr('手動選擇', 'Select'))
+      .replaceAll('URLTest', c.tr('自動測速', 'Auto'))
+      .replaceAll('Fallback', c.tr('故障切換', 'Fallback'));
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -282,16 +376,94 @@ class ProxyChoiceCard extends StatelessWidget {
         : choice.delay != null && choice.delay! > 500
         ? colors.tertiary
         : colors.primary;
+    final title = Row(
+      children: [
+        Expanded(
+          child: Tooltip(
+            message: choice.name,
+            child: Text(
+              choice.name,
+              maxLines: list ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        if (choice.selected) ...[
+          const SizedBox(width: 8),
+          Icon(Icons.check_circle, color: colors.primary, size: 18),
+        ],
+      ],
+    );
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (choice.onOpen != null)
+          IconButton(
+            tooltip: c.tr('瀏覽群組節點', 'Browse group nodes'),
+            onPressed: choice.onOpen,
+            icon: const Icon(Icons.chevron_right, size: 18),
+            visualDensity: VisualDensity.compact,
+          ),
+        if (choice.onTest != null || choice.delay != null || choice.testing)
+          Tooltip(
+            message: c.tr('測試此節點', 'Test this node'),
+            child: InkWell(
+              onTap: choice.testing ? null : choice.onTest,
+              borderRadius: BorderRadius.circular(7),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: choice.testing
+                    ? const SizedBox(
+                        width: 44,
+                        height: 18,
+                        child: Center(
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    : DetailBadge(
+                        choice.delay == null
+                            ? '—'
+                            : choice.delay == 0
+                            ? c.tr('逾時', 'Timeout')
+                            : '${choice.delay} ms',
+                        color: delayColor,
+                        icon: choice.delay == null
+                            ? Icons.speed_outlined
+                            : null,
+                      ),
+              ),
+            ),
+          ),
+      ],
+    );
+    final subtitle = Tooltip(
+      message: detail,
+      child: Text(
+        detail,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: colors.onSurfaceVariant),
+      ),
+    );
     return Semantics(
       selected: choice.selected,
       child: Material(
         color: choice.selected
-            ? colors.secondaryContainer
-            : colors.surfaceContainerLow,
+            ? colors.primaryContainer.withValues(alpha: .5)
+            : colors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           side: BorderSide(
-            color: choice.selected ? colors.primary : colors.outlineVariant,
+            color: choice.selected
+                ? colors.primary.withValues(alpha: .4)
+                : colors.outlineVariant.withValues(alpha: .3),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -299,87 +471,38 @@ class ProxyChoiceCard extends StatelessWidget {
           onTap: choice.onSelect,
           onSecondaryTap: choice.onTest,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: list
+                ? Row(
                     children: [
                       Expanded(
-                        child: Tooltip(
-                          message: choice.name,
-                          child: Text(
-                            choice.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            title,
+                            const SizedBox(height: 4),
+                            subtitle,
+                          ],
                         ),
                       ),
-                      if (choice.selected)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Icon(
-                            Icons.check_circle,
-                            color: colors.primary,
-                            size: 20,
-                          ),
-                        ),
+                      const SizedBox(width: 12),
+                      actions,
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: title),
+                      Row(
+                        children: [
+                          Expanded(child: subtitle),
+                          const SizedBox(width: 6),
+                          actions,
+                        ],
+                      ),
                     ],
                   ),
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Tooltip(
-                        message: choice.detail,
-                        child: Text(
-                          choice.detail,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    ),
-                    if (choice.onOpen != null)
-                      IconButton(
-                        tooltip: c.tr('瀏覽群組節點', 'Browse group nodes'),
-                        onPressed: choice.onOpen,
-                        icon: const Icon(Icons.chevron_right),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    if (choice.onTest != null ||
-                        choice.delay != null ||
-                        choice.testing)
-                      TextButton(
-                        onPressed: choice.testing ? null : choice.onTest,
-                        style: TextButton.styleFrom(
-                          foregroundColor: delayColor,
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          minimumSize: const Size(40, 36),
-                        ),
-                        child: choice.testing
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                choice.delay == null
-                                    ? c.tr('測速', 'Test')
-                                    : choice.delay == 0
-                                    ? c.tr('逾時', 'Timeout')
-                                    : '${choice.delay} ms',
-                              ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
           ),
         ),
       ),

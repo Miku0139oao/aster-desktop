@@ -16,6 +16,7 @@ import 'package:re_editor/re_editor.dart';
 import 'package:yaml/yaml.dart';
 import 'package:aster_desktop/application_rules.dart';
 import 'package:aster_desktop/network_settings.dart';
+import 'package:aster_desktop/connections_page.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -1120,7 +1121,7 @@ void main() {
     final c = await setup(tester, backend, size: const Size(760, 580));
     c.navigate(3);
     await tester.pumpAndSettle();
-    expect(find.byType(ExpansionTile).evaluate().length, lessThan(30));
+    expect(find.byType(ConnectionRow).evaluate().length, lessThan(30));
     await tester.enterText(find.byType(TextField), 'host-9999.example.test');
     await tester.pumpAndSettle();
     expect(find.text('host-9999.example.test:443'), findsOneWidget);
@@ -1128,7 +1129,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.closedConnections, ['connection-9999']);
     expect((backend.connectionData['connections'] as List).length, 9999);
-    expect(find.text('No active connections'), findsOneWidget);
+    expect(find.text('No matching connections'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   test('export redacts common credentials', () {
@@ -1229,5 +1230,143 @@ void main() {
     expect(sorted.map((n) => n.id), ['fast', 'slow', 'unknown', 'timeout']);
     expect(sorted.where((n) => n.selected).single.id, 'slow');
     expect(entries.first.id, 'timeout');
+  });
+  testWidgets(
+    'connection overview shows real totals, pauses rows and keeps traffic live',
+    (tester) async {
+      final backend = FakeBackend()..running = true;
+      backend.connectionData = {
+        'downloadTotal': 5242880,
+        'uploadTotal': 1048576,
+        'connections': [
+          {
+            'id': 'a',
+            'metadata': {
+              'host': 'a.example.test',
+              'destinationPort': 443,
+              'network': 'tcp',
+              'processPath': r'C:\Apps\browser.exe',
+            },
+            'chains': ['Tokyo', 'Proxy'],
+            'rule': 'DOMAIN',
+            'rulePayload': 'a.example.test',
+            'download': 1024,
+            'upload': 128,
+          },
+        ],
+      };
+      final c = await setup(tester, backend);
+      c.navigate(3);
+      await tester.pumpAndSettle();
+      expect(find.text('Total 5.0 MB'), findsOneWidget);
+      expect(find.text('Total 1.0 MB'), findsOneWidget);
+      expect(find.text('browser.exe'), findsOneWidget);
+      expect(find.text('Proxy → Tokyo'), findsOneWidget);
+      await tester.tap(find.byTooltip('Pause list updates'));
+      await tester.pumpAndSettle();
+      backend.connectionData = {
+        ...backend.connectionData,
+        'connections': [
+          ...(backend.connectionData['connections'] as List),
+          {
+            'id': 'b',
+            'metadata': {
+              'host': 'b.example.test',
+              'destinationPort': 443,
+              'network': 'udp',
+              'process': 'other.exe',
+            },
+            'download': 4096,
+          },
+        ],
+      };
+      await c.loadRuntime();
+      backend.changes.add({
+        'event': 'traffic',
+        'data': {'down': 131072, 'up': 65536},
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('128.0 KB/s'), findsOneWidget);
+      expect(find.text('64.0 KB/s'), findsOneWidget);
+      expect(find.byKey(const ValueKey('b')), findsNothing);
+      expect(find.text('List paused · traffic stays live'), findsOneWidget);
+      await tester.tap(find.byTooltip('Resume list updates'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('b')), findsOneWidget);
+      await tester.tap(find.widgetWithText(ChoiceChip, 'UDP'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('a')), findsNothing);
+      await tester.tap(find.text('Close displayed'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Confirm'));
+      await tester.pumpAndSettle();
+      expect(backend.closedConnections, ['b']);
+      expect(find.text('Total 5.0 MB'), findsOneWidget);
+      await tester.tap(find.text('All protocols'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Connection details'));
+      await tester.pumpAndSettle();
+      expect(find.text(r'C:\Apps\browser.exe'), findsOneWidget);
+      expect(find.text('DOMAIN a.example.test'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      c.navigate(0);
+      await tester.pumpAndSettle();
+      expect(find.text('Total download 5.0 MB'), findsOneWidget);
+      expect(find.text('Total upload 1.0 MB'), findsOneWidget);
+    },
+  );
+
+  testWidgets('connection stats fit a compact window with enlarged text', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..running = true;
+    backend.connectionData = {
+      'downloadTotal': 2147483648,
+      'uploadTotal': 1048576,
+      'connections': [
+        {
+          'id': 'scaled',
+          'metadata': {
+            'host': 'long.example.test',
+            'destinationPort': 443,
+            'network': 'tcp',
+            'process': 'browser.exe',
+          },
+          'download': 1024,
+          'upload': 128,
+        },
+      ],
+    };
+    final c = await setup(tester, backend, size: const Size(760, 580));
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    c.navigate(3);
+    await tester.pumpAndSettle();
+    expect(find.text('Total 2.0 GB'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -350));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'long.example.test');
+    await tester.pumpAndSettle();
+    expect(find.byType(ConnectionRow), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  test('connection metadata formats IPv6 and finds executable names', () {
+    final entry = ConnectionEntry({
+      'id': 'ipv6',
+      'metadata': {
+        'destinationIP': '2001:db8::1',
+        'destinationPort': 443,
+        'processPath': r'C:\Program Files\Browser\browser.exe',
+        'network': 'tcp',
+      },
+      'chains': ['Tokyo', 'Proxy'],
+    });
+    expect(entry.destination, '[2001:db8::1]:443');
+    expect(entry.application, 'browser.exe');
+    expect(entry.route, 'Proxy → Tokyo');
+    expect(entry.searchable, contains('program files'));
   });
 }

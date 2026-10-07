@@ -11,7 +11,9 @@ import 'dialogs.dart';
 import 'application_rules.dart';
 import 'network_settings.dart';
 import 'proxy_browser.dart';
+import 'desktop_components.dart';
 export 'dialogs.dart' show showImportDialog;
+export 'connections_page.dart' show ConnectionsPage;
 
 class PageBody extends StatelessWidget {
   const PageBody({super.key, required this.children});
@@ -285,6 +287,9 @@ class OverviewPage extends StatelessWidget {
                 Icons.arrow_downward,
                 c.tr('下載速度', 'Download'),
                 c.running ? '${bytes(c.download)}/s' : '—',
+                caption: c.running && c.connections['downloadTotal'] is num
+                    ? '${c.tr('累計下載', 'Total download')} ${bytes(c.connections['downloadTotal'] as num)}'
+                    : null,
               ),
             ),
             const SizedBox(width: 16),
@@ -294,6 +299,9 @@ class OverviewPage extends StatelessWidget {
                 Icons.arrow_upward,
                 c.tr('上傳速度', 'Upload'),
                 c.running ? '${bytes(c.upload)}/s' : '—',
+                caption: c.running && c.connections['uploadTotal'] is num
+                    ? '${c.tr('累計上傳', 'Total upload')} ${bytes(c.connections['uploadTotal'] as num)}'
+                    : null,
               ),
             ),
             const SizedBox(width: 16),
@@ -305,6 +313,12 @@ class OverviewPage extends StatelessWidget {
                 c.running
                     ? '${(c.connections['connections'] as List? ?? []).length}'
                     : '—',
+                caption:
+                    c.running &&
+                        (c.connections['downloadTotal'] is num ||
+                            c.connections['uploadTotal'] is num)
+                    ? c.tr('流量明細見連線頁', 'Details in Connections')
+                    : null,
               ),
             ),
           ],
@@ -432,8 +446,9 @@ class OverviewPage extends StatelessWidget {
     BuildContext context,
     IconData icon,
     String label,
-    String value,
-  ) => Panel(
+    String value, {
+    String? caption,
+  }) => Panel(
     padding: 18,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,6 +477,21 @@ class OverviewPage extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
+        if (caption != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Tooltip(
+              message: c.tr('累計以本次核心啟動為準', 'Totals cover this core session'),
+              child: Text(
+                caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
       ],
     ),
   );
@@ -680,12 +710,7 @@ class _NodesPageState extends State<NodesPage> {
         ProxySection(
           id: entry.key,
           title: entry.key,
-          detail:
-              '${info['type']} · ${c.tr('目前', 'Current')}: ${_chain(entry.key, all)}${automatic
-                  ? c.tr(' · 可指定節點或恢復自動', ' · Pin a node or restore automatic selection')
-                  : selectable
-                  ? ''
-                  : c.tr(' · 自動分配', ' · Automatic routing')}',
+          current: _chain(entry.key, all),
           onTest: c.running && !measuring ? () => _measure(tests) : null,
           onReset: automatic && !c.busy ? () => c.resetNode(entry.key) : null,
           choices: [
@@ -728,29 +753,12 @@ class _NodesPageState extends State<NodesPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 250,
-                child: TextField(
-                  controller: search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: c.tr('搜尋所有群組與節點', 'Search groups and nodes'),
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: c.tr('清除搜尋', 'Clear search'),
-                            onPressed: () => setState(search.clear),
-                            icon: const Icon(Icons.close),
-                          ),
-                  ),
-                ),
-              ),
+          DesktopToolbar(
+            c: c,
+            search: search,
+            hint: c.tr('搜尋群組或節點', 'Search groups or nodes'),
+            onChanged: (_) => setState(() {}),
+            actions: [
               ProxyBrowserControls(
                 c: c,
                 sort: sort,
@@ -758,7 +766,17 @@ class _NodesPageState extends State<NodesPage> {
                 onSort: (v) => setState(() => sort = v),
                 onLayout: (v) => setState(() => list = v),
               ),
-              OutlinedButton.icon(
+              FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  minimumSize: const Size(0, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
                 onPressed: !c.running
                     ? null
                     : measuring
@@ -804,7 +822,7 @@ class _NodesPageState extends State<NodesPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 c.tr(
-                  '可先選節點，再到首頁連線；遠端訂閱與測速會在連線後載入。',
+                  '先選節點，再到首頁連線。連線後可測速與載入遠端訂閱。',
                   'Choose nodes before connecting. Remote providers and latency tests load when connected.',
                 ),
               ),
@@ -1019,154 +1037,6 @@ String subscriptionUsage(String raw, AppController c) {
         ' · ${c.tr('到期', 'Expires')} ${DateTime.fromMillisecondsSinceEpoch(expire.toInt() * 1000).toLocal().toString().split(' ').first}';
   }
   return text;
-}
-
-class ConnectionsPage extends StatefulWidget {
-  const ConnectionsPage({super.key, required this.c});
-  final AppController c;
-  @override
-  State<ConnectionsPage> createState() => _ConnectionsPageState();
-}
-
-class _ConnectionsPageState extends State<ConnectionsPage> {
-  String search = '';
-  AppController get c => widget.c;
-  @override
-  Widget build(BuildContext context) {
-    if (!c.running) {
-      return EmptyMessage(
-        icon: Icons.swap_calls,
-        title: c.tr('連線後查看活動連線', 'View activity after connecting'),
-        detail: c.tr(
-          '這裡會顯示應用程式、目的地與命中的規則。',
-          'See applications, destinations, and matched rules here.',
-        ),
-      );
-    }
-    final entries = (c.connections['connections'] as List? ?? [])
-        .cast<Json>()
-        .where((e) => e.toString().toLowerCase().contains(search.toLowerCase()))
-        .toList();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: c.tr(
-                      '搜尋應用程式、網域或 IP',
-                      'Search application, domain, or IP',
-                    ),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
-                  onChanged: (v) => setState(() => search = v),
-                ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton(
-                onPressed: c.busy || entries.isEmpty
-                    ? null
-                    : () async {
-                        if (await confirm(
-                          context,
-                          c,
-                          c.tr(
-                            '中止目前顯示的連線？',
-                            'Close the displayed connections?',
-                          ),
-                        )) {
-                          await c.perform(() async {
-                            for (var i = 0; i < entries.length; i += 8) {
-                              await Future.wait(
-                                entries
-                                    .skip(i)
-                                    .take(8)
-                                    .map(
-                                      (e) => c.api(
-                                        'DELETE',
-                                        '/connections/${Uri.encodeComponent(e['id'] as String)}',
-                                      ),
-                                    ),
-                              );
-                            }
-                          });
-                        }
-                      },
-                child: Text(c.tr('中止顯示連線', 'Close displayed')),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: entries.isEmpty
-              ? EmptyMessage(
-                  icon: Icons.check_circle_outline,
-                  title: c.tr('目前沒有活動連線', 'No active connections'),
-                  detail: c.tr(
-                    '使用瀏覽器或其他應用程式後，連線會出現在這裡。',
-                    'Connections appear when you use your applications.',
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-                  itemCount: entries.length,
-                  itemBuilder: (context, i) {
-                    final e = entries[i];
-                    final metadata = e['metadata'] as Json? ?? {};
-                    final host = (metadata['host'] as String? ?? '').isNotEmpty
-                        ? metadata['host']
-                        : metadata['destinationIP'];
-                    final process =
-                        metadata['process'] ??
-                        metadata['processPath'] ??
-                        metadata['network'] ??
-                        '';
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ExpansionTile(
-                        leading: const Icon(Icons.language),
-                        title: Text(
-                          '$host:${metadata['destinationPort'] ?? ''}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          '$process · ${(e['chains'] as List? ?? []).join(' → ')}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: IconButton(
-                          tooltip: c.tr('中止連線', 'Close connection'),
-                          onPressed: c.busy
-                              ? null
-                              : () => c.perform(() async {
-                                  await c.api(
-                                    'DELETE',
-                                    '/connections/${Uri.encodeComponent(e['id'] as String)}',
-                                  );
-                                }),
-                          icon: const Icon(Icons.close),
-                        ),
-                        children: [
-                          ListTile(
-                            title: Text(
-                              '${c.tr('規則', 'Rule')}: ${e['rule'] ?? ''} ${e['rulePayload'] ?? ''}',
-                            ),
-                            subtitle: Text(
-                              '↓ ${bytes(e['download'] as num? ?? 0)}   ↑ ${bytes(e['upload'] as num? ?? 0)}',
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
 }
 
 class LogsPage extends StatefulWidget {
