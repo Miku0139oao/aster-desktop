@@ -56,13 +56,14 @@ func (a *App) Schedule(ctx context.Context) {
 			return
 		case <-ticker.C:
 			a.mu.Lock()
-			hours := a.Store.State.Settings.SubscriptionHours
 			ids := []string{}
-			if hours > 0 {
-				for _, p := range a.Store.State.Profiles {
-					if p.URL != "" && time.Since(p.Updated) >= time.Duration(hours)*time.Hour {
-						ids = append(ids, p.ID)
-					}
+			for _, p := range a.Store.State.Profiles {
+				hours := a.Store.State.Settings.SubscriptionHours
+				if p.IntervalHours != nil {
+					hours = *p.IntervalHours
+				}
+				if hours > 0 && p.URL != "" && time.Since(p.Updated) >= time.Duration(hours)*time.Hour && time.Since(p.LastAttempt) >= 5*time.Minute {
+					ids = append(ids, p.ID)
 				}
 			}
 			a.mu.Unlock()

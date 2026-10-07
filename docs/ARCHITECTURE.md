@@ -16,6 +16,11 @@ Bridge stdin/stdout uses NDJSON `{id,method,params}` → `{id,result}` or `{id,e
 | controller, logs | Restricted controller operations and bounded logs |
 | installService, uninstallService | OS-authorized helper lifecycle |
 | checkUpdates, updateCore | Official releases and verified replacement |
+| preferences, profileMetadata, duplicateProfile | Persistent UI choices and per-profile subscription schedules |
+| previewRefresh, applyRefresh | Validated, expiring subscription previews with profile-stamp checks |
+| manageObject, manageRules, batchApplicationRules | Validated workspace edits with backup and transactional rollback |
+| trafficHistory, clearTrafficHistory, recordExternalTraffic | Bounded local daily totals and sampled application / route breakdown |
+| diagnose | Fixed read-only DNS / route / proxy checks; no network settings changes |
 | rememberSelection | Persist offline choices and native macOS XPC selections |
 
 ## Privilege boundaries
@@ -40,7 +45,7 @@ Proxy adapters snapshot original and installed values before modification, resto
 
 Core update: official release → trusted asset URL → SHA-256 → bounded in-memory decompression → architecture check → temporary API probe → active-profile validation → stop old/start new → persist selected executable. Old binaries are retained; failure restores the old selection. User/core service updates have independent rollback, so partial failure can leave them on different valid versions and is reported. Fully atomic upgrades spanning both managers are not implemented.
 
-macOS scheduled subscriptions run in Flutter so changes pass through XPC. Windows/Linux schedule in Go. Normal traffic uses WebSocket; TUN speed is derived from controller totals every two seconds. Lists render lazily and delay tests run at most four at a time.
+macOS scheduled subscriptions run in Flutter so changes pass through XPC. Windows/Linux schedule in Go. Normal traffic uses WebSocket; TUN speed is derived from controller totals every two seconds. Lists render lazily and delay tests use a user-selected bound of 1, 2, 4 or 8. Desktop object/settings overlays, rule order and disabled rules survive subscription refresh; explicit YAML edits reconcile existing overlays. Local daily totals are retained for 365 days with atomic writes, session-aware counter deltas and sampled connection classifications. macOS XPC totals are recorded by the low-privilege broker; metric failures never discard ownership of a running privileged session.
 
 Offline choices are saved before the first connection and replayed after core startup. Global mode selects the profile's chosen group in GLOBAL, so changing mode retains the user's node. Startup requires both the Controller and mixed proxy listener to be ready; TCP and UDP port conflicts fail before spawning the core.
 

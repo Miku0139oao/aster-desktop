@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -70,6 +71,12 @@ class AppController extends ChangeNotifier {
   List<Profile> profiles = [];
   String activeId = '';
   Json service = {}, proxies = {}, connections = {};
+  Json preferences = {}, trafficHistory = {};
+  Future<void> _preferencesWrite = Future.value();
+  int _preferencesPending = 0;
+  final connectionRates = <String, (double, double)>{};
+  final _connectionCounters = <String, (num, num)>{};
+  DateTime? _connectionsAt;
   Map<String, String> selections = {};
   List<String> logs = [];
   List<Json> rules = [];
@@ -77,6 +84,7 @@ class AppController extends ChangeNotifier {
   String? error;
   String updateProgress = '';
   String coreVersion = '';
+  final nodeErrors = <(String?, String), String>{};
   String desktopVersion = '';
   String? _parsedContent;
   YamlMap? _parsedProfile;
@@ -204,6 +212,11 @@ class AppController extends ChangeNotifier {
     final result = await backend.call('state') as Json;
     if (epoch != _operationEpoch) return;
     final state = result['state'] as Json;
+    if (_preferencesPending == 0) {
+      preferences = Map<String, dynamic>.from(
+        state['preferences'] as Map? ?? {},
+      );
+    }
     settings = AppSettings.fromJson(state['settings'] as Json);
     profiles = (state['profiles'] as List? ?? [])
         .map((p) => Profile(p as Json))
@@ -221,7 +234,15 @@ class AppController extends ChangeNotifier {
         previousRunning != running) {
       _latencyEpoch++;
       _nodeDelays.clear();
+      nodeErrors.clear();
       _testingNodes.clear();
+    }
+    if (previousRunning != running) {
+      _metricsAt = null;
+      _previousUp = _previousDown = 0;
+      _connectionsAt = null;
+      _connectionCounters.clear();
+      connectionRates.clear();
     }
     if (core['error'] != null) error = core['error'] as String;
     notifyListeners();
@@ -263,12 +284,69 @@ class AppController extends ChangeNotifier {
     await backend.call('settings', settings.copy(changes).toJson());
     if (running && changes['mode'] == 'global') await _selectGlobalTarget();
   });
+  String nodeIdentity(String name, String? provider) =>
+      jsonEncode([provider, name]);
+  List<String> get favorites =>
+      (preferences['favorites:$activeId'] as List? ?? []).cast<String>();
+  bool isFavorite(String name, {String? provider}) =>
+      favorites.contains(nodeIdentity(name, provider));
+  Future<void> toggleFavorite(String name, {String? provider}) =>
+      savePreferences({
+        'favorites:$activeId': isFavorite(name, provider: provider)
+            ? favorites
+                  .where((id) => id != nodeIdentity(name, provider))
+                  .toList()
+            : [...favorites, nodeIdentity(name, provider)],
+      });
+  Future<void> savePreferences(Json changes) {
+    preferences = {...preferences, ...changes};
+    final snapshot = {...preferences};
+    _preferencesPending++;
+    notifyListeners();
+    _preferencesWrite = _preferencesWrite.then((_) async {
+      try {
+        await backend.call('preferences', {'preferences': snapshot});
+      } catch (e) {
+        if (!_disposed) reportError(e.toString());
+      } finally {
+        _preferencesPending--;
+      }
+    });
+    return _preferencesWrite;
+  }
+
+  void acceptConnections(Json value) {
+    final now = DateTime.now();
+    final seconds = _connectionsAt == null
+        ? 0.0
+        : now.difference(_connectionsAt!).inMilliseconds / 1000;
+    final seen = <String>{};
+    for (final row in value['connections'] as List? ?? []) {
+      final id = row['id'] as String;
+      seen.add(id);
+      final up = row['upload'] as num? ?? 0,
+          down = row['download'] as num? ?? 0;
+      final previous = _connectionCounters[id];
+      connectionRates[id] = previous == null || seconds <= 0
+          ? (0, 0)
+          : (
+              ((up - previous.$1) / seconds).clamp(0, double.infinity),
+              ((down - previous.$2) / seconds).clamp(0, double.infinity),
+            );
+      _connectionCounters[id] = (up, down);
+    }
+    _connectionCounters.removeWhere((id, _) => !seen.contains(id));
+    connectionRates.removeWhere((id, _) => !seen.contains(id));
+    _connectionsAt = now;
+    connections = value;
+  }
+
   Future<void> loadRuntime() async {
     final result = await api('GET', '/proxies') as Json;
     proxies = result['proxies'] as Json? ?? {};
     final version = await api('GET', '/version') as Json;
     coreVersion = version['version'] as String? ?? '';
-    if (page == 3) connections = await api('GET', '/connections') as Json;
+    if (page == 3) acceptConnections(await api('GET', '/connections') as Json);
     if (page == 5) {
       final r = await api('GET', '/rules') as Json;
       rules = (r['rules'] as List? ?? []).cast<Json>();
@@ -295,6 +373,13 @@ class AppController extends ChangeNotifier {
         });
       }
     }
+    final key = 'recent:$activeId';
+    await savePreferences({
+      key: [
+        node,
+        ...(preferences[key] as List? ?? []).where((n) => n != node),
+      ].take(20).toList(),
+    });
   });
   Future<bool> resetNode(String group) => perform(() async {
     if (running) await api('DELETE', '/proxies/${Uri.encodeComponent(group)}');
@@ -312,13 +397,15 @@ class AppController extends ChangeNotifier {
           : '/providers/proxies/${Uri.encodeComponent(provider)}/${Uri.encodeComponent(name)}/healthcheck';
       final result = await api(
         'GET',
-        '$path?timeout=5000&url=${Uri.encodeComponent('https://www.gstatic.com/generate_204')}',
+        '$path?timeout=${preferences['testTimeout'] ?? 5000}&url=${Uri.encodeComponent(preferences['testUrl'] as String? ?? 'https://www.gstatic.com/generate_204')}',
       ) as Json;
       final delay = (result['delay'] as num?)?.toInt() ?? 0;
       if (!_disposed && epoch == _latencyEpoch) _nodeDelays[key] = delay;
+      nodeErrors.remove(key);
       return delay;
-    } catch (_) {
+    } catch (e) {
       if (!_disposed && epoch == _latencyEpoch) _nodeDelays[key] = 0;
+      if (!_disposed && epoch == _latencyEpoch) nodeErrors[key] = e.toString();
       return null;
     } finally {
       if (!_disposed && epoch == _latencyEpoch) {
@@ -346,8 +433,12 @@ class AppController extends ChangeNotifier {
       }
       if (running) {
         if (page == 1) await loadRuntime();
-        if (page == 3 || settings.tun) {
-          connections = await api('GET', '/connections') as Json;
+        if (settings.tun ||
+            (page == 3 &&
+                (_connectionsAt == null ||
+                    DateTime.now().difference(_connectionsAt!) >
+                        const Duration(seconds: 3)))) {
+          acceptConnections(await api('GET', '/connections') as Json);
           if (settings.tun) {
             final now = DateTime.now();
             final up = connections['uploadTotal'] as num? ?? 0;
@@ -368,16 +459,24 @@ class AppController extends ChangeNotifier {
           }
         }
       }
+      if (page == 7) {
+        trafficHistory = await backend.call('trafficHistory', {
+          'days': preferences['statisticsRange'] ?? 7,
+        }) as Json;
+      }
       if (page == 4 && !busy && epoch == _operationEpoch) {
         logs = (await backend.call('logs') as List? ?? []).cast<String>();
       }
       // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
-      if (Platform.isMacOS && settings.subscriptionHours > 0) {
+      if (Platform.isMacOS) {
         final now = DateTime.now();
         for (final profile in profiles.where((p) => p.url.isNotEmpty)) {
+          final hours =
+              profile.json['intervalHours'] as int? ??
+              settings.subscriptionHours;
           if (profile.updated != null &&
-              now.difference(profile.updated!).inHours >=
-                  settings.subscriptionHours &&
+              hours > 0 &&
+              now.difference(profile.updated!).inHours >= hours &&
               now
                       .difference(
                         _refreshAttempts[profile.id] ?? DateTime(2000),
@@ -407,7 +506,7 @@ class AppController extends ChangeNotifier {
         upload = (value['up'] as num? ?? 0).toDouble();
         download = (value['down'] as num? ?? 0).toDouble();
       case 'connections':
-        connections = event['data'] as Json;
+        acceptConnections(event['data'] as Json);
       case 'profilesChanged':
         unawaited(refresh());
       case 'updateProgress':
@@ -433,6 +532,23 @@ class AppController extends ChangeNotifier {
           error = e.toString();
           notifyListeners();
         }),
+      );
+    }
+    if (page == 7) {
+      unawaited(
+        backend
+            .call('trafficHistory', {
+              'days': preferences['statisticsRange'] ?? 7,
+            })
+            .then((value) {
+              if (!_disposed) {
+                trafficHistory = value as Json;
+                notifyListeners();
+              }
+            })
+            .catchError((Object e) {
+              if (!_disposed) reportError(e.toString());
+            }),
       );
     }
   }

@@ -48,7 +48,7 @@ try {
   Copy-Item -LiteralPath (Join-Path $asterRoot 'docs') -Destination $asterRelease -Recurse -Force
   Copy-Item -LiteralPath (Join-Path $asterRoot 'assets\OFL-NotoSansTC.txt') -Destination $asterRelease
   New-Item -ItemType Directory -Path (Join-Path $asterRoot 'dist') -Force | Out-Null
-  Compress-Archive -Path "$asterRelease\*" -DestinationPath (Join-Path $asterRoot 'dist\Aster-Desktop-0.1.7-windows-x64-portable.zip') -Force
+  Compress-Archive -Path "$asterRelease\*" -DestinationPath (Join-Path $asterRoot 'dist\Aster-Desktop-0.2.0-windows-x64-portable.zip') -Force
   if($Installer){& (Join-Path $PSScriptRoot 'package-windows.ps1') -ReleasePath $asterRelease}
   & (Join-Path $PSScriptRoot 'package-source.ps1') -CoreSource $asterDependency.Dir
   & (Join-Path $PSScriptRoot 'checksums.ps1')

@@ -27,7 +27,7 @@ type ApplicationRoute struct {
 }
 
 func providerRoute(doc map[string]any, route ApplicationRoute) (ProviderRoute, string, error) {
-	if route.Kind != "PROCESS-PATH" && route.Kind != "PROCESS-NAME" {
+	if route.Kind != "PROCESS-PATH" && route.Kind != "PROCESS-NAME" && route.Kind != "DOMAIN" && route.Kind != "DOMAIN-SUFFIX" && route.Kind != "IP-CIDR" && route.Kind != "IP-CIDR6" {
 		return ProviderRoute{}, "", errors.New("unsupported application rule kind")
 	}
 	if route.Match == "" || route.Provider == "" || route.Node == "" || strings.ContainsAny(route.Match, ",\r\n") || strings.ContainsAny(route.Node, "\r\n") {

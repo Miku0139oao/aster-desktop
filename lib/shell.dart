@@ -7,6 +7,10 @@ import 'package:window_manager/window_manager.dart';
 
 import 'controller.dart';
 import 'pages.dart';
+import 'application_rules.dart';
+import 'brand.dart';
+import 'workspace.dart';
+import 'rules_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -119,12 +123,16 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
     final cs = Theme.of(context).colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 940;
     final destinations = [
-      (Icons.space_dashboard_outlined, c.tr('首頁', 'Overview')),
-      (Icons.hub_outlined, c.tr('節點', 'Nodes')),
-      (Icons.folder_copy_outlined, c.tr('訂閱與設定', 'Profiles')),
-      (Icons.swap_calls, c.tr('連線', 'Connections')),
-      (Icons.receipt_long_outlined, c.tr('日誌', 'Logs')),
-      (Icons.tune, c.tr('進階設定', 'Advanced')),
+      (0, Icons.space_dashboard_outlined, c.tr('首頁', 'Overview')),
+      (1, Icons.hub_outlined, c.tr('節點', 'Nodes')),
+      (6, Icons.apps_outlined, c.tr('應用程式', 'Applications')),
+      (3, Icons.swap_calls, c.tr('連線', 'Connections')),
+      (7, Icons.bar_chart_outlined, c.tr('統計', 'Statistics')),
+      (2, Icons.folder_copy_outlined, c.tr('訂閱與設定', 'Profiles')),
+      (9, Icons.alt_route, c.tr('規則', 'Rules')),
+      (8, Icons.troubleshoot, c.tr('診斷', 'Diagnostics')),
+      (4, Icons.receipt_long_outlined, c.tr('日誌', 'Logs')),
+      (5, Icons.tune, c.tr('進階設定', 'Advanced')),
     ];
     return Scaffold(
       body: SafeArea(
@@ -144,18 +152,7 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: cs.primaryContainer,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            Icons.auto_awesome,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
+                        const AsterMark(),
                         if (!compact) ...[
                           const SizedBox(width: 12),
                           const Expanded(
@@ -194,15 +191,15 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                               vertical: 4,
                             ),
                             child: Tooltip(
-                              message: destinations[i].$2,
+                              message: destinations[i].$3,
                               child: Material(
-                                color: c.page == i
+                                color: c.page == destinations[i].$1
                                     ? cs.secondaryContainer
                                     : Colors.transparent,
                                 borderRadius: BorderRadius.circular(18),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(18),
-                                  onTap: () => c.navigate(i),
+                                  onTap: () => c.navigate(destinations[i].$1),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 18,
@@ -214,8 +211,8 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                                           : MainAxisAlignment.start,
                                       children: [
                                         Icon(
-                                          destinations[i].$1,
-                                          color: c.page == i
+                                          destinations[i].$2,
+                                          color: c.page == destinations[i].$1
                                               ? cs.onSecondaryContainer
                                               : cs.onSurfaceVariant,
                                         ),
@@ -223,9 +220,10 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                                           const SizedBox(width: 14),
                                           Expanded(
                                             child: Text(
-                                              destinations[i].$2,
+                                              destinations[i].$3,
                                               style: TextStyle(
-                                                fontWeight: c.page == i
+                                                fontWeight:
+                                                    c.page == destinations[i].$1
                                                     ? FontWeight.w700
                                                     : FontWeight.w500,
                                               ),
@@ -298,7 +296,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                destinations[c.page].$2,
+                                destinations
+                                    .firstWhere((d) => d.$1 == c.page)
+                                    .$3,
                                 style: Theme.of(context)
                                     .textTheme
                                     .headlineMedium
@@ -356,6 +356,10 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                             2 => ProfilesPage(c: c),
                             3 => ConnectionsPage(c: c),
                             4 => LogsPage(c: c),
+                            6 => ApplicationsPage(c: c),
+                            7 => StatisticsPage(c: c),
+                            8 => DiagnosticsPage(c: c),
+                            9 => RulesPage(c: c),
                             _ => AdvancedPage(c: c),
                           },
                   ),

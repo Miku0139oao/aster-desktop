@@ -13,6 +13,10 @@ on:
         description: Run native macOS GUI validation after packaging
         default: true
         type: boolean
+      refresh_visual_baselines:
+        description: Regenerate platform baselines after an intentional visual change (review uploaded renders)
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -38,7 +42,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev libsecret-1-dev dpkg-dev zstd xvfb
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze
-      - run: flutter test
+      - name: Widget and visual tests
+        run: flutter test ${{ inputs.refresh_visual_baselines && '--update-goldens' || '' }}
+      - name: Preserve rendered platform baselines
+        if: inputs.refresh_visual_baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines-${{ matrix.os }}
+          path: evidence/**/*.png
       - name: Preserve failed visual comparisons
         if: failure()
         uses: actions/upload-artifact@v4
@@ -66,7 +77,7 @@ jobs:
       - name: Windows installer extraction and rollback (PowerShell 5.1)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1 -PayloadPath "$pwd/packaging/windows/setup/payload.zip"
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1 -PayloadPath "$pwd/bridge/.build/setup/payload.zip"
       - name: Real core lifecycle and rollback tests (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

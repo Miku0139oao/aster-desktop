@@ -1,13 +1,32 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'backend.dart';
 import 'controller.dart';
 import 'desktop_components.dart';
 import 'dialogs.dart' show confirm;
+import 'rules_page.dart';
 
 enum ConnectionSort { recent, download, upload, application, destination }
+
+const connectionColumns = [
+  'destination',
+  'application',
+  'route',
+  'traffic',
+  'speed',
+  'duration',
+];
+String connectionColumnLabel(AppController c, String id) => switch (id) {
+  'destination' => c.tr('目的地', 'Destination'),
+  'application' => c.tr('應用程式', 'Application'),
+  'route' => c.tr('出口／規則', 'Route / rule'),
+  'traffic' => c.tr('累計流量', 'Transferred'),
+  'speed' => c.tr('即時速度', 'Speed'),
+  _ => c.tr('持續時間', 'Duration'),
+};
 
 class ConnectionEntry {
   ConnectionEntry(this.data) {
@@ -61,6 +80,75 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   final search = TextEditingController();
   ConnectionSort sort = ConnectionSort.recent;
   String protocol = 'all';
+  String groupBy = '';
+  List<String> get columns =>
+      (c.preferences['connectionColumns'] as List? ??
+              connectionColumns.take(4).toList())
+          .cast<String>()
+          .where(connectionColumns.contains)
+          .toList();
+  Map get weights => c.preferences['connectionWidths'] as Map? ?? {};
+  int weight(String id) =>
+      (weights[id] as num? ??
+              (['destination', 'route'].contains(id) ? 240 : 160))
+          .toInt()
+          .clamp(64, 1000);
+
+  Future<void> editColumns() async {
+    final order = [
+      ...columns,
+      ...connectionColumns.where((id) => !columns.contains(id)),
+    ];
+    final selected = columns.toSet();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text(c.tr('連線欄位', 'Connection columns')),
+          content: SizedBox(
+            width: 420,
+            height: 350,
+            child: ReorderableListView(
+              onReorderItem: (oldIndex, newIndex) => update(() {
+                final item = order.removeAt(oldIndex);
+                order.insert(newIndex, item);
+              }),
+              children: [
+                for (final id in order)
+                  CheckboxListTile(
+                    key: ValueKey(id),
+                    title: Text(connectionColumnLabel(c, id)),
+                    value: selected.contains(id),
+                    onChanged: (v) => update(
+                      () => v == true ? selected.add(id) : selected.remove(id),
+                    ),
+                    secondary: const Icon(Icons.drag_handle),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(c.tr('取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, true),
+              child: Text(c.tr('儲存', 'Save')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (save == true) {
+      await c.savePreferences({
+        'connectionColumns': order.where(selected.contains).toList(),
+      });
+    }
+  }
+
   List<ConnectionEntry>? paused;
   List? source;
   List<ConnectionEntry> live = [];
@@ -230,6 +318,23 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         ),
       ),
       actions: [
+        TextButton.icon(
+          onPressed: c.busy
+              ? null
+              : () {
+                  Navigator.pop(context);
+                  showRuleEditor(
+                    this.context,
+                    c,
+                    path: entry.path,
+                    application: entry.application,
+                    host: entry.metadata['host'] as String?,
+                    ip: entry.metadata['destinationIP'] as String?,
+                  );
+                },
+          icon: const Icon(Icons.alt_route),
+          label: Text(c.tr('建立分流規則', 'Create routing rule')),
+        ),
         TextButton(
           onPressed: c.busy
               ? null
@@ -325,6 +430,14 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                         ),
                         onChanged: (_) => setState(() {}),
                         actions: [
+                          IconButton(
+                            tooltip: c.tr(
+                              '欄位顯示與順序',
+                              'Column visibility and order',
+                            ),
+                            onPressed: editColumns,
+                            icon: const Icon(Icons.view_column_outlined),
+                          ),
                           PopupMenuButton<ConnectionSort>(
                             tooltip: c.tr('排序', 'Sort'),
                             initialValue: sort,
@@ -395,6 +508,33 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                                 onSelected: (_) =>
                                     setState(() => protocol = value),
                               ),
+                            PopupMenuButton<String>(
+                              tooltip: c.tr('彙整方式', 'Group activity'),
+                              onSelected: (v) => setState(() => groupBy = v),
+                              itemBuilder: (_) => [
+                                for (final entry in {
+                                  '': c.tr('逐條連線', 'Individual connections'),
+                                  'application': c.tr(
+                                    '依應用程式彙整',
+                                    'Group by application',
+                                  ),
+                                  'route': c.tr('依出口彙整', 'Group by route'),
+                                }.entries)
+                                  PopupMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ),
+                              ],
+                              child: Chip(
+                                label: Text(
+                                  groupBy == ''
+                                      ? c.tr('逐條連線', 'Individual connections')
+                                      : groupBy == 'application'
+                                      ? c.tr('依應用程式彙整', 'By application')
+                                      : c.tr('依出口彙整', 'By route'),
+                                ),
+                              ),
+                            ),
                             if (paused != null)
                               Text(
                                 c.tr(
@@ -407,7 +547,10 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                           ],
                         ),
                       ),
-                      if (wide && c.running && entries.isNotEmpty)
+                      if (wide &&
+                          c.running &&
+                          entries.isNotEmpty &&
+                          groupBy.isEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,
@@ -421,22 +564,18 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                           ),
                           child: Row(
                             children: [
-                              _header(
-                                c.tr('目的地', 'Destination'),
-                                ConnectionSort.destination,
-                                3,
-                              ),
-                              _header(
-                                c.tr('應用程式', 'Application'),
-                                ConnectionSort.application,
-                                2,
-                              ),
-                              _header(c.tr('出口／規則', 'Route / rule'), null, 3),
-                              _header(
-                                c.tr('累計流量', 'Transferred'),
-                                ConnectionSort.download,
-                                2,
-                              ),
+                              for (final id in columns)
+                                _header(
+                                  connectionColumnLabel(c, id),
+                                  switch (id) {
+                                    'destination' => ConnectionSort.destination,
+                                    'application' => ConnectionSort.application,
+                                    'traffic' => ConnectionSort.download,
+                                    _ => null,
+                                  },
+                                  weight(id),
+                                  id,
+                                ),
                               const SizedBox(width: 96),
                             ],
                           ),
@@ -485,6 +624,33 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                     ),
                   ),
                 )
+              else if (groupBy.isNotEmpty)
+                SliverList.list(
+                  children: [
+                    for (final entry in _groups(entries).entries)
+                      ListTile(
+                        title: Text(
+                          entry.key.isEmpty ? c.tr('未知', 'Unknown') : entry.key,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '${entry.value.length} ${c.tr('條活動連線', 'active connections')} · ↓ ${bytes(entry.value.fold<num>(0, (sum, e) => sum + e.download))} ↑ ${bytes(entry.value.fold<num>(0, (sum, e) => sum + e.upload))}',
+                        ),
+                        onTap: () => setState(() {
+                          search.text = entry.key;
+                          groupBy = '';
+                        }),
+                        trailing: IconButton(
+                          tooltip: c.tr('中止此組連線', 'Close this group'),
+                          onPressed: c.busy
+                              ? null
+                              : () => close(entry.value, ask: true),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
+                  ],
+                )
               else
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
@@ -497,6 +663,8 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                         wide: wide,
                         onDetails: () => details(entry),
                         onClose: c.busy ? null : () => close([entry]),
+                        columns: columns,
+                        weights: weights,
                       );
                     },
                     childCount: entries.length,
@@ -512,34 +680,64 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     );
   }
 
-  Widget _header(String title, ConnectionSort? value, int flex) => Expanded(
-    flex: flex,
-    child: InkWell(
-      onTap: value == null ? null : () => setState(() => sort = value),
-      child: Row(
-        children: [
-          Flexible(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.labelMedium,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (value != null && sort == value)
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Icon(
-                value == ConnectionSort.application ||
-                        value == ConnectionSort.destination
-                    ? Icons.arrow_upward
-                    : Icons.arrow_downward,
-                size: 13,
+  Map<String, List<ConnectionEntry>> _groups(List<ConnectionEntry> entries) {
+    final result = <String, List<ConnectionEntry>>{};
+    for (final entry in entries) {
+      (result[groupBy == 'application' ? entry.application : entry.route] ??=
+              [])
+          .add(entry);
+    }
+    return result;
+  }
+
+  Widget _header(String title, ConnectionSort? value, int flex, String id) =>
+      Expanded(
+        flex: flex,
+        child: InkWell(
+          onTap: value == null ? null : () => setState(() => sort = value),
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-        ],
-      ),
-    ),
-  );
+              if (value != null && sort == value)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    value == ConnectionSort.application ||
+                            value == ConnectionSort.destination
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
+                    size: 13,
+                  ),
+                ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: (details) => setState(
+                  () => c.preferences['connectionWidths'] = {
+                    ...weights,
+                    id: (weight(id) + details.delta.dx.round() * 2).clamp(
+                      64,
+                      1000,
+                    ),
+                  },
+                ),
+                onHorizontalDragEnd: (_) => c.savePreferences({
+                  'connectionWidths': {...weights},
+                }),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 5),
+                  child: Icon(Icons.drag_indicator, size: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   @override
   void dispose() {
@@ -557,25 +755,40 @@ class ConnectionRow extends StatelessWidget {
     required this.wide,
     required this.onDetails,
     this.onClose,
+    this.columns = const ['destination', 'application', 'route', 'traffic'],
+    this.weights = const {},
   });
   final AppController c;
   final ConnectionEntry entry;
   final bool wide;
   final VoidCallback onDetails;
   final VoidCallback? onClose;
+  final List<String> columns;
+  final Map weights;
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     Widget text(String value, {bool secondary = false}) => Tooltip(
       message: value,
-      child: Text(
-        value.isEmpty ? '—' : value,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: secondary
-            ? Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: colors.onSurfaceVariant)
-            : Theme.of(context).textTheme.bodyMedium,
+      child: GestureDetector(
+        onSecondaryTap: () {
+          Clipboard.setData(ClipboardData(text: value));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(c.tr('已複製', 'Copied')),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        },
+        child: Text(
+          value.isEmpty ? '—' : value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: secondary
+              ? Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: colors.onSurfaceVariant)
+              : Theme.of(context).textTheme.bodyMedium,
+        ),
       ),
     );
     final traffic = Column(
@@ -585,6 +798,10 @@ class ConnectionRow extends StatelessWidget {
         text('↓ ${bytes(entry.download)}'),
         const SizedBox(height: 4),
         text('↑ ${bytes(entry.upload)}', secondary: true),
+        text(
+          '↓ ${bytes(c.connectionRates[entry.id]?.$2 ?? 0)}/s  ↑ ${bytes(c.connectionRates[entry.id]?.$1 ?? 0)}/s',
+          secondary: true,
+        ),
       ],
     );
     final actions = Row(
@@ -618,40 +835,64 @@ class ConnectionRow extends StatelessWidget {
           child: wide
               ? Row(
                   children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          text(entry.destination),
-                          const SizedBox(height: 4),
-                          text(entry.protocol, secondary: true),
-                        ],
+                    for (final id in columns)
+                      Expanded(
+                        flex:
+                            (weights[id] as num? ??
+                                    (['destination', 'route'].contains(id)
+                                        ? 240
+                                        : 160))
+                                .toInt()
+                                .clamp(64, 1000),
+                        child: switch (id) {
+                          'destination' => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              text(entry.destination),
+                              const SizedBox(height: 4),
+                              text(
+                                '${entry.protocol} · ${entry.started == null ? '—' : '${DateTime.now().difference(entry.started!).inSeconds.clamp(0, 1 << 31)} s'}',
+                                secondary: true,
+                              ),
+                            ],
+                          ),
+                          'application' => text(
+                            entry.application.isEmpty
+                                ? c.tr('未知程式', 'Unknown app')
+                                : entry.application,
+                          ),
+                          'route' => Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                text(entry.route),
+                                const SizedBox(height: 4),
+                                text(entry.rule, secondary: true),
+                              ],
+                            ),
+                          ),
+                          'traffic' => traffic,
+                          'speed' => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              text(
+                                '↓ ${bytes(c.connectionRates[entry.id]?.$2 ?? 0)}/s',
+                              ),
+                              text(
+                                '↑ ${bytes(c.connectionRates[entry.id]?.$1 ?? 0)}/s',
+                                secondary: true,
+                              ),
+                            ],
+                          ),
+                          _ => text(
+                            entry.started == null
+                                ? '—'
+                                : '${DateTime.now().difference(entry.started!).inSeconds.clamp(0, 1 << 31)} s',
+                          ),
+                        },
                       ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: text(
-                        entry.application.isEmpty
-                            ? c.tr('未知程式', 'Unknown app')
-                            : entry.application,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            text(entry.route),
-                            const SizedBox(height: 4),
-                            text(entry.rule, secondary: true),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Expanded(flex: 2, child: traffic),
                     SizedBox(width: 96, child: actions),
                   ],
                 )

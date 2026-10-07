@@ -18,9 +18,15 @@ class ProxyChoice {
     this.onSelect,
     this.onTest,
     this.onOpen,
+    this.favorite = false,
+    this.onFavorite,
+    this.error,
   });
   final String id, name, detail;
   final bool selected, testing;
+  final bool favorite;
+  final String? error;
+  final VoidCallback? onFavorite;
   final int? delay;
   final VoidCallback? onSelect, onTest, onOpen;
 }
@@ -174,6 +180,26 @@ class ProxyBrowser extends StatefulWidget {
 
 class _ProxyBrowserState extends State<ProxyBrowser> {
   final collapsed = <String>{};
+  @override
+  void initState() {
+    super.initState();
+    collapsed.addAll(
+      (widget.c.preferences['collapsed:${widget.c.activeId}'] as List? ?? [])
+          .cast<String>(),
+    );
+  }
+
+  void toggle(ProxySection section) {
+    setState(
+      () => collapsed.contains(section.id)
+          ? collapsed.remove(section.id)
+          : collapsed.add(section.id),
+    );
+    widget.c.savePreferences({
+      'collapsed:${widget.c.activeId}': collapsed.toList(),
+    });
+  }
+
   bool folded(ProxySection section) =>
       !widget.searching && collapsed.contains(section.id);
   @override
@@ -207,11 +233,7 @@ class _ProxyBrowserState extends State<ProxyBrowser> {
                                   ? 'Expand group'
                                   : 'Collapse group',
                             ),
-                            onPressed: () => setState(
-                              () => collapsed.contains(section.id)
-                                  ? collapsed.remove(section.id)
-                                  : collapsed.add(section.id),
-                            ),
+                            onPressed: () => toggle(section),
                             icon: Icon(
                               folded(section)
                                   ? Icons.chevron_right
@@ -221,11 +243,7 @@ class _ProxyBrowserState extends State<ProxyBrowser> {
                           ),
                           Expanded(
                             child: InkWell(
-                              onTap: () => setState(
-                                () => collapsed.contains(section.id)
-                                    ? collapsed.remove(section.id)
-                                    : collapsed.add(section.id),
-                              ),
+                              onTap: () => toggle(section),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -399,6 +417,37 @@ class ProxyChoiceCard extends StatelessWidget {
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (choice.onFavorite != null)
+          IconButton(
+            tooltip: c.tr(
+              choice.favorite ? '取消收藏' : '收藏',
+              choice.favorite ? 'Unfavorite' : 'Favorite',
+            ),
+            onPressed: choice.onFavorite,
+            icon: Icon(
+              choice.favorite ? Icons.star : Icons.star_outline,
+              size: 18,
+            ),
+            visualDensity: VisualDensity.compact,
+          ),
+        if (choice.error != null)
+          IconButton(
+            tooltip: c.tr('測速失敗原因', 'Test failure details'),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(c.tr('測速失敗', 'Latency test failed')),
+                content: SelectableText(choice.error!),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(c.tr('完成', 'Done')),
+                  ),
+                ],
+              ),
+            ),
+            icon: Icon(Icons.info_outline, size: 18, color: colors.error),
+          ),
         if (choice.onOpen != null)
           IconButton(
             tooltip: c.tr('瀏覽群組節點', 'Browse group nodes'),

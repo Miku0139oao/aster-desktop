@@ -64,7 +64,7 @@ class DesktopToolbar extends StatelessWidget {
             children: [
               Expanded(child: input),
               const SizedBox(width: 12),
-              buttons,
+              Flexible(flex: 2, child: buttons),
             ],
           );
         }

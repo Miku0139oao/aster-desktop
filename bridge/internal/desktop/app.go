@@ -42,6 +42,8 @@ type App struct {
 	Binary       string
 	GUIPath      string
 	instanceLock *os.File
+	previews     map[string]SubscriptionPreview
+	metrics      *TrafficHistory
 }
 
 func NewApp(dir, binary, gui string) (*App, error) {
@@ -55,6 +57,7 @@ func NewApp(dir, binary, gui string) (*App, error) {
 	}
 	core := NewCore(binary, filepath.Join(dir, "runtime"))
 	a := &App{Store: s, Core: core, Binary: binary, GUIPath: gui, instanceLock: lock, Emit: func(string, any) {}}
+	a.metrics = NewTrafficHistory(dir)
 	if err = core.RecoverProxy(); err != nil {
 		core.appendLog("Proxy recovery: " + err.Error())
 	}
@@ -89,9 +92,15 @@ func (a *App) stop() error {
 	return err
 }
 func (a *App) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	a.collectTraffic(ctx)
+	cancel()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	err := a.stop()
+	if a.metrics != nil {
+		_ = a.metrics.Flush()
+	}
 	if a.instanceLock != nil {
 		_ = a.instanceLock.Close()
 		a.instanceLock = nil
@@ -112,6 +121,14 @@ func allowedController(method, path string) bool {
 		return false
 	}
 	p := u.Path
+	if method == "GET" && p == "/dns/query" {
+		name := u.Query().Get("name")
+		kind := u.Query().Get("type")
+		return len(name) > 0 && len(name) <= 253 && !stringsContainControl(name) && !strings.ContainsAny(name, " /\\,") && slices.Contains([]string{"A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "PTR", "HTTPS", "SVCB"}, kind)
+	}
+	if method == "POST" && p == "/cache/dns/flush" && u.RawQuery == "" {
+		return true
+	}
 	if method == "GET" {
 		for _, prefix := range []string{"/version", "/configs", "/memory", "/proxies", "/group", "/rules", "/connections", "/providers/proxies", "/providers/rules"} {
 			if p == prefix || strings.HasPrefix(p, prefix+"/") {
@@ -128,6 +145,42 @@ func allowedController(method, path string) bool {
 	return method == "PATCH" && p == "/rules/disable"
 }
 func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchError error) {
+	if req.Method == "diagnose" {
+		var p struct {
+			ExternalStatus  *CoreStatus
+			ExternalService map[string]any
+		}
+		if err := decode(req.Params, &p); err != nil {
+			return nil, err
+		}
+		return a.Diagnose(ctx, p.ExternalStatus, p.ExternalService), nil
+	}
+	if req.Method == "trafficHistory" {
+		var q struct{ Days int }
+		if err := decode(req.Params, &q); err != nil {
+			return nil, err
+		}
+		return a.metrics.Snapshot(q.Days), nil
+	}
+	if req.Method == "clearTrafficHistory" {
+		return true, a.metrics.Clear()
+	}
+	if req.Method == "recordExternalTraffic" {
+		var p struct {
+			Session     string
+			Up, Down    uint64
+			Connections []TrafficConnection
+		}
+		if err := decode(req.Params, &p); err != nil {
+			return nil, err
+		}
+		if len(p.Session) > 256 {
+			return nil, errors.New("invalid traffic session")
+		}
+		a.metrics.record(p.Session, p.Up, p.Down, time.Now())
+		a.metrics.recordConnections(p.Connections, time.Now())
+		return true, nil
+	}
 	if req.Method == "listNetworkInterfaces" {
 		interfaces, err := ListNetworkInterfaces()
 		if err != nil {
@@ -148,6 +201,16 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 	}
 	a.mu.Lock()
 	defer func() {
+		if dispatchError != nil && (req.Method == "refresh" || req.Method == "previewRefresh" || req.Method == "applyRefresh") {
+			var q struct{ ID string }
+			if decode(req.Params, &q) == nil {
+				if p, err := a.Store.Profile(q.ID); err == nil {
+					p.LastError = dispatchError.Error()
+					p.LastAttempt = time.Now().UTC()
+					_ = a.Store.Save()
+				}
+			}
+		}
 		if dispatchError == nil {
 			b, err := json.Marshal(result)
 			if err != nil {
@@ -160,6 +223,8 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 	}()
 	s := a.Store
 	switch req.Method {
+	case "preferences", "profileMetadata", "duplicateProfile", "previewRefresh", "applyRefresh", "manageObject", "manageRules", "batchApplicationRules":
+		return a.workspace(ctx, req)
 	case "state":
 		return map[string]any{"state": s.State, "core": a.status(), "desktopVersion": Version, "coreCommit": CoreCommit, "service": ServiceStatus()}, nil
 	case "settings":
@@ -265,12 +330,17 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			return nil, errors.New("this configuration has no subscription URL")
 		}
 		content, usage, err := FetchSubscription(ctx, profile.URL)
+		profile.LastAttempt = time.Now().UTC()
 		if err != nil {
 			profile.LastError = err.Error()
 			_ = s.Save()
 			return nil, err
 		}
 		result, err := Import([]byte(content), "")
+		if err != nil {
+			return nil, err
+		}
+		result.Content, err = mergeWorkspace(result.Content, *profile)
 		if err != nil {
 			return nil, err
 		}
@@ -283,6 +353,10 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			return nil, err
 		}
 		result.Content, err = mergeProviderRoutes(result.Content, profile.DesktopProviderRoutes)
+		if err != nil {
+			return nil, err
+		}
+		result.Content, err = mergeWorkspace(result.Content, *profile)
 		if err != nil {
 			return nil, err
 		}
@@ -368,6 +442,12 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			return nil, err
 		}
 		desktopRules := append([]string{}, profile.DesktopRules...)
+		workspaceMetadata := cloneProfile(*profile)
+		if req.Method == "edit" {
+			if err = reconcileWorkspace(p.Content, &workspaceMetadata); err != nil {
+				return nil, err
+			}
+		}
 		suppressedRules := append([]string{}, profile.DesktopSuppressedRules...)
 		providerRoutes := append([]ProviderRoute{}, profile.DesktopProviderRoutes...)
 		if req.Method == "patchProfile" {
@@ -376,6 +456,10 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 				return nil, err
 			}
 			mergeConfig(doc, p.Changes)
+			if workspaceMetadata.DesktopSettings == nil {
+				workspaceMetadata.DesktopSettings = map[string]any{}
+			}
+			mergeConfig(workspaceMetadata.DesktopSettings, p.Changes)
 			if p.ProviderRoute != nil {
 				route, rule, routeErr := providerRoute(doc, *p.ProviderRoute)
 				if routeErr != nil {
@@ -406,8 +490,11 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 				return nil, err
 			}
 			p.Content = string(b)
-			desktopRules = retainedDesktopRules(p.Content, desktopRules)
+			desktopRules = retainedDesktopRules(withDisabledRules(p.Content, profile.DisabledRules), desktopRules)
 			if p.Rule != "" {
+				if len(workspaceMetadata.RuleOrder) > 0 {
+					workspaceMetadata.RuleOrder = append([]string{p.Rule}, workspaceMetadata.RuleOrder...)
+				}
 				desktopRules = append([]string{p.Rule}, desktopRules...)
 				p.Content, err = mergeDesktopRules(p.Content, desktopRules)
 				if err != nil {
@@ -419,7 +506,7 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 				return nil, err
 			}
 			// Remove unused managed groups when a GUI route is changed/deleted.
-			retained := retainedProviderRoutes(p.Content, providerRoutes)
+			retained := retainedProviderRoutes(withDisabledRules(p.Content, profile.DisabledRules), providerRoutes)
 			var cleaned map[string]any
 			if err = yaml.Unmarshal([]byte(p.Content), &cleaned); err != nil {
 				return nil, err
@@ -447,6 +534,10 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			}
 			p.Content = string(b)
 			providerRoutes = retained
+			p.Content, err = mergeWorkspace(p.Content, workspaceMetadata)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if req.Method == "restore" {
 			b, readErr := os.ReadFile(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".json"))
@@ -458,6 +549,7 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 				p.Content, desktopRules = backup.Content, backup.DesktopRules
 				suppressedRules = backup.DesktopSuppressedRules
 				providerRoutes = backup.DesktopProviderRoutes
+				workspaceMetadata = backup
 			} else if os.IsNotExist(readErr) {
 				b, err = os.ReadFile(filepath.Join(s.Dir, "backup-"+safeName(p.ID)+".yaml"))
 				if err != nil {
@@ -493,10 +585,15 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			return nil, err
 		}
 		profile.Content = p.Content
-		profile.DesktopRules = retainedDesktopRules(p.Content, desktopRules)
+		profile.DesktopObjects = workspaceMetadata.DesktopObjects
+		profile.DesktopRemoved = workspaceMetadata.DesktopRemoved
+		profile.DesktopSettings = workspaceMetadata.DesktopSettings
+		profile.DisabledRules = workspaceMetadata.DisabledRules
+		profile.RuleOrder = workspaceMetadata.RuleOrder
+		profile.DesktopRules = retainedDesktopRules(withDisabledRules(p.Content, profile.DisabledRules), desktopRules)
 		profile.DesktopSuppressedRules = retainedSuppressedRules(p.Content, suppressedRules)
-		profile.DesktopProviderRoutes = retainedProviderRoutes(p.Content, providerRoutes)
-		profile.Updated = time.Now().UTC()
+		profile.DesktopProviderRoutes = retainedProviderRoutes(withDisabledRules(p.Content, profile.DisabledRules), providerRoutes)
+		profile.Modified = time.Now().UTC()
 		if err = s.Save(); err != nil {
 			*profile = old
 			_ = a.apply(ctx, old.Content, s.State.Settings)
@@ -559,6 +656,23 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		a.beginStreams()
 		return a.status(), nil
 	case "disconnect":
+		if a.metrics != nil {
+			status := a.status()
+			if status.Running {
+				if b, err := a.dispatchCore(ctx, "GET", "/connections", nil); err == nil {
+					var v struct {
+						Up          uint64              `json:"uploadTotal"`
+						Down        uint64              `json:"downloadTotal"`
+						Connections []TrafficConnection `json:"connections"`
+					}
+					if json.Unmarshal(b, &v) == nil {
+						a.metrics.record(trafficSession(status), v.Up, v.Down, time.Now())
+						a.metrics.recordConnections(v.Connections, time.Now())
+					}
+				}
+			}
+			_ = a.metrics.Flush()
+		}
 		return true, a.stop()
 	case "controller":
 		var p struct {

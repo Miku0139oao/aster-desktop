@@ -1,8 +1,14 @@
-# Aster Desktop 0.1.7 測試版
+# Aster Desktop 0.2.0 測試版
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
-0.1.7 重整節點與連線畫面。節點改用完整群組面板、柔和卡片、延遲標籤及整合搜尋工具列，應用程式出口選單共用相同樣式。連線頁顯示即時上下載速度、小型趨勢圖、核心啟動後的累計流量及活動連線數；首頁同樣顯示累計上下載量。寬視窗使用可排序的資訊表，小視窗使用緊湊列，支援程式／目的地／出口／規則搜尋、TCP／UDP 篩選、暫停列表與明細；暫停列表不會停止流量更新。累計數值來自核心，包含已結束連線，核心重啟後歸零，尚不保存每日／每月歷史。
+0.2.0 補齊日常操作：節點收藏／最近使用／類型與來源篩選、可調測速參數，表單管理節點、群組與兩種 provider。訂閱可編輯來源、複製成獨立設定、設定個別排程；手動更新先預覽變更，過期預覽不會覆蓋新設定。GUI 管理的節點、DNS、分流與停用規則會在訂閱更新後保留，完整 YAML 編輯仍可使用。
+
+新增獨立「應用程式」、「分流規則」、「流量統計」、「診斷」頁面。多選已安裝／正在執行的程式，可批次指定群組、節點、直連或封鎖；連線明細可直接建立規則。连線頁支援程式／出口彙整、自訂欄位順序與寬度、速度／持續時間，以及右鍵複製。每天的核心總流量在本機保存 365 天，可查看今日／7 日／30 日／一年並匯出 CSV；程式及出口分類是每 5 秒取樣，短連線可能未被記錄，不作精確帳務用途。正常退出保存最後資料，異常退出可能遺失約 20 秒。
+
+診斷頁分開檢查核心、服務、出口介面、系統 DNS、系統路由與本機代理 HTTPS；本機代理通過不代表 TUN 路由已正常。另提供核心 DNS 查詢與快取清理。應用程式、托盤、安裝器與 Mac 圖示改為 Aster 原創軌道 A 標誌，介面使用 Material 圖示。
+
+0.1.7 重整節點與連線畫面。節點改用完整群組面板、柔和卡片、延遲標籤及整合搜尋工具列，應用程式出口選單共用相同樣式。連線頁顯示即時上下載速度、小型趨勢圖、核心啟動後的累計流量及活動連線數；首頁同樣顯示累計上下載量。寬視窗使用可排序的資訊表，小視窗使用緊湊列，支援程式／目的地／出口／規則搜尋、TCP／UDP 篩選、暫停列表與明細；暫停列表不會停止流量更新。累計數值來自核心，包含已結束連線，核心重啟後歸零，此為核心即時計數；0.2.0 另有本機歷史統計。
 
 0.1.6 改善兩處節點選擇：主節點頁直接展開各代理群組，以緊湊卡片顯示目前選擇、類型與延遲；提供跨群組搜尋、群組快速篩選、延遲／名稱／設定順序排序、列表切換及批次測速。自動測速與故障切換群組可指定節點，或按「恢復自動選擇」。應用程式出口選單採用同樣的卡片，群組優先顯示，點箭頭可進入群組；按卡片選整個群組仍跟隨其出口，選 provider 節點則維持該應用的獨立節點。大量節點只建立可見卡片。此輪先交付 Windows 本機安裝器；macOS／Linux 尚未重新建置，不沿用舊版 CI 作為本版驗收。
 
@@ -16,7 +22,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 ## 安裝與第一次使用
 
-1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.1.7-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
+1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.0-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。
@@ -49,7 +55,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
 
-資料位於系統應用程式支援目錄，由 `path_provider` 取得，包含 `state.json`、`backup-*.yaml`／`backup-*.json`、`runtime/` 與 `cores/`。JSON 備份保存 GUI 分流 metadata，還原時一併復原。設定含訂閱 token、節點密碼，請勿公開。解除安裝保留使用者設定；服務私人狀態位於 ProgramData／`/var/lib/aster-desktop`／`/Library/Application Support/AsterDesktop/service`。
+資料位於系統應用程式支援目錄，由 `path_provider` 取得，包含 `state.json`、`traffic-history.json`、`backup-*.yaml`／`backup-*.json`、`runtime/` 與 `cores/`。JSON 備份保存 GUI 分流 metadata，還原時一併復原。設定含訂閱 token、節點密碼，請勿公開。解除安裝保留使用者設定；服務私人狀態位於 ProgramData／`/var/lib/aster-desktop`／`/Library/Application Support/AsterDesktop/service`。
 
 ## 開發與建置
 

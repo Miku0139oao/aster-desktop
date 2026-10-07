@@ -12,6 +12,7 @@ import 'application_rules.dart';
 import 'network_settings.dart';
 import 'proxy_browser.dart';
 import 'desktop_components.dart';
+import 'workspace.dart';
 export 'dialogs.dart' show showImportDialog;
 export 'connections_page.dart' show ConnectionsPage;
 
@@ -512,11 +513,18 @@ class _NodesPageState extends State<NodesPage> {
   Json providers = {};
   (String, String?, bool)? providerProfile;
   bool providerFailed = false;
+  bool favoritesOnly = false, recentOnly = false;
+  String protocol = '', providerFilter = '';
   AppController get c => widget.c;
 
   @override
   void initState() {
     super.initState();
+    final prefs = c.preferences['browser:${c.activeId}'] as Map? ?? {};
+    sort =
+        ProxySort.values.where((s) => s.name == prefs['sort']).firstOrNull ??
+        ProxySort.configuration;
+    list = prefs['list'] == true;
     c.addListener(_loadProviders);
     _loadProviders();
   }
@@ -600,12 +608,12 @@ class _NodesPageState extends State<NodesPage> {
     for (
       var i = 0;
       i < unique.length && !cancelled && c.running && profile == c.activeId;
-      i += 4
+      i += (c.preferences['testConcurrency'] as int? ?? 4)
     ) {
       await Future.wait(
         unique
             .skip(i)
-            .take(4)
+            .take(c.preferences['testConcurrency'] as int? ?? 4)
             .map((node) => c.testNode(node.$1, provider: node.$2)),
       );
       if (!mounted) return;
@@ -657,9 +665,19 @@ class _NodesPageState extends State<NodesPage> {
           '先匯入訂閱；連線後會顯示提供者的完整節點。',
           'Import a subscription. Provider nodes appear after connecting.',
         ),
-        action: FilledButton(
-          onPressed: () => showImportDialog(context, c),
-          child: Text(c.tr('匯入', 'Import')),
+        action: Wrap(
+          spacing: 8,
+          children: [
+            FilledButton(
+              onPressed: () => showImportDialog(context, c),
+              child: Text(c.tr('匯入', 'Import')),
+            ),
+            if (c.active != null)
+              OutlinedButton(
+                onPressed: () => showObjectManager(context, c),
+                child: Text(c.tr('管理節點與群組', 'Manage nodes and groups')),
+              ),
+          ],
         ),
       );
     }
@@ -697,6 +715,23 @@ class _NodesPageState extends State<NodesPage> {
               ? null
               : uses.where((p) => metadata.containsKey((p, name))).firstOrNull,
       };
+      names.removeWhere((name) {
+        var type =
+            ((all[name] as Map?)?['type'] ??
+                    metadata[(source[name], name)]?['type'] ??
+                    '')
+                .toString()
+                .toLowerCase();
+        if (type == 'shadowsocks') type = 'ss';
+        final favorite = c.isFavorite(name, provider: source[name]);
+        final recent = (c.preferences['recent:${c.activeId}'] as List? ?? [])
+            .contains(name);
+        return (favoritesOnly && !favorite) ||
+            (recentOnly && !recent) ||
+            (protocol.isNotEmpty && type != protocol) ||
+            (providerFilter.isNotEmpty &&
+                !metadata.containsKey((providerFilter, name)));
+      });
       final tests = [for (final name in names) (name, source[name])];
       testNames.addAll(tests);
       final automatic = [
@@ -731,6 +766,10 @@ class _NodesPageState extends State<NodesPage> {
                   proxy: metadata[(source[name], name)],
                 ),
                 testing: c.isTestingNode(name, provider: source[name]),
+                favorite: c.isFavorite(name, provider: source[name]),
+                onFavorite: () =>
+                    c.toggleFavorite(name, provider: source[name]),
+                error: c.nodeErrors[(source[name], name)],
                 onSelect: !c.busy && selectable
                     ? () => c.selectNode(entry.key, name)
                     : null,
@@ -763,8 +802,28 @@ class _NodesPageState extends State<NodesPage> {
                 c: c,
                 sort: sort,
                 list: list,
-                onSort: (v) => setState(() => sort = v),
-                onLayout: (v) => setState(() => list = v),
+                onSort: (v) {
+                  setState(() => sort = v);
+                  c.savePreferences({
+                    'browser:${c.activeId}': {'sort': sort.name, 'list': list},
+                  });
+                },
+                onLayout: (v) {
+                  setState(() => list = v);
+                  c.savePreferences({
+                    'browser:${c.activeId}': {'sort': sort.name, 'list': list},
+                  });
+                },
+              ),
+              IconButton(
+                tooltip: c.tr('測速設定', 'Test settings'),
+                onPressed: () => showLatencySettings(context, c),
+                icon: const Icon(Icons.tune),
+              ),
+              OutlinedButton.icon(
+                onPressed: c.busy ? null : () => showObjectManager(context, c),
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(c.tr('管理', 'Manage')),
               ),
               FilledButton.tonalIcon(
                 style: FilledButton.styleFrom(
@@ -790,6 +849,69 @@ class _NodesPageState extends State<NodesPage> {
                   ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              FilterChip(
+                label: Text(c.tr('收藏', 'Favorites')),
+                avatar: const Icon(Icons.star_outline, size: 18),
+                selected: favoritesOnly,
+                onSelected: (v) => setState(() => favoritesOnly = v),
+              ),
+              FilterChip(
+                label: Text(c.tr('最近使用', 'Recent')),
+                selected: recentOnly,
+                onSelected: (v) => setState(() => recentOnly = v),
+              ),
+              PopupMenuButton<String>(
+                tooltip: c.tr('依協定篩選', 'Filter protocol'),
+                onSelected: (v) => setState(() => protocol = v),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: '',
+                    child: Text(c.tr('全部協定', 'All protocols')),
+                  ),
+                  for (final v in {
+                    'vless',
+                    'vmess',
+                    'ss',
+                    'trojan',
+                    'hysteria2',
+                    'tuic',
+                    'anytls',
+                  })
+                    PopupMenuItem(value: v, child: Text(v)),
+                ],
+                child: Chip(
+                  label: Text(
+                    protocol.isEmpty ? c.tr('全部協定', 'All protocols') : protocol,
+                  ),
+                ),
+              ),
+              if (providers.isNotEmpty)
+                PopupMenuButton<String>(
+                  tooltip: c.tr('依提供者篩選', 'Filter provider'),
+                  onSelected: (v) => setState(() => providerFilter = v),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: '',
+                      child: Text(c.tr('全部提供者', 'All providers')),
+                    ),
+                    for (final name in providers.keys)
+                      PopupMenuItem(value: name, child: Text(name)),
+                  ],
+                  child: Chip(
+                    label: Text(
+                      providerFilter.isEmpty
+                          ? c.tr('全部提供者', 'All providers')
+                          : providerFilter,
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -933,6 +1055,25 @@ class ProfilesPage extends StatelessWidget {
                     ),
                   ),
                 ),
+              if ((p.json['lastError'] as String? ?? '').isNotEmpty)
+                ExpansionTile(
+                  title: Text(
+                    c.tr(
+                      '更新失敗，舊資料仍可使用',
+                      'Update failed; previous data retained',
+                    ),
+                  ),
+                  children: [SelectableText(p.json['lastError'] as String)],
+                ),
+              if (p.url.isNotEmpty)
+                Text(
+                  (p.json['intervalHours'] ?? c.settings.subscriptionHours) == 0
+                      ? c.tr('僅手動更新', 'Manual refresh only')
+                      : c.tr(
+                          '自動更新：每 ${p.json['intervalHours'] ?? c.settings.subscriptionHours} 小時',
+                          'Refresh every ${p.json['intervalHours'] ?? c.settings.subscriptionHours} hours',
+                        ),
+                ),
               if ((p.json['usage'] as String? ?? '').isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -966,12 +1107,28 @@ class ProfilesPage extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: c.busy
                           ? null
-                          : () => c.perform(() async {
-                              await c.backend.call('refresh', {'id': p.id});
-                            }),
+                          : () => previewSubscription(context, c, p),
                       icon: const Icon(Icons.refresh),
                       label: Text(c.tr('更新訂閱', 'Refresh')),
                     ),
+                  TextButton.icon(
+                    onPressed: c.busy
+                        ? null
+                        : () => editProfileMetadata(context, c, p),
+                    icon: const Icon(Icons.tune),
+                    label: Text(c.tr('名稱與排程', 'Name and schedule')),
+                  ),
+                  TextButton.icon(
+                    onPressed: c.busy
+                        ? null
+                        : () => c.perform(() async {
+                            await c.backend.call('duplicateProfile', {
+                              'id': p.id,
+                            });
+                          }),
+                    icon: const Icon(Icons.copy_outlined),
+                    label: Text(c.tr('複製為本機設定', 'Duplicate as local profile')),
+                  ),
                   TextButton.icon(
                     onPressed: c.busy
                         ? null

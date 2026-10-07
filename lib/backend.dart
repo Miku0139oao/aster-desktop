@@ -23,6 +23,7 @@ class ProcessBackend implements DesktopBackend {
   bool _macRunning = false;
   bool _macProxy = false;
   bool _closed = false;
+  String _macTrafficSession = '';
   @override
   Stream<Json> get events => _events.stream;
 
@@ -166,8 +167,24 @@ class ProcessBackend implements DesktopBackend {
           result['core'] = await _xpc('status');
           _macRunning = (result['core'] as Json)['running'] == true;
         } catch (_) {
-          _macRunning = false;
+          // Keep ownership on an IPC failure so Disconnect still reaches XPC.
           rethrow;
+        }
+        if (_macRunning) {
+          try {
+            final metrics = await _xpc('controller', {
+              'method': 'GET',
+              'path': '/connections',
+            });
+            await _rpc('recordExternalTraffic', {
+              'session': _macTrafficSession,
+              'up': metrics['uploadTotal'] ?? 0,
+              'down': metrics['downloadTotal'] ?? 0,
+              'connections': metrics['connections'] ?? [],
+            });
+          } catch (_) {
+            // Statistics are optional; a failed sample must not orphan TUN.
+          }
         }
       }
       if (_macProxy && (result['core'] as Json)['running'] != true) {
@@ -175,6 +192,14 @@ class ProcessBackend implements DesktopBackend {
         _macProxy = false;
       }
       return result;
+    }
+    if (method == 'diagnose' && _macRunning) {
+      return _rpc(method, {
+        'externalStatus': await _xpc('status'),
+        'externalService':
+            await _native.invokeMapMethod<String, dynamic>('serviceStatus') ??
+            {},
+      });
     }
     if (method == 'installService' || method == 'uninstallService') {
       if (method == 'uninstallService') {
@@ -238,6 +263,7 @@ class ProcessBackend implements DesktopBackend {
           'settings': settings,
         });
         _macRunning = true;
+        _macTrafficSession = 'mac:${DateTime.now().microsecondsSinceEpoch}';
         for (final entry in (state['selections'] as Json).entries) {
           try {
             await _xpc('controller', {
@@ -274,6 +300,20 @@ class ProcessBackend implements DesktopBackend {
     }
     if (_macRunning) {
       if (method == 'disconnect') {
+        try {
+          final metrics = await _xpc('controller', {
+            'method': 'GET',
+            'path': '/connections',
+          });
+          await _rpc('recordExternalTraffic', {
+            'session': _macTrafficSession,
+            'up': metrics['uploadTotal'] ?? 0,
+            'down': metrics['downloadTotal'] ?? 0,
+            'connections': metrics['connections'] ?? [],
+          });
+        } catch (_) {
+          /* Stop remains available if metrics are unavailable. */
+        }
         await _xpc('stop');
         _macRunning = false;
         return true;
@@ -299,6 +339,10 @@ class ProcessBackend implements DesktopBackend {
           method == 'edit' ||
           method == 'restore' ||
           method == 'patchProfile' ||
+          method == 'manageObject' ||
+          method == 'manageRules' ||
+          method == 'batchApplicationRules' ||
+          method == 'applyRefresh' ||
           method == 'activate' ||
           method == 'refresh') {
         final snapshot = await _rpc('state') as Json;
@@ -335,10 +379,10 @@ class ProcessBackend implements DesktopBackend {
             'settings': nextState['settings'],
           });
         } catch (_) {
-          await _rpc('edit', {
-            'id': previous['id'],
-            'content': previous['content'],
-          });
+          if (profile['id'] == previous['id'] &&
+              profile['content'] != previous['content']) {
+            await _rpc('restore', {'id': previous['id']});
+          }
           await _rpc('activate', {'id': previous['id']});
           await _rpc('settings', state['settings'] as Json);
           rethrow;

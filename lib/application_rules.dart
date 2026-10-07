@@ -16,8 +16,15 @@ Future<void> showApplicationRouting(BuildContext context, AppController c) =>
     );
 
 class _ApplicationRule {
-  _ApplicationRule(this.raw, this.kind, this.match, this.target);
+  _ApplicationRule(
+    this.raw,
+    this.kind,
+    this.match,
+    this.target, {
+    this.disabled = false,
+  });
   final String raw, kind, match, target;
+  final bool disabled;
   String get name => match.split(RegExp(r'[/\\]')).last;
 }
 
@@ -66,10 +73,56 @@ class _ApplicationAvatar extends StatelessWidget {
 }
 
 class _ApplicationRouting extends StatefulWidget {
-  const _ApplicationRouting({required this.c});
+  const _ApplicationRouting({
+    super.key,
+    required this.c,
+    this.embedded = false,
+  });
   final AppController c;
+  final bool embedded;
   @override
   State<_ApplicationRouting> createState() => _ApplicationRoutingState();
+}
+
+class ApplicationsPage extends StatelessWidget {
+  const ApplicationsPage({super.key, required this.c});
+  final AppController c;
+  @override
+  Widget build(BuildContext context) => c.active == null
+      ? Center(
+          child: Text(
+            c.tr(
+              '先匯入訂閱或本機設定',
+              'Import a subscription or local configuration first',
+            ),
+          ),
+        )
+      : Padding(
+          padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+          child: _ApplicationRouting(
+            key: ValueKey(c.activeId),
+            c: c,
+            embedded: true,
+          ),
+        );
+}
+
+Future<Json?> pickApplicationRoute(
+  BuildContext context,
+  AppController c,
+  String application,
+) async {
+  final route = await showDialog<_Route>(
+    context: context,
+    builder: (_) => _RoutePicker(c: c, application: application),
+  );
+  return route == null
+      ? null
+      : {
+          'name': route.name,
+          'target': route.target,
+          'provider': route.provider,
+        };
 }
 
 class _ApplicationRoutingState extends State<_ApplicationRouting> {
@@ -110,6 +163,14 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
       final parts = raw.split(',');
       if (parts.length == 3 && parts.first.startsWith('PROCESS-')) {
         result.add(_ApplicationRule(raw, parts[0], parts[1], parts[2]));
+      }
+    }
+    for (final raw in c.active?.json['disabledRules'] as List? ?? []) {
+      final parts = (raw as String).split(',');
+      if (parts.length == 3 && parts.first.startsWith('PROCESS-')) {
+        result.add(
+          _ApplicationRule(raw, parts[0], parts[1], parts[2], disabled: true),
+        );
       }
     }
     return result;
@@ -242,135 +303,203 @@ class _ApplicationRoutingState extends State<_ApplicationRouting> {
     );
   }
 
+  Future<void> addBatch() async {
+    final apps = await showDialog<List<Json>>(
+      context: context,
+      builder: (_) =>
+          _ApplicationPicker(c: c, initial: applications, multiple: true),
+    );
+    if (apps == null || apps.isEmpty || !mounted) return;
+    final route = await pickApplicationRoute(
+      context,
+      c,
+      c.tr('${apps.length} 個應用程式', '${apps.length} applications'),
+    );
+    if (route == null || !mounted) return;
+    setState(() => working = true);
+    await c.perform(() async {
+      await c.backend.call('batchApplicationRules', {
+        'id': profileId,
+        'paths': apps.map((app) => app['path']).toList(),
+        'target': route['target'],
+        if (route['provider'] != null)
+          'providerRoute': {
+            'provider': route['provider'],
+            'node': route['name'],
+          },
+      });
+    });
+    if (mounted) {
+      setState(() {
+        working = false;
+        error = c.error;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = rules;
-    return AlertDialog(
-      title: Text(c.tr('應用程式分流', 'Application routing')),
-      content: SizedBox(
-        width: 760,
-        height: MediaQuery.sizeOf(context).height * .62,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              c.tr(
-                '選擇應用程式，直接管理它的出口。使用「代理所有應用程式」及規則模式；變更適用於新連線，訂閱更新會保留規則。',
-                'Choose an application and manage its route. Use Proxy all applications and Rule mode. Changes apply to new connections; subscription updates retain these rules.',
-              ),
+    final body = SizedBox(
+      width: 760,
+      height: widget.embedded
+          ? double.infinity
+          : MediaQuery.sizeOf(context).height * .62,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            c.tr(
+              '選擇應用程式，直接管理它的出口。使用「代理所有應用程式」及規則模式；變更適用於新連線，訂閱更新會保留規則。',
+              'Choose an application and manage its route. Use Proxy all applications and Rule mode. Changes apply to new connections; subscription updates retain these rules.',
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: working ? null : add,
-              icon: const Icon(Icons.add),
-              label: Text(c.tr('新增應用程式', 'Add application')),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: working ? null : add,
+            icon: const Icon(Icons.add),
+            label: Text(c.tr('新增應用程式', 'Add application')),
+          ),
+          TextButton.icon(
+            onPressed: working ? null : addBatch,
+            icon: const Icon(Icons.playlist_add),
+            label: Text(
+              c.tr('多選程式，套用同一出口', 'Select multiple apps for one route'),
             ),
-            const SizedBox(height: 12),
-            if (working) const LinearProgressIndicator(),
-            if (error != null)
-              ExpansionTile(
-                leading: Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                title: Text(
-                  c.tr(
-                    '未能儲存，原設定已保留。',
-                    'Could not save; previous configuration retained.',
-                  ),
-                ),
-                children: [SelectableText(error!)],
+          ),
+          const SizedBox(height: 12),
+          if (working) const LinearProgressIndicator(),
+          if (error != null)
+            ExpansionTile(
+              leading: Icon(
+                Icons.error_outline,
+                color: Theme.of(context).colorScheme.error,
               ),
-            Expanded(
-              child: entries.isEmpty
-                  ? Center(
-                      child: Text(
-                        c.tr('尚未設定應用程式規則', 'No application rules yet'),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final rule = entries[index];
-                        final app = applicationFor(rule);
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            children: [
-                              _ApplicationAvatar(app),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      app['name'] as String,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Tooltip(
-                                      message: '${rule.kind}: ${rule.match}',
-                                      child: Text(
-                                        rule.kind == 'PROCESS-NAME'
-                                            ? c.tr(
-                                                '依程式名稱比對',
-                                                'Match by executable name',
-                                              )
-                                            : c.tr(
-                                                '依此應用程式分流',
-                                                'Route this application',
-                                              ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 230,
-                                child: OutlinedButton.icon(
-                                  key: ValueKey('application-route-$index'),
-                                  onPressed: working
-                                      ? null
-                                      : () => change(rule),
-                                  icon: const Icon(Icons.swap_horiz),
-                                  label: Text(
-                                    currentRoute(rule.target).name,
+              title: Text(
+                c.tr(
+                  '未能儲存，原設定已保留。',
+                  'Could not save; previous configuration retained.',
+                ),
+              ),
+              children: [SelectableText(error!)],
+            ),
+          Expanded(
+            child: entries.isEmpty
+                ? Center(
+                    child: Text(c.tr('尚未設定應用程式規則', 'No application rules yet')),
+                  )
+                : ListView.builder(
+                    itemCount: entries.length,
+                    itemBuilder: (context, index) {
+                      final rule = entries[index];
+                      final app = applicationFor(rule);
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            _ApplicationAvatar(app),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    app['name'] as String,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium,
                                     overflow: TextOverflow.ellipsis,
                                   ),
+                                  Tooltip(
+                                    message: '${rule.kind}: ${rule.match}',
+                                    child: Text(
+                                      rule.kind == 'PROCESS-NAME'
+                                          ? c.tr(
+                                              '依程式名稱比對',
+                                              'Match by executable name',
+                                            )
+                                          : c.tr(
+                                              '依此應用程式分流',
+                                              'Route this application',
+                                            ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              width: 230,
+                              child: OutlinedButton.icon(
+                                key: ValueKey('application-route-$index'),
+                                onPressed: working || rule.disabled
+                                    ? null
+                                    : () => change(rule),
+                                icon: const Icon(Icons.swap_horiz),
+                                label: Text(
+                                  currentRoute(rule.target).name,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              IconButton(
-                                key: ValueKey('remove-application-rule-$index'),
-                                tooltip: c.tr('刪除規則', 'Remove rule'),
-                                onPressed: working
-                                    ? null
-                                    : () => save(remove: rule.raw),
-                                icon: const Icon(Icons.delete_outline),
+                            ),
+                            IconButton(
+                              tooltip: c.tr(
+                                rule.disabled ? '啟用規則' : '停用規則',
+                                rule.disabled ? 'Enable rule' : 'Disable rule',
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                              onPressed: working
+                                  ? null
+                                  : () async {
+                                      await c.perform(() async {
+                                        await c.backend.call('manageRules', {
+                                          'id': profileId,
+                                          'rule': rule.raw,
+                                          'action': rule.disabled
+                                              ? 'enable'
+                                              : 'disable',
+                                        });
+                                      });
+                                      if (mounted) setState(() {});
+                                    },
+                              icon: Icon(
+                                rule.disabled
+                                    ? Icons.toggle_off_outlined
+                                    : Icons.toggle_on,
+                              ),
+                            ),
+                            IconButton(
+                              key: ValueKey('remove-application-rule-$index'),
+                              tooltip: c.tr('刪除規則', 'Remove rule'),
+                              onPressed: working || rule.disabled
+                                  ? null
+                                  : () => save(remove: rule.raw),
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          Text(
+            c.tr(
+              '使用另一個執行檔的輔助程式，可另外從清單加入。完整規則仍可在 YAML 編輯器調整。',
+              'Helpers using another executable can be added from the list. Full rules remain editable in YAML.',
             ),
-            Text(
-              c.tr(
-                '使用另一個執行檔的輔助程式，可另外從清單加入。完整規則仍可在 YAML 編輯器調整。',
-                'Helpers using another executable can be added from the list. Full rules remain editable in YAML.',
-              ),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ),
+    );
+    if (widget.embedded) return body;
+    return AlertDialog(
+      title: Text(c.tr('應用程式分流', 'Application routing')),
+      content: body,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -414,6 +543,7 @@ class _RoutePickerState extends State<_RoutePicker> {
   final search = TextEditingController();
   String category = 'all';
   String? browsingGroup;
+  bool favoritesOnly = false;
   ProxySort sort = ProxySort.configuration;
   bool list = false, measuring = false, cancelled = false;
   bool loading = false;
@@ -520,12 +650,12 @@ class _RoutePickerState extends State<_RoutePicker> {
     for (
       var i = 0;
       i < routes.length && !cancelled && c.running && profile == c.activeId;
-      i += 4
+      i += (c.preferences['testConcurrency'] as int? ?? 4)
     ) {
       await Future.wait(
         routes
             .skip(i)
-            .take(4)
+            .take(c.preferences['testConcurrency'] as int? ?? 4)
             .map((r) => c.testNode(r.name, provider: r.provider)),
       );
       if (!mounted) return;
@@ -563,6 +693,10 @@ class _RoutePickerState extends State<_RoutePicker> {
     }
     final buckets = <String, List<_Route>>{};
     for (final route in entries) {
+      if (favoritesOnly &&
+          !c.isFavorite(route.name, provider: route.provider)) {
+        continue;
+      }
       final bucket = route.provider ?? route.category;
       final title =
           route.provider ??
@@ -620,6 +754,10 @@ class _RoutePickerState extends State<_RoutePicker> {
                 name: route.name,
                 detail: route.detail,
                 selected: route.identity == widget.current?.identity,
+                favorite: c.isFavorite(route.name, provider: route.provider),
+                onFavorite: () =>
+                    c.toggleFavorite(route.name, provider: route.provider),
+                error: c.nodeErrors[(route.provider, route.name)],
                 delay: c.nodeDelay(
                   route.name,
                   provider: route.provider,
@@ -690,6 +828,11 @@ class _RoutePickerState extends State<_RoutePicker> {
                 Wrap(
                   spacing: 8,
                   children: [
+                    FilterChip(
+                      label: Text(c.tr('收藏', 'Favorites')),
+                      selected: favoritesOnly,
+                      onSelected: (v) => setState(() => favoritesOnly = v),
+                    ),
                     for (final item in {
                       'all': c.tr('全部', 'All'),
                       'group': c.tr('群組', 'Groups'),
@@ -756,9 +899,14 @@ class _RoutePickerState extends State<_RoutePicker> {
 }
 
 class _ApplicationPicker extends StatefulWidget {
-  const _ApplicationPicker({required this.c, this.initial = const []});
+  const _ApplicationPicker({
+    required this.c,
+    this.initial = const [],
+    this.multiple = false,
+  });
   final AppController c;
   final List<Json> initial;
+  final bool multiple;
   @override
   State<_ApplicationPicker> createState() => _ApplicationPickerState();
 }
@@ -769,6 +917,30 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
       ? load()
       : Future.value(widget.initial);
   String category = 'apps';
+  final selected = <String, Json>{};
+  void choose(Json app) {
+    if (!widget.multiple) {
+      Navigator.pop(context, app);
+      return;
+    }
+    final key = _pathKey(app['path'] as String);
+    if (!selected.containsKey(key) && selected.length >= 128) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            c.tr('每次最多選擇 128 個程式', 'Select up to 128 applications at a time'),
+          ),
+        ),
+      );
+      return;
+    }
+    setState(
+      () => selected.containsKey(key)
+          ? selected.remove(key)
+          : selected[key] = app,
+    );
+  }
+
   AppController get c => widget.c;
   Future<List<Json>> load() => _loadApplications(c);
 
@@ -847,10 +1019,7 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
     try {
       final path = await selectApplicationExecutable();
       if (path != null && mounted) {
-        Navigator.pop(context, {
-          'name': path.split(RegExp(r'[/\\]')).last,
-          'path': path,
-        });
+        choose({'name': path.split(RegExp(r'[/\\]')).last, 'path': path});
       }
     } catch (e) {
       if (mounted) {
@@ -885,7 +1054,7 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
               try {
                 final entries = filtered(await applications);
                 if (mounted && entries.length == 1) {
-                  Navigator.pop(this.context, entries.single);
+                  choose(entries.single);
                 }
               } catch (_) {
                 /* Retry and browsing remain available. */
@@ -968,7 +1137,22 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
                     final app = entries[index];
                     return ListTile(
                       key: ValueKey('application:${app['path']}'),
-                      leading: _ApplicationAvatar(app),
+                      leading: widget.multiple
+                          ? SizedBox(
+                              width: 92,
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: selected.containsKey(
+                                      _pathKey(app['path'] as String),
+                                    ),
+                                    onChanged: (_) => choose(app),
+                                  ),
+                                  _ApplicationAvatar(app),
+                                ],
+                              ),
+                            )
+                          : _ApplicationAvatar(app),
                       title: Text(
                         app['name'] as String,
                         maxLines: 1,
@@ -984,7 +1168,7 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
                         tooltip: c.tr('查看應用程式詳細資訊', 'Application details'),
                         onPressed: () => details(app),
                       ),
-                      onTap: () => Navigator.pop(context, app),
+                      onTap: () => choose(app),
                     );
                   },
                 );
@@ -995,6 +1179,15 @@ class _ApplicationPickerState extends State<_ApplicationPicker> {
       ),
     ),
     actions: [
+      if (widget.multiple)
+        FilledButton(
+          onPressed: selected.isEmpty
+              ? null
+              : () => Navigator.pop(context, selected.values.toList()),
+          child: Text(
+            c.tr('下一步（${selected.length}）', 'Next (${selected.length})'),
+          ),
+        ),
       TextButton(
         onPressed: () => Navigator.pop(context),
         child: Text(c.tr('取消', 'Cancel')),

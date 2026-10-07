@@ -15,7 +15,7 @@ import (
 )
 
 const CoreCommit = "a9a33503b39a03681bc52d9758907316a22df199"
-const Version = "0.1.7"
+const Version = "0.2.0"
 const MaxConfig = 16 << 20
 
 type Settings struct {
@@ -66,23 +66,32 @@ func stringsContainControl(value string) bool {
 }
 
 type Profile struct {
-	ID                     string          `json:"id"`
-	Name                   string          `json:"name"`
-	URL                    string          `json:"url,omitempty"`
-	Content                string          `json:"content"`
-	Updated                time.Time       `json:"updated"`
-	Warnings               []string        `json:"warnings,omitempty"`
-	Usage                  string          `json:"usage,omitempty"`
-	LastError              string          `json:"lastError,omitempty"`
-	DesktopRules           []string        `json:"desktopRules,omitempty"`
-	DesktopSuppressedRules []string        `json:"desktopSuppressedRules,omitempty"`
-	DesktopProviderRoutes  []ProviderRoute `json:"desktopProviderRoutes,omitempty"`
+	ID                     string                               `json:"id"`
+	Name                   string                               `json:"name"`
+	URL                    string                               `json:"url,omitempty"`
+	Content                string                               `json:"content"`
+	Updated                time.Time                            `json:"updated"`
+	Warnings               []string                             `json:"warnings,omitempty"`
+	Usage                  string                               `json:"usage,omitempty"`
+	LastError              string                               `json:"lastError,omitempty"`
+	DesktopRules           []string                             `json:"desktopRules,omitempty"`
+	DesktopSuppressedRules []string                             `json:"desktopSuppressedRules,omitempty"`
+	DesktopProviderRoutes  []ProviderRoute                      `json:"desktopProviderRoutes,omitempty"`
+	IntervalHours          *int                                 `json:"intervalHours,omitempty"`
+	Modified               time.Time                            `json:"modified,omitempty"`
+	LastAttempt            time.Time                            `json:"lastAttempt,omitempty"`
+	DesktopObjects         map[string]map[string]map[string]any `json:"desktopObjects,omitempty"`
+	DesktopRemoved         map[string][]string                  `json:"desktopRemoved,omitempty"`
+	DesktopSettings        map[string]any                       `json:"desktopSettings,omitempty"`
+	DisabledRules          []string                             `json:"disabledRules,omitempty"`
+	RuleOrder              []string                             `json:"ruleOrder,omitempty"`
 }
 type State struct {
-	Settings   Settings          `json:"settings"`
-	Profiles   []Profile         `json:"profiles"`
-	ActiveID   string            `json:"activeId"`
-	Selections map[string]string `json:"selections"`
+	Settings    Settings          `json:"settings"`
+	Profiles    []Profile         `json:"profiles"`
+	ActiveID    string            `json:"activeId"`
+	Selections  map[string]string `json:"selections"`
+	Preferences map[string]any    `json:"preferences,omitempty"`
 }
 type Store struct {
 	mu    sync.Mutex

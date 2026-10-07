@@ -171,9 +171,12 @@ func readBoundedLine(r *bufio.Reader, max int) ([]byte, error) {
 	}
 }
 func ServeStdio(ctx context.Context, a *App, in io.Reader, out io.Writer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var outMu sync.Mutex
 	send := func(value any) { outMu.Lock(); defer outMu.Unlock(); _ = json.NewEncoder(out).Encode(value) }
 	a.Emit = func(name string, value any) { send(map[string]any{"event": name, "data": value}) }
+	go a.trafficLoop(ctx)
 	if runtime.GOOS != "darwin" {
 		go a.Schedule(ctx)
 	}
