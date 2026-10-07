@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'backend.dart';
 import 'controller.dart';
+import 'proxy_browser.dart';
 import 'dialogs.dart' show selectApplicationExecutable;
 
 Future<void> showApplicationRouting(BuildContext context, AppController c) =>
@@ -387,9 +388,11 @@ class _Route {
     this.target,
     this.provider,
     this.category = 'node',
+    this.proxy,
   });
   final String name, detail, category;
   final String? target, provider;
+  final Map? proxy;
   String get identity =>
       provider == null ? 'target:$target' : 'provider:$provider:$name';
 }
@@ -410,6 +413,9 @@ class _RoutePicker extends StatefulWidget {
 class _RoutePickerState extends State<_RoutePicker> {
   final search = TextEditingController();
   String category = 'all';
+  String? browsingGroup;
+  ProxySort sort = ProxySort.configuration;
+  bool list = false, measuring = false, cancelled = false;
   bool loading = false;
   String? error;
   Json providers = {};
@@ -440,6 +446,7 @@ class _RoutePickerState extends State<_RoutePicker> {
 
   @override
   void dispose() {
+    cancelled = true;
     search.dispose();
     super.dispose();
   }
@@ -470,7 +477,7 @@ class _RoutePickerState extends State<_RoutePicker> {
       result.add(
         _Route(
           name,
-          '${c.tr('代理群組', 'Group')} · ${group['type']}${now == null ? '' : ' · $now'}',
+          '${group['type']}${now == null ? '' : ' · $now'}',
           target: name,
           category: 'group',
         ),
@@ -495,133 +502,255 @@ class _RoutePickerState extends State<_RoutePicker> {
             node['name'],
             '${c.tr('訂閱節點', 'Provider node')} · ${entry.key} · ${node['type']}',
             provider: entry.key,
+            proxy: node as Map,
           ),
         );
       }
     }
-    final query = search.text.toLowerCase();
-    return result
-        .where(
-          (r) =>
-              (category == 'all' || category == r.category) &&
-              '${r.name} ${r.detail}'.toLowerCase().contains(query),
-        )
-        .toList();
+    return result;
+  }
+
+  Future<void> measure(List<_Route> routes) async {
+    if (measuring) return;
+    final profile = c.activeId;
+    setState(() {
+      measuring = true;
+      cancelled = false;
+    });
+    for (
+      var i = 0;
+      i < routes.length && !cancelled && c.running && profile == c.activeId;
+      i += 4
+    ) {
+      await Future.wait(
+        routes
+            .skip(i)
+            .take(4)
+            .map((r) => c.testNode(r.name, provider: r.provider)),
+      );
+      if (!mounted) return;
+    }
+    if (mounted) setState(() => measuring = false);
+  }
+
+  List<ProxySection> sections(BuildContext context) {
+    final query = search.text.trim().toLowerCase();
+    var entries = choices;
+    if (browsingGroup != null) {
+      final definition = (c.profileDocument?['proxy-groups'] as List? ?? [])
+          .where((g) => g['name'] == browsingGroup)
+          .firstOrNull;
+      final live = (c.proxies[browsingGroup] as Map?)?['all'] as List?;
+      final names = (live ?? definition?['proxies'] as List? ?? []).toSet();
+      final use =
+          (definition?['include-all'] == true ||
+                      definition?['include-all-providers'] == true
+                  ? providers.keys.toList()
+                  : definition?['use'] as List? ?? [])
+              .toSet();
+      entries = entries
+          .where(
+            (r) => r.provider == null
+                ? names.contains(r.name)
+                : use.contains(r.provider) &&
+                      (live == null || names.contains(r.name)),
+          )
+          .toList();
+    } else {
+      entries = entries
+          .where((r) => category == 'all' || category == r.category)
+          .toList();
+    }
+    final buckets = <String, List<_Route>>{};
+    for (final route in entries) {
+      final bucket = route.provider ?? route.category;
+      final title =
+          route.provider ??
+          switch (bucket) {
+            'system' => c.tr('直連／封鎖', 'Direct / Block'),
+            'group' => c.tr('代理群組', 'Proxy groups'),
+            'node' => c.tr('本機節點', 'Local nodes'),
+            _ => bucket,
+          };
+      if (!'$title ${route.name} ${route.detail}'.toLowerCase().contains(
+        query,
+      )) {
+        continue;
+      }
+      // Prefixes keep providers named "group" or "node" separate from local sections.
+      buckets
+          .putIfAbsent(
+            route.provider == null ? 'category:$bucket' : 'provider:$bucket',
+            () => [],
+          )
+          .add(route);
+    }
+    int rank(String id) => switch (id) {
+      'category:group' => 0,
+      'category:system' => 1,
+      'category:node' => 2,
+      _ => 3,
+    };
+    final ordered = buckets.entries.toList()
+      ..sort((a, b) => rank(a.key).compareTo(rank(b.key)));
+    return [
+      for (final bucket in ordered)
+        ProxySection(
+          id: bucket.key,
+          title: bucket.key.startsWith('provider:')
+              ? bucket.key.substring(9)
+              : switch (bucket.key) {
+                  'category:system' => c.tr('直連／封鎖', 'Direct / Block'),
+                  'category:group' => c.tr('代理群組', 'Proxy groups'),
+                  _ => c.tr('本機節點', 'Local nodes'),
+                },
+          detail: bucket.key == 'category:group'
+              ? c.tr(
+                  '點卡片跟隨群組；點箭頭挑選其中的節點',
+                  'Select a card to follow its group; use the arrow to browse nodes',
+                )
+              : '',
+          onTest: c.running && !measuring && bucket.key != 'category:system'
+              ? () => measure(bucket.value)
+              : null,
+          choices: [
+            for (final route in bucket.value)
+              ProxyChoice(
+                id: route.identity,
+                name: route.name,
+                detail: route.detail,
+                selected: route.identity == widget.current?.identity,
+                delay: c.nodeDelay(
+                  route.name,
+                  provider: route.provider,
+                  proxy: route.proxy,
+                ),
+                testing: c.isTestingNode(route.name, provider: route.provider),
+                onSelect: () => Navigator.pop(context, route),
+                onTest: c.running && route.category != 'system'
+                    ? () => c.testNode(route.name, provider: route.provider)
+                    : null,
+                onOpen: route.category == 'group'
+                    ? () => setState(() {
+                        browsingGroup = route.name;
+                        search.clear();
+                      })
+                    : null,
+              ),
+          ],
+        ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = choices;
-    return AlertDialog(
-      title: Text(c.tr('選擇出口', 'Choose route')),
-      content: SizedBox(
-        width: 680,
-        height: MediaQuery.sizeOf(context).height * .6,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.application,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('route-search'),
-              controller: search,
-              autofocus: true,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: c.tr('搜尋群組或節點', 'Search groups or nodes'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final item in {
-                  'all': c.tr('全部', 'All'),
-                  'group': c.tr('群組', 'Groups'),
-                  'node': c.tr('節點', 'Nodes'),
-                  'system': c.tr('直連／封鎖', 'Direct / Block'),
-                }.entries)
-                  ChoiceChip(
-                    label: Text(item.value),
-                    selected: category == item.key,
-                    onSelected: (_) => setState(() => category = item.key),
-                  ),
-              ],
-            ),
-            if (loading) const LinearProgressIndicator(),
-            if (!c.running &&
-                (c.profileDocument?['proxy-providers'] as Map? ?? {})
-                    .isNotEmpty)
+    return AnimatedBuilder(
+      animation: c,
+      builder: (context, _) => AlertDialog(
+        title: Text(c.tr('選擇出口', 'Choose route')),
+        content: SizedBox(
+          width: 900,
+          height: MediaQuery.sizeOf(context).height * .68,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                c.tr(
-                  '連線後可載入遠端訂閱的節點，現在仍可選群組。',
-                  'Connect to load remote provider nodes. Groups are available now.',
+                widget.application,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const Key('route-search'),
+                controller: search,
+                autofocus: true,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: c.tr('搜尋群組或節點', 'Search groups or nodes'),
                 ),
               ),
-            if (error != null)
-              ExpansionTile(
-                title: Text(
-                  c.tr('訂閱節點未載入，可重試', 'Provider nodes could not load. Retry'),
+              const SizedBox(height: 8),
+              if (browsingGroup != null)
+                TextButton.icon(
+                  onPressed: () => setState(() {
+                    browsingGroup = null;
+                    search.clear();
+                  }),
+                  icon: const Icon(Icons.arrow_back),
+                  label: Text('${c.tr('所有出口', 'All routes')} / $browsingGroup'),
                 ),
-                children: [SelectableText(error!)],
+              ProxyBrowserControls(
+                c: c,
+                sort: sort,
+                list: list,
+                onSort: (v) => setState(() => sort = v),
+                onLayout: (v) => setState(() => list = v),
               ),
-            Expanded(
-              child: entries.isEmpty
-                  ? Center(child: Text(c.tr('沒有符合的出口', 'No matching routes')))
-                  : ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final route = entries[index];
-                        final selected =
-                            route.identity == widget.current?.identity;
-                        return ListTile(
-                          key: ValueKey(route.identity),
-                          leading: Icon(
-                            route.category == 'group'
-                                ? Icons.hub_outlined
-                                : route.name == 'REJECT'
-                                ? Icons.block
-                                : route.name == 'DIRECT'
-                                ? Icons.public
-                                : Icons.dns_outlined,
-                          ),
-                          title: Text(
-                            route.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(
-                            route.detail,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: selected
-                              ? const Icon(Icons.check_circle)
-                              : null,
-                          selected: selected,
-                          onTap: () => Navigator.pop(context, route),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        if (c.running)
-          TextButton.icon(
-            onPressed: loading ? null : load,
-            icon: const Icon(Icons.refresh),
-            label: Text(c.tr('重新整理', 'Refresh')),
+              if (browsingGroup == null)
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final item in {
+                      'all': c.tr('全部', 'All'),
+                      'group': c.tr('群組', 'Groups'),
+                      'node': c.tr('節點', 'Nodes'),
+                      'system': c.tr('直連／封鎖', 'Direct / Block'),
+                    }.entries)
+                      ChoiceChip(
+                        label: Text(item.value),
+                        selected: category == item.key,
+                        onSelected: (_) => setState(() => category = item.key),
+                      ),
+                  ],
+                ),
+              if (loading) const LinearProgressIndicator(),
+              if (!c.running &&
+                  (c.profileDocument?['proxy-providers'] as Map? ?? {})
+                      .isNotEmpty)
+                Text(
+                  c.tr(
+                    '連線後可載入遠端訂閱的節點，現在仍可選群組。',
+                    'Connect to load remote provider nodes. Groups are available now.',
+                  ),
+                ),
+              if (error != null)
+                ExpansionTile(
+                  title: Text(
+                    c.tr('訂閱節點未載入，可重試', 'Provider nodes could not load. Retry'),
+                  ),
+                  children: [SelectableText(error!)],
+                ),
+              Expanded(
+                child: ProxyBrowser(
+                  c: c,
+                  sections: sections(context),
+                  sort: sort,
+                  list: list,
+                  searching: search.text.trim().isNotEmpty,
+                ),
+              ),
+            ],
           ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(c.tr('取消', 'Cancel')),
         ),
-      ],
+        actions: [
+          if (measuring)
+            TextButton.icon(
+              onPressed: () => setState(() => cancelled = true),
+              icon: const Icon(Icons.stop),
+              label: Text(c.tr('停止測速', 'Stop testing')),
+            ),
+          if (c.running)
+            TextButton.icon(
+              onPressed: loading ? null : load,
+              icon: const Icon(Icons.refresh),
+              label: Text(c.tr('重新整理', 'Refresh')),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(c.tr('取消', 'Cancel')),
+          ),
+        ],
+      ),
     );
   }
 }

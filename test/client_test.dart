@@ -10,6 +10,7 @@ import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
 import 'package:aster_desktop/main.dart';
 import 'package:aster_desktop/pages.dart';
+import 'package:aster_desktop/proxy_browser.dart';
 import 'package:aster_desktop/dialogs.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:yaml/yaml.dart';
@@ -55,6 +56,9 @@ class FakeBackend implements DesktopBackend {
   Json connectionData = {'connections': []};
   final closedConnections = <String>[];
   final selections = <String, String>{};
+  final controllerPaths = <String>[];
+  final delays = <String, int>{};
+  Completer<dynamic>? pendingDelay;
   @override
   Stream<Json> get events => changes.stream;
   @override
@@ -124,11 +128,23 @@ class FakeBackend implements DesktopBackend {
       case 'settings':
         settings = params!;
         return settings;
+      case 'forgetSelection':
+        selections.remove(params!['group']);
+        return true;
       case 'rememberSelection':
         selections[params!['group'] as String] = params['name'] as String;
         return true;
       case 'controller':
-        if (params!['method'] == 'DELETE' &&
+        controllerPaths.add(params!['path'] as String);
+        if ((params['path'] as String).contains('?timeout=5000')) {
+          if (pendingDelay != null) return pendingDelay!.future;
+          final path = (params['path'] as String).split('?').first;
+          if (!delays.containsKey(path)) {
+            throw const BackendException('timeout');
+          }
+          return {'delay': delays[path]};
+        }
+        if (params['method'] == 'DELETE' &&
             (params['path'] as String).startsWith('/connections/')) {
           final id = Uri.decodeComponent(
             (params['path'] as String).substring('/connections/'.length),
@@ -446,7 +462,7 @@ void main() {
       await c.loadRuntime();
       c.navigate(1);
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(ListTile, 'Tokyo'), findsOneWidget);
+      expect(find.byKey(const ValueKey('node:GLOBAL:Tokyo')), findsOneWidget);
       expect(find.text('Aster-App-private'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -549,7 +565,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('application-route-0')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const Key('route-search')), 'Tokyo');
+      await tester.tap(find.byTooltip('Browse group nodes'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('provider:Subscription:Tokyo')),
@@ -965,14 +981,14 @@ void main() {
     final c = await setup(tester, backend);
     c.navigate(1);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'Second'));
+    await tester.tap(find.byKey(const ValueKey('node:Choice:Second')));
     await tester.pumpAndSettle();
     expect(c.running, isFalse);
     expect(c.selections['Choice'], 'Second');
     expect(backend.calls, contains('rememberSelection'));
     expect(
       find.descendant(
-        of: find.widgetWithText(ListTile, 'Second'),
+        of: find.byKey(const ValueKey('node:Choice:Second')),
         matching: find.byIcon(Icons.check_circle),
       ),
       findsOneWidget,
@@ -1068,12 +1084,12 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     c.navigate(1);
     await tester.pumpAndSettle();
-    expect(find.byType(ListTile).evaluate().length, lessThan(30));
+    expect(find.byType(ProxyChoiceCard).evaluate().length, lessThan(30));
     await tester.enterText(find.byType(TextField), 'Node 1999');
     await tester.pumpAndSettle();
     expect(
       find.descendant(
-        of: find.byType(ListTile),
+        of: find.byType(ProxyChoiceCard),
         matching: find.text('Node 1999'),
       ),
       findsOneWidget,
@@ -1122,5 +1138,96 @@ void main() {
     expect(result, isNot(contains('super-secret')));
     expect(result, isNot(contains('password@example')));
     expect(result, isNot(contains('password=foo')));
+  });
+  testWidgets(
+    'node panels browse groups independently and restore automatic selection',
+    (tester) async {
+      final backend = FakeBackend()..running = true;
+      backend.profiles.add({
+        'id': 'groups',
+        'name': 'Groups',
+        'content': 'proxy-groups: [{name: Manual, type: select}, {name: Auto, type: url-test}]',
+      });
+      backend.proxyData = {
+        'Manual': {
+          'type': 'Selector',
+          'all': ['First', 'Second'],
+          'now': 'First',
+        },
+        'Auto': {
+          'type': 'URLTest',
+          'all': ['First', 'Second'],
+          'now': 'First',
+        },
+        'First': {'type': 'Direct'},
+        'Second': {'type': 'Direct'},
+      };
+      final c = await setup(tester, backend);
+      await c.loadRuntime();
+      c.navigate(1);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('node:Manual:Second')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('node:Auto:Second')));
+      await tester.pumpAndSettle();
+      expect(backend.proxyData['Manual']['now'], 'First');
+      expect(backend.proxyData['Auto']['now'], 'Second');
+      expect(c.selections['Auto'], 'Second');
+      await tester.tap(find.byTooltip('Restore automatic selection'));
+      await tester.pumpAndSettle();
+      expect(c.selections.containsKey('Auto'), isFalse);
+      expect(backend.controllerPaths, contains('/proxies/Auto'));
+      expect(backend.calls, contains('forgetSelection'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test('node delay cache isolates providers, survives polls and discards stale results', () async {
+    final backend = FakeBackend()..running = true;
+    final c = AppController(backend);
+    await c.refresh();
+    backend.delays['/providers/proxies/Remote%20A/Tokyo/healthcheck'] = 40;
+    backend.delays['/providers/proxies/Remote%20B/Tokyo/healthcheck'] = 80;
+    expect(await c.testNode('Tokyo', provider: 'Remote A'), 40);
+    expect(await c.testNode('Tokyo', provider: 'Remote B'), 80);
+    await c.refresh();
+    expect(c.nodeDelay('Tokyo', provider: 'Remote A'), 40);
+    expect(c.nodeDelay('Tokyo', provider: 'Remote B'), 80);
+    expect(await c.testNode('Missing'), isNull);
+    expect(c.nodeDelay('Missing'), 0);
+    expect(c.error, isNull);
+    backend.pendingDelay = Completer<dynamic>();
+    final test = c.testNode('Slow');
+    expect(c.isTestingNode('Slow'), isTrue);
+    backend.running = false;
+    await c.refresh();
+    backend.pendingDelay!.complete({'delay': 10});
+    await test;
+    expect(c.nodeDelay('Slow'), isNull);
+    backend.running = true;
+    await c.refresh();
+    backend.pendingDelay = Completer<dynamic>();
+    final late = c.testNode('Late');
+    c.dispose();
+    backend.pendingDelay!.complete({'delay': 20});
+    await late;
+  });
+
+  test('node latency sorting keeps untested and timeout entries after valid delays', () {
+    final entries = [
+      const ProxyChoice(id: 'timeout', name: 'Timeout', detail: '', delay: 0),
+      const ProxyChoice(id: 'unknown', name: 'Unknown', detail: ''),
+      const ProxyChoice(
+        id: 'slow',
+        name: 'Slow',
+        detail: '',
+        delay: 100,
+        selected: true,
+      ),
+      const ProxyChoice(id: 'fast', name: 'Fast', detail: '', delay: 30),
+    ];
+    final sorted = sortProxyChoices(entries, ProxySort.latency);
+    expect(sorted.map((n) => n.id), ['fast', 'slow', 'unknown', 'timeout']);
+    expect(sorted.where((n) => n.selected).single.id, 'slow');
+    expect(entries.first.id, 'timeout');
   });
 }

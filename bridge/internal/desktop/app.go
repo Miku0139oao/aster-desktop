@@ -582,6 +582,23 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			}
 		}
 		return result, err
+	case "forgetSelection":
+		var p struct{ Group string }
+		if err := decode(req.Params, &p); err != nil {
+			return nil, err
+		}
+		if p.Group == "" || len(p.Group) > 512 {
+			return nil, errors.New("invalid selection group")
+		}
+		previous, existed := s.State.Selections[p.Group]
+		delete(s.State.Selections, p.Group)
+		if err := s.Save(); err != nil {
+			if existed {
+				s.State.Selections[p.Group] = previous
+			}
+			return nil, err
+		}
+		return true, nil
 	case "rememberSelection":
 		// Offline selection and macOS's authenticated XPC controller share storage.
 		var p struct{ Group, Name string }

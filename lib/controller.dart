@@ -80,6 +80,23 @@ class AppController extends ChangeNotifier {
   String desktopVersion = '';
   String? _parsedContent;
   YamlMap? _parsedProfile;
+  final _nodeDelays = <(String?, String), int>{};
+  final _testingNodes = <(String?, String)>{};
+  int _latencyEpoch = 0;
+  bool _disposed = false;
+
+  bool isTestingNode(String name, {String? provider}) =>
+      _testingNodes.contains((provider, name));
+
+  int? nodeDelay(String name, {String? provider, Map? proxy}) {
+    final cached = _nodeDelays[(provider, name)];
+    if (cached != null) return cached;
+    final history =
+        (proxy ?? (provider == null ? proxies[name] as Map? : null))?['history']
+            as List? ??
+        [];
+    return history.isEmpty ? null : (history.last['delay'] as num?)?.toInt();
+  }
 
   // Status/traffic updates leave the profile text unchanged. Parsing it on
   // every rebuild blocks keyboard input for large subscriptions.
@@ -180,6 +197,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    final previousProfile = active?.content;
+    final previousId = activeId;
+    final previousRunning = running;
     final epoch = _operationEpoch;
     final result = await backend.call('state') as Json;
     if (epoch != _operationEpoch) return;
@@ -196,6 +216,13 @@ class AppController extends ChangeNotifier {
     desktopVersion = result['desktopVersion'] as String? ?? '';
     final core = result['core'] as Json;
     running = core['running'] == true;
+    if (previousId != activeId ||
+        previousProfile != active?.content ||
+        previousRunning != running) {
+      _latencyEpoch++;
+      _nodeDelays.clear();
+      _testingNodes.clear();
+    }
     if (core['error'] != null) error = core['error'] as String;
     notifyListeners();
   }
@@ -269,27 +296,35 @@ class AppController extends ChangeNotifier {
       }
     }
   });
-  Future<int?> testNode(String name) async {
+  Future<bool> resetNode(String group) => perform(() async {
+    if (running) await api('DELETE', '/proxies/${Uri.encodeComponent(group)}');
+    await backend.call('forgetSelection', {'group': group});
+  });
+
+  Future<int?> testNode(String name, {String? provider}) async {
+    final key = (provider, name);
+    if (!running || _disposed || !_testingNodes.add(key)) return null;
+    final epoch = _latencyEpoch;
+    notifyListeners();
     try {
+      final path = provider == null
+          ? '/proxies/${Uri.encodeComponent(name)}/delay'
+          : '/providers/proxies/${Uri.encodeComponent(provider)}/${Uri.encodeComponent(name)}/healthcheck';
       final result = await api(
         'GET',
-        '/proxies/${Uri.encodeComponent(name)}/delay?timeout=5000&url=${Uri.encodeComponent('https://www.gstatic.com/generate_204')}',
+        '$path?timeout=5000&url=${Uri.encodeComponent('https://www.gstatic.com/generate_204')}',
       ) as Json;
-      final proxy = proxies[name] as Json?;
-      if (proxy != null) {
-        proxy['history'] = [
-          {'delay': result['delay']},
-        ];
+      final delay = (result['delay'] as num?)?.toInt() ?? 0;
+      if (!_disposed && epoch == _latencyEpoch) _nodeDelays[key] = delay;
+      return delay;
+    } catch (_) {
+      if (!_disposed && epoch == _latencyEpoch) _nodeDelays[key] = 0;
+      return null;
+    } finally {
+      if (!_disposed && epoch == _latencyEpoch) {
+        _testingNodes.remove(key);
         notifyListeners();
       }
-      return result['delay'] as int?;
-    } catch (e) {
-      error = tr(
-        '節點無法連線，請換一個節點。',
-        'This node is unreachable. Try another node.',
-      );
-      notifyListeners();
-      return null;
     }
   }
 
@@ -404,6 +439,8 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _latencyEpoch++;
     _timer?.cancel();
     unawaited(_subscription?.cancel());
     super.dispose();

@@ -63,7 +63,7 @@ void main() {
     expect(c.profiles.length, 1, reason: c.error);
     c.navigate(1);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'Local B'));
+    await tester.tap(find.byKey(const ValueKey('node:Proxy:Local B')));
     await tester.pumpAndSettle();
     expect(c.selections['Proxy'], 'Local B');
     expect(c.running, isFalse);

@@ -183,59 +183,65 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                       ],
                     ),
                   ),
-                  for (var i = 0; i < destinations.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      child: Tooltip(
-                        message: destinations[i].$2,
-                        child: Material(
-                          color: c.page == i
-                              ? cs.secondaryContainer
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(18),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: () => c.navigate(i),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 15,
-                              ),
-                              child: Row(
-                                mainAxisAlignment: compact
-                                    ? MainAxisAlignment.center
-                                    : MainAxisAlignment.start,
-                                children: [
-                                  Icon(
-                                    destinations[i].$1,
-                                    color: c.page == i
-                                        ? cs.onSecondaryContainer
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                  if (!compact) ...[
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Text(
-                                        destinations[i].$2,
-                                        style: TextStyle(
-                                          fontWeight: c.page == i
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                        ),
-                                      ),
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        for (var i = 0; i < destinations.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            child: Tooltip(
+                              message: destinations[i].$2,
+                              child: Material(
+                                color: c.page == i
+                                    ? cs.secondaryContainer
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(18),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(18),
+                                  onTap: () => c.navigate(i),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 18,
+                                      vertical: 15,
                                     ),
-                                  ],
-                                ],
+                                    child: Row(
+                                      mainAxisAlignment: compact
+                                          ? MainAxisAlignment.center
+                                          : MainAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          destinations[i].$1,
+                                          color: c.page == i
+                                              ? cs.onSecondaryContainer
+                                              : cs.onSurfaceVariant,
+                                        ),
+                                        if (!compact) ...[
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: Text(
+                                              destinations[i].$2,
+                                              style: TextStyle(
+                                                fontWeight: c.page == i
+                                                    ? FontWeight.w700
+                                                    : FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
-                  const Spacer(),
+                  ),
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(

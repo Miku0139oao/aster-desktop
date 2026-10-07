@@ -10,6 +10,7 @@ import 'controller.dart';
 import 'dialogs.dart';
 import 'application_rules.dart';
 import 'network_settings.dart';
+import 'proxy_browser.dart';
 export 'dialogs.dart' show showImportDialog;
 
 class PageBody extends StatelessWidget {
@@ -474,9 +475,43 @@ class NodesPage extends StatefulWidget {
 }
 
 class _NodesPageState extends State<NodesPage> {
-  String search = '', group = '';
-  bool measuring = false, cancelled = false;
+  final search = TextEditingController();
+  String? group;
+  ProxySort sort = ProxySort.configuration;
+  bool list = false, measuring = false, cancelled = false;
+  Json providers = {};
+  (String, String?, bool)? providerProfile;
+  bool providerFailed = false;
   AppController get c => widget.c;
+
+  @override
+  void initState() {
+    super.initState();
+    c.addListener(_loadProviders);
+    _loadProviders();
+  }
+
+  void _loadProviders() {
+    final profile = (c.activeId, c.active?.content, c.running);
+    if (providerProfile == profile) return;
+    providerProfile = profile;
+    providers = {};
+    providerFailed = false;
+    if (!c.running) return;
+    c
+        .api('GET', '/providers/proxies')
+        .then((result) {
+          if (mounted && providerProfile == profile) {
+            setState(() => providers = result['providers'] as Json? ?? {});
+          }
+        })
+        .catchError((Object _) {
+          if (mounted && providerProfile == profile) {
+            setState(() => providerFailed = true);
+          }
+        });
+  }
+
   Json _offline() {
     try {
       final doc = c.profileDocument;
@@ -524,32 +559,66 @@ class _NodesPageState extends State<NodesPage> {
     }
   }
 
-  Future<void> _measure(List<String> nodes) async {
+  Future<void> _measure(List<(String, String?)> nodes) async {
+    if (measuring) return;
+    final profile = c.activeId;
     setState(() {
       measuring = true;
       cancelled = false;
     });
-    for (var i = 0; i < nodes.length && !cancelled; i += 4) {
-      await Future.wait(nodes.skip(i).take(4).map(c.testNode));
+    final unique = nodes.toSet().toList();
+    for (
+      var i = 0;
+      i < unique.length && !cancelled && c.running && profile == c.activeId;
+      i += 4
+    ) {
+      await Future.wait(
+        unique
+            .skip(i)
+            .take(4)
+            .map((node) => c.testNode(node.$1, provider: node.$2)),
+      );
       if (!mounted) return;
     }
     if (mounted) setState(() => measuring = false);
   }
 
+  String _chain(String name, Json all) {
+    final seen = <String>{};
+    var current = name;
+    while (seen.add(current)) {
+      final next = (all[current] as Map?)?['now'] as String?;
+      if (next == null || next.isEmpty) break;
+      current = next;
+    }
+    return current;
+  }
+
   @override
   Widget build(BuildContext context) {
     final all = c.running ? c.proxies : _offline();
-    final applicationGroups =
-        (c.active?.json['desktopProviderRoutes'] as List? ?? [])
-            .map((route) => route['group'])
-            .toSet();
+    final managed = (c.active?.json['desktopProviderRoutes'] as List? ?? [])
+        .map((r) => r['group'])
+        .toSet();
     final groups = all.entries
         .where(
-          (e) =>
-              (e.value as Json)['all'] is List &&
-              !applicationGroups.contains(e.key),
+          (e) => (e.value as Map)['all'] is List && !managed.contains(e.key),
         )
         .toList();
+    final definitions = <String, Map>{
+      for (final g in (c.profileDocument?['proxy-groups'] as List? ?? []))
+        g['name'] as String: g as Map,
+    };
+    final order = {
+      for (var i = 0; i < definitions.length; i++)
+        definitions.keys.elementAt(i): i,
+    };
+    groups.sort(
+      (a, b) => (order[a.key] ?? order.length).compareTo(
+        order[b.key] ?? order.length,
+      ),
+    );
+    final groupNames = groups.map((g) => g.key).toSet();
     if (groups.isEmpty) {
       return EmptyMessage(
         icon: Icons.hub_outlined,
@@ -564,144 +633,212 @@ class _NodesPageState extends State<NodesPage> {
         ),
       );
     }
-    if (!groups.any((g) => g.key == group)) {
-      group =
-          groups
-              .where((g) => (g.value as Json)['type'] == 'Selector')
-              .firstOrNull
-              ?.key ??
-          groups.first.key;
+    if (!groups.any((g) => g.key == group)) group = null;
+    final query = search.text.trim().toLowerCase();
+    final sections = <ProxySection>[];
+    final testNames = <(String, String?)>[];
+    final metadata = <(String, String), Map>{
+      for (final p in providers.entries)
+        for (final n in (p.value['proxies'] as List? ?? []))
+          (p.key, n['name'] as String): n as Map,
+    };
+    for (final entry in groups) {
+      if (group != null && entry.key != group) continue;
+      final info = entry.value as Map;
+      final names = (info['all'] as List)
+          .cast<String>()
+          .where(
+            (name) =>
+                !managed.contains(name) &&
+                (entry.key.toLowerCase().contains(query) ||
+                    name.toLowerCase().contains(query)),
+          )
+          .toList();
+      if (names.isEmpty && query.isNotEmpty) continue;
+      final definition = definitions[entry.key];
+      final uses =
+          definition?['include-all'] == true ||
+              definition?['include-all-providers'] == true
+          ? providers.keys.toList()
+          : (definition?['use'] as List? ?? []).cast<String>();
+      final source = {
+        for (final name in names)
+          name: all.containsKey(name)
+              ? null
+              : uses.where((p) => metadata.containsKey((p, name))).firstOrNull,
+      };
+      final tests = [for (final name in names) (name, source[name])];
+      testNames.addAll(tests);
+      final automatic = [
+        'URLTest',
+        'Fallback',
+        'url-test',
+        'fallback',
+      ].contains(info['type']);
+      final selectable = info['type'] == 'Selector' || automatic;
+      sections.add(
+        ProxySection(
+          id: entry.key,
+          title: entry.key,
+          detail:
+              '${info['type']} · ${c.tr('目前', 'Current')}: ${_chain(entry.key, all)}${automatic
+                  ? c.tr(' · 可指定節點或恢復自動', ' · Pin a node or restore automatic selection')
+                  : selectable
+                  ? ''
+                  : c.tr(' · 自動分配', ' · Automatic routing')}',
+          onTest: c.running && !measuring ? () => _measure(tests) : null,
+          onReset: automatic && !c.busy ? () => c.resetNode(entry.key) : null,
+          choices: [
+            for (final name in names)
+              ProxyChoice(
+                id: 'node:${entry.key}:$name',
+                name: name,
+                detail: (all[name] as Map?)?['all'] is List
+                    ? '${(all[name] as Map)['type']} · ${_chain(name, all)}'
+                    : ((all[name] as Map?)?['type'] ??
+                              metadata[(source[name], name)]?['type'] ??
+                              '')
+                          .toString(),
+                selected: info['now'] == name,
+                delay: c.nodeDelay(
+                  name,
+                  provider: source[name],
+                  proxy: metadata[(source[name], name)],
+                ),
+                testing: c.isTestingNode(name, provider: source[name]),
+                onSelect: !c.busy && selectable
+                    ? () => c.selectNode(entry.key, name)
+                    : null,
+                onTest: c.running
+                    ? () => c.testNode(name, provider: source[name])
+                    : null,
+                onOpen: groupNames.contains(name)
+                    ? () => setState(() {
+                        group = name;
+                        search.clear();
+                      })
+                    : null,
+              ),
+          ],
+        ),
+      );
     }
-    final selected = all[group] as Json;
-    final nodes = (selected['all'] as List)
-        .cast<String>()
-        .where(
-          (name) =>
-              !applicationGroups.contains(name) &&
-              name.toLowerCase().contains(search.toLowerCase()),
-        )
-        .toList();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SizedBox(
-                width: 230,
-                child: DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: group,
+                width: 250,
+                child: TextField(
+                  controller: search,
+                  onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
-                    labelText: c.tr('代理群組', 'Proxy group'),
+                    hintText: c.tr('搜尋所有群組與節點', 'Search groups and nodes'),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: c.tr('清除搜尋', 'Clear search'),
+                            onPressed: () => setState(search.clear),
+                            icon: const Icon(Icons.close),
+                          ),
                   ),
-                  items: groups
-                      .map(
-                        (g) => DropdownMenuItem(
-                          value: g.key,
-                          child: Text(g.key, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => group = v!),
                 ),
               ),
-              SizedBox(
-                width: 240,
-                child: TextField(
-                  onChanged: (v) => setState(() => search = v),
-                  decoration: InputDecoration(
-                    hintText: c.tr('搜尋節點', 'Search nodes'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
-                ),
+              ProxyBrowserControls(
+                c: c,
+                sort: sort,
+                list: list,
+                onSort: (v) => setState(() => sort = v),
+                onLayout: (v) => setState(() => list = v),
               ),
               OutlinedButton.icon(
                 onPressed: !c.running
                     ? null
                     : measuring
                     ? () => setState(() => cancelled = true)
-                    : () => _measure(nodes),
+                    : () => _measure(testNames),
                 icon: Icon(measuring ? Icons.stop : Icons.speed),
                 label: Text(
-                  measuring
-                      ? c.tr('停止測速', 'Stop testing')
-                      : c.tr('測試延遲', 'Test latency'),
+                  c.tr(
+                    measuring ? '停止測速' : '測試顯示節點',
+                    measuring ? 'Stop testing' : 'Test visible nodes',
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        if (!c.running)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 8),
-            child: Text(
-              c.tr(
-                '可先選擇節點，再到首頁連線。測速與遠端提供者的節點會在連線後載入。',
-                'Choose a node, then connect on Overview. Latency tests and remote provider nodes become available after connecting.',
-              ),
-            ),
-          ),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-            itemCount: nodes.length,
-            itemBuilder: (context, i) {
-              final name = nodes[i];
-              final node = all[name] as Json? ?? {};
-              final chosen = selected['now'] == name;
-              final history = node['history'] as List? ?? [];
-              final delay = history.isEmpty
-                  ? null
-                  : (history.last as Json)['delay'];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                color: chosen
-                    ? Theme.of(context).colorScheme.secondaryContainer
-                    : null,
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 6,
-                  ),
-                  leading: Icon(
-                    chosen ? Icons.check_circle : Icons.circle_outlined,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  title: Text(name),
-                  subtitle: Text(node['type'] as String? ?? ''),
-                  onTap: c.busy || selected['type'] != 'Selector'
-                      ? null
-                      : () => c.selectNode(group, name),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (delay != null)
-                        Text(delay == 0 ? c.tr('逾時', 'Timeout') : '$delay ms'),
-                      IconButton(
-                        tooltip: c.tr('測試此節點', 'Test this node'),
-                        onPressed: !c.running || measuring
-                            ? null
-                            : () => c.testNode(name),
-                        icon: const Icon(Icons.speed),
-                      ),
-                    ],
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(c.tr('所有群組', 'All groups')),
+                    selected: group == null,
+                    onSelected: (_) => setState(() => group = null),
                   ),
                 ),
-              );
-            },
+                for (final entry in groups)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(entry.key),
+                      selected: group == entry.key,
+                      onSelected: (_) => setState(() => group = entry.key),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
-      ],
+          if (!c.running)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                c.tr(
+                  '可先選節點，再到首頁連線；遠端訂閱與測速會在連線後載入。',
+                  'Choose nodes before connecting. Remote providers and latency tests load when connected.',
+                ),
+              ),
+            ),
+          if (providerFailed)
+            TextButton.icon(
+              onPressed: () {
+                providerProfile = null;
+                _loadProviders();
+              },
+              icon: const Icon(Icons.refresh),
+              label: Text(
+                c.tr('訂閱節點資訊載入失敗，重試', 'Retry loading provider information'),
+              ),
+            ),
+          Expanded(
+            child: ProxyBrowser(
+              c: c,
+              sections: sections,
+              sort: sort,
+              list: list,
+              searching: search.text.trim().isNotEmpty,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   void dispose() {
     cancelled = true;
+    c.removeListener(_loadProviders);
+    search.dispose();
     super.dispose();
   }
 }
