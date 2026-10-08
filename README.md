@@ -1,6 +1,6 @@
 # Aster Desktop 0.2.1 測試版
 
-[下載安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+[下載 0.2.1 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.1-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
 
 0.2.1 修正核心更新：保持連線即可檢查與下載 GitHub 更新，系統代理及 TUN 都明確使用目前核心的本機代理。下載、SHA-256／架構／API／設定驗證完成後，才短暫重啟並恢復 TUN、模式、連接埠與節點選擇。下載或驗證失敗不停止目前核心；新版啟動失敗會回復舊版。慢速下載期間維持背景服務連線，Mac 更新也保留系統代理的服務所有權。
 

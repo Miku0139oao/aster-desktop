@@ -4,7 +4,16 @@
 
 新增回歸：禁止所有直連的 HTTPS CONNECT／GitHub API／跨主機轉址下載；代理失敗不直連；下載與校驗期間舊核心 PID 不變；原生程序 fixture 的 TUN／模式／連接埠／節點恢復、checksum 失敗不中斷、新版啟動失敗回復；GUI 所持服務連線可直接更新兩份核心；二十秒 lease 保活；停止狀態的助手更新成功或失敗均保留正常核心的代理所有權。這些測試使用獨立資料與本機 fixture，未建立使用者 TUN、修改系統代理或服務。第一次完整 Windows 測試遇到 TCP 可用但 UDP 屬於保留範圍的測試埠；修正 UDP 佔用測試選埠方式後重跑。
 
-本機 Flutter analyze、43 項元件／單元測試通過（一項 Mac 專用跳過）。包含實際 Dart RPC／XPC 編排的六項 mock-native 測試：成功與 checksum 失敗、啟動回復後固定自動群組節點、依 PID 保留／重置流量 session、恢復 IPC 失敗仍可停止 TUN、正常模式重啟失敗清理代理，以及清理失敗保留所有權以便重試。Go 增加 GUI 服務更新失敗回復後恢復自動群組選點的原生程序回歸。Windows 真實固定核心完整 Go 測試通過。平台建置與安裝包結果於完成後追加。實際 GitHub 下載速度依網路與所選出口而定；使用者 Wi-Fi TUN 及 Mac 實機網路／授權仍未驗證。
+本機 Flutter analyze、43 項元件／單元測試通過（一項 Mac 專用跳過）。包含實際 Dart RPC／XPC 編排的六項 mock-native 測試：成功與 checksum 失敗、啟動回復後固定自動群組節點、依 PID 保留／重置流量 session、恢復 IPC 失敗仍可停止 TUN、正常模式重啟失敗清理代理，以及清理失敗保留所有權以便重試。Go 增加 GUI 服務更新失敗回復後恢復自動群組選點的原生程序回歸。Windows 真實固定核心完整 Go 測試通過。各平台建置與套件驗證結果如下。實際 GitHub 下載速度依網路與所選出口而定；使用者 Wi-Fi TUN 及 Mac 實機網路／授權仍未驗證。
+
+交付產品來源：`b208ea777b007ad87d6a66450b54fbbd44fa3d68`。
+
+- [最終四平台 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/37796085804) 全部通過：Windows、Ubuntu 24.04、Mac Intel／Apple Silicon release 建置，Flutter 靜態分析、元件／圖片比對與六項 RPC／XPC 更新恢復 mock，Go 完整管理層及真實固定核心測試。Windows 原生 GUI、LocalSystem／TUN 與九項安裝器回歸；Ubuntu 原生 GUI 也通過。Mac 原生 GUI driver 明確跳過。
+- [Apple Silicon 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37797837548) 與 [Intel 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/37799622622) 均通過：從最終 CI 下載實際 DMG、全部套件 SHA-256、DMG 校驗、PKG 安裝、完整 codesign、GUI／Go／Swift 架構及 root 所有權／目錄權限。
+- 本機最終 Windows 真實固定核心完整 Go 測試通過（91 秒）。WSL Arch 最新 release、可攜包與套件建置通過，bridge 的 VCS 提交為產品來源且未修改；所有 Arch archive 項目排除 group／world write，套件 owner 為 root。之前的 WSL 真實核心完整測試通過；最終 Unix 完整回歸由上述 Ubuntu／Mac CI 驗證。未以 WSL 代替 GNOME／KDE 桌面代理、托盤及 polkit 實機驗收。
+- 第一輪四平台 CI 已通過，之後補上自動群組固定選點的回復、Mac 代理清理及 IPC 所有權保護，重新執行最終 CI。Windows ZIP 空目錄使用反斜線時，安裝校驗會跳過目錄並繼續逐檔核對。Linux 打包會修正 DrvFs 回報的 0777 模式，避免套件保留 group／world write。
+
+[0.2.1-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.1-beta.1) 已公開。13 份資產（Windows、Mac Intel／Apple Silicon、Ubuntu、Arch、對應來源與 SHA256SUMS）的 GitHub SHA-256 digest／大小均與本機檔案一致；release tag 指向上述產品來源。最終 Windows 安裝器 SHA-256：`decf47c0df7009ea8ba8f804df8f14b7b9eb9daf332889841807e79a7544acdb`。本機 `dist` 已同步最終套件；後續文件提交未改動執行程式來源。
 
 ---
 
