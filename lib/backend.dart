@@ -108,7 +108,7 @@ class ProcessBackend implements DesktopBackend {
       jsonEncode({'id': id, 'method': method, 'params': params ?? {}}),
     );
     return completer.future.timeout(
-      Duration(minutes: method == 'updateCore' ? 8 : 3),
+      Duration(minutes: method == 'updateCore' ? 20 : 3),
       onTimeout: () {
         _pending.remove(id);
         throw const BackendException(
@@ -126,7 +126,7 @@ class ProcessBackend implements DesktopBackend {
     });
     final reply = await _native
         .invokeMethod<String>('serviceCall', message)
-        .timeout(const Duration(minutes: 4));
+        .timeout(Duration(minutes: method == 'updateCore' ? 10 : 4));
     final response = jsonDecode(reply!) as Json;
     if (response['error'] != null) {
       throw BackendException(response['error']['message'] as String);
@@ -219,15 +219,41 @@ class ProcessBackend implements DesktopBackend {
       _macProxy = false;
       return _rpc('disconnect');
     }
-    if (method == 'updateCore' && !_macRunning) {
+    if (method == 'checkUpdates' && _macRunning) {
+      return _rpc(method, {'externalProxy': true});
+    }
+    if (method == 'updateCore') {
       final status = await _native.invokeMapMethod<String, dynamic>(
         'serviceStatus',
       );
+      final snapshot = await _rpc('state') as Json;
+      final settings = (snapshot['state'] as Json)['settings'] as Json;
       try {
-        if (status?['approved'] == true) {
-          await _xpc('updateCore');
+        // Download the user copy while the currently owned TUN stays online.
+        final result = await _rpc(method, {
+          ...?params,
+          'externalProxy': _macRunning,
+        });
+        if (_macRunning || status?['approved'] == true) {
+          _events.add({'event': 'updateProgress', 'data': 'service'});
+          try {
+            await _xpc('updateCore', {
+              'port':
+                  _macRunning || (snapshot['core'] as Json)['running'] == true
+                  ? settings['mixedPort']
+                  : 0,
+            });
+          } catch (e) {
+            throw BackendException(
+              'Desktop core updated, but background core could not update: $e',
+            );
+          }
+          if (_macRunning) {
+            _macTrafficSession = 'mac:${DateTime.now().microsecondsSinceEpoch}';
+          }
         }
-        return await _rpc(method, params);
+        _events.add({'event': 'updateProgress', 'data': 'complete'});
+        return result;
       } finally {
         if (_macProxy) {
           final snapshot = await _rpc('state') as Json;
@@ -331,9 +357,6 @@ class ProcessBackend implements DesktopBackend {
           });
         }
         return result;
-      }
-      if (method == 'updateCore') {
-        throw const BackendException('Disconnect before updating the core.');
       }
       if (method == 'settings' ||
           method == 'edit' ||

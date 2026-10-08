@@ -843,8 +843,8 @@ Future<void> showUpdateDialog(BuildContext context, AppController c) async {
             const SizedBox(height: 12),
             Text(
               c.tr(
-                '更新核心可能短暫中斷連線；失敗會回復舊版。',
-                'Updating the core may briefly interrupt connections. A failed update restores the previous version.',
+                '不必先斷線。下載與驗證會使用目前的代理；完成後短暫重啟並恢復連線，啟動失敗會回復舊版。',
+                'Stay connected. Download and verification use your current proxy, then briefly restart and reconnect. A failed startup restores the previous core.',
               ),
             ),
           ],

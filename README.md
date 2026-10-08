@@ -1,6 +1,8 @@
-# Aster Desktop 0.2.0 測試版
+# Aster Desktop 0.2.1 測試版
 
-[下載 0.2.0-beta.1 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.0-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+[下載安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+
+0.2.1 修正核心更新：保持連線即可檢查與下載 GitHub 更新，系統代理及 TUN 都明確使用目前核心的本機代理。下載、SHA-256／架構／API／設定驗證完成後，才短暫重啟並恢復 TUN、模式、連接埠與節點選擇。下載或驗證失敗不停止目前核心；新版啟動失敗會回復舊版。慢速下載期間維持背景服務連線，Mac 更新也保留系統代理的服務所有權。
 
 Flutter / Material 3 桌面代理客戶端，依賴獨立 Aster Core。預設繁體中文、紫色主題，支援英文與淺色／深色／跟隨系統。平台驗證狀態見 [測試紀錄](docs/TESTING.md)，各提交的建置與測試包見 [GitHub Actions](https://github.com/Miku0139oao/aster-desktop/actions/workflows/build.yml)。macOS 實機網路與權限驗收另列，不以 CI 編譯結果代替。
 
@@ -24,7 +26,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 ## 安裝與第一次使用
 
-1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.0-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。
+1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.1-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。這是桌面程式安裝；之後在 GUI 更新核心時可保持連線。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。
@@ -55,7 +57,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 ## 更新與資料
 
-GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。TUN 請先停止再更新。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
+GUI 與核心分開版本化。GUI 新版由使用者下載安裝包手動安裝；程式內提示使用公開的穩定 release API，測試版請從上方下載連結取得。核心只在按下「更新核心」後追蹤官方 `Prerelease-main`，檢查 SHA-256、架構、設定與必要 API 欄位，保留上一版並在啟動失敗時回復。不必先停止 TUN；下載期間保持代理，驗證通過後才短暫重啟並恢復連線。使用者核心與背景服務核心各自進行驗證與回復，其中一份失敗會明確報錯，另一份仍保留可用版本。
 
 資料位於系統應用程式支援目錄，由 `path_provider` 取得，包含 `state.json`、`traffic-history.json`、`backup-*.yaml`／`backup-*.json`、`runtime/` 與 `cores/`。JSON 備份保存 GUI 分流 metadata，還原時一併復原。設定含訂閱 token、節點密碼，請勿公開。解除安裝保留使用者設定；服務私人狀態位於 ProgramData／`/var/lib/aster-desktop`／`/Library/Application Support/AsterDesktop/service`。
 

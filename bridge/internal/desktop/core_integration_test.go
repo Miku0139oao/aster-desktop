@@ -324,12 +324,9 @@ func TestRealCoreRejectsOccupiedUDPPort(t *testing.T) {
 	if binary == "" {
 		t.Skip("requires ASTER_TEST_CORE")
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := net.ListenPacket("udp", listener.Addr().String())
-	_ = listener.Close()
+	// Windows can reserve UDP ranges independently from TCP. Choose a port
+	// available to both before intentionally occupying its UDP listener.
+	packet, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", unusedPort()))
 	if err != nil {
 		t.Fatal(err)
 	}

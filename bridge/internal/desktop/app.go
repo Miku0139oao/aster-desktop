@@ -751,14 +751,43 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		return true, UninstallService()
 	case "checkUpdates":
-		return CheckUpdates(ctx)
-	case "updateCore":
-		if a.remote != nil {
-			return nil, errors.New("disconnect all-applications mode before updating the core")
+		var p struct{ ExternalProxy bool }
+		if err := decode(req.Params, &p); err != nil {
+			return nil, err
 		}
-		result, err := a.UpdateCore(ctx)
+		updateCtx, closeClient := a.updateNetwork(ctx, p.ExternalProxy)
+		defer closeClient()
+		if a.remote != nil {
+			defer a.remote.keepUpdateLease()()
+		}
+		return CheckUpdates(updateCtx)
+	case "updateCore":
+		var p struct{ ExternalProxy bool }
+		if err := decode(req.Params, &p); err != nil {
+			return nil, err
+		}
+		updateCtx, closeClient := a.updateNetwork(ctx, p.ExternalProxy)
+		defer closeClient()
+		var result any
+		var err error
+		if a.remote != nil {
+			stopLease := a.remote.keepUpdateLease()
+			result, err = a.UpdateCore(updateCtx)
+			stopLease()
+		} else {
+			result, err = a.UpdateCore(updateCtx)
+		}
 		if err != nil {
 			return nil, err
+		}
+		if a.remote != nil {
+			a.Emit("updateProgress", "service")
+			if err = a.remote.Call("updateCore", nil, nil); err != nil {
+				return nil, fmt.Errorf("desktop core updated, but background core could not update: %w", err)
+			}
+			a.restoreSelections(ctx)
+			a.Emit("updateProgress", "complete")
+			return result, nil
 		}
 		if ServiceStatus()["installed"] == true {
 			remote, err := ConnectService()
@@ -766,10 +795,16 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 				return nil, fmt.Errorf("desktop core updated, but background service is unavailable: %w", err)
 			}
 			defer remote.Close()
-			if err = remote.Call("updateCore", nil, nil); err != nil {
+			port := 0
+			if a.Core.Status().Running {
+				port = a.Store.State.Settings.MixedPort
+			}
+			a.Emit("updateProgress", "service")
+			if err = remote.Call("updateCore", map[string]int{"port": port}, nil); err != nil {
 				return nil, fmt.Errorf("desktop core updated, but background core could not update: %w", err)
 			}
 		}
+		a.Emit("updateProgress", "complete")
 		return result, nil
 	default:
 		return nil, errors.New("unknown desktop operation")

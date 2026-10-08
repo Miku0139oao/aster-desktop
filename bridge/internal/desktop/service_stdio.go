@@ -72,7 +72,7 @@ func ServePrivilegedStdio(ctx context.Context, core *Core, in io.Reader, out io.
 				err = core.restoreProxy()
 				result = true
 			case "updateCore":
-				result, err = UpdateServiceCore(ctx, core)
+				result, err = UpdateServiceCore(ctx, core, p.Port)
 			default:
 				err = errors.New("unsupported XPC operation")
 			}

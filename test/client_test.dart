@@ -60,12 +60,20 @@ class FakeBackend implements DesktopBackend {
   final controllerPaths = <String>[];
   final delays = <String, int>{};
   Completer<dynamic>? pendingDelay;
+  Completer<dynamic>? pendingUpdate;
   @override
   Stream<Json> get events => changes.stream;
   @override
   Future<dynamic> call(String method, [Json? params]) async {
     calls.add(method);
     switch (method) {
+      case 'checkUpdates':
+        return {
+          'core': {'assets': []},
+          'desktopVersion': desktopVersion,
+        };
+      case 'updateCore':
+        return pendingUpdate?.future;
       case 'listNetworkInterfaces':
         return networkInterfaces;
       case 'state':
@@ -1009,6 +1017,32 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'page $i overflowed');
     }
+  });
+  testWidgets('core update keeps TUN connected while downloading', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..running = true;
+    backend.settings['tun'] = true;
+    backend.pendingUpdate = Completer<dynamic>();
+    final c = await setup(tester, backend);
+    unawaited(showUpdateDialog(tester.element(find.byType(Scaffold).first), c));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Stay connected.'), findsOneWidget);
+    await tester.tap(find.text('Update core'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(c.busy, isTrue);
+    expect(backend.running, isTrue);
+    expect(backend.calls, isNot(contains('disconnect')));
+    backend.changes.add({'event': 'updateProgress', 'data': 'download'});
+    await tester.pump();
+    expect(c.updateProgress, 'download');
+    backend.pendingUpdate!.complete(true);
+    await tester.pumpAndSettle();
+    expect(c.busy, isFalse);
+    expect(c.running, isTrue);
+    expect(c.error, isNull);
+    expect(backend.calls, containsAllInOrder(['checkUpdates', 'updateCore']));
   });
   testWidgets('global mode continues using the chosen node', (tester) async {
     final backend = FakeBackend()..running = true;

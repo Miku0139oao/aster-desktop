@@ -1593,8 +1593,19 @@ class AdvancedPage extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(switch (c.updateProgress) {
-                  'download' => c.tr('正在下載核心…', 'Downloading core…'),
+                  'download' => c.tr(
+                    '正在下載核心，連線保持中…',
+                    'Downloading core; keeping the connection active…',
+                  ),
                   'verify' => c.tr('正在驗證新核心…', 'Verifying core…'),
+                  'restart' => c.tr(
+                    '正在替換核心並恢復連線…',
+                    'Replacing core and reconnecting…',
+                  ),
+                  'service' => c.tr(
+                    '正在更新背景核心，下載期間保持連線…',
+                    'Updating background core; staying connected during download…',
+                  ),
                   'complete' => c.tr('核心已更新。', 'Core updated.'),
                   _ => c.updateProgress,
                 }),

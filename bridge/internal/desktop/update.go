@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -35,15 +36,56 @@ type Release struct {
 	Assets []ReleaseAsset `json:"assets"`
 }
 
+type updateClientKey struct{}
+
+// Only the update requests use this client. Controller traffic stays direct.
+// A managed connection uses its loopback HTTP listener even on Windows, where
+// Go's default transport does not read the user's system proxy settings.
+func updateContext(ctx context.Context, port int) (context.Context, func()) {
+	if port < 1024 || port > 65535 {
+		return ctx, func() {}
+	}
+	base := http.DefaultClient.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	transport, ok := base.(*http.Transport)
+	if !ok {
+		// Preserve injected transports used by offline update regression tests.
+		return ctx, func() {}
+	}
+	transport = transport.Clone()
+	transport.Proxy = http.ProxyURL(&url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", fmt.Sprint(port))})
+	client := *http.DefaultClient
+	client.Transport = transport
+	return context.WithValue(ctx, updateClientKey{}, &client), transport.CloseIdleConnections
+}
+
+func (a *App) updateNetwork(ctx context.Context, external bool) (context.Context, func()) {
+	port := 0
+	if a.Core.Status().Running || a.remote != nil || external {
+		port = a.Store.State.Settings.MixedPort
+	}
+	return updateContext(ctx, port)
+}
+
 func fetch(ctx context.Context, address string, limit int64) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	timeout := 45 * time.Second
+	if limit > 1<<20 {
+		timeout = 4 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "AsterDesktop/"+Version)
-	resp, err := http.DefaultClient.Do(req)
+	client, ok := ctx.Value(updateClientKey{}).(*http.Client)
+	if !ok {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +239,12 @@ func CheckArchitecture(data []byte, goos, arch string) error {
 	return errors.New("downloaded core has the wrong architecture")
 }
 func (a *App) UpdateCore(ctx context.Context) (any, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	if ctx.Value(updateClientKey{}) == nil {
+		var closeClient func()
+		ctx, closeClient = a.updateNetwork(ctx, false)
+		defer closeClient()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()
 	a.Emit("updateProgress", "download")
 	r, err := release(ctx, coreReleaseAPI)
@@ -278,6 +325,9 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 	}
 	_ = probe.Stop()
 	profile, err := a.Store.Profile(a.Store.State.ActiveID)
+	if err != nil && a.Core.Status().Running {
+		return nil, errors.New("active configuration is missing; current core kept")
+	}
 	if err == nil {
 		check := NewCore(candidate, filepath.Join(a.Store.Dir, "validation"))
 		if _, err = check.Validate(ctx, profile.Content, a.Store.State.Settings, a.Privileged); err != nil {
@@ -288,12 +338,14 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 	proxyWasEnabled := a.Core.ProxyEnabled()
 	oldBinary := a.Core.Binary
 	restorePrevious := func() error {
-		rollbackCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		rollbackCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		_ = a.Core.Stop()
+		if wasRunning {
+			_ = a.Core.Stop()
+		}
 		a.Core.Binary = oldBinary
 		if wasRunning {
-			if err := a.Core.Start(rollbackCtx, profile.Content, a.Store.State.Settings, false); err != nil {
+			if err := a.Core.Start(rollbackCtx, profile.Content, a.Store.State.Settings, a.Privileged); err != nil {
 				return err
 			}
 			if proxyWasEnabled {
@@ -301,17 +353,24 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 					return err
 				}
 			}
-			a.beginStreams()
+			if !a.Privileged {
+				a.beginStreams()
+			}
 			a.restoreSelections(rollbackCtx)
 		}
 		return nil
 	}
-	if err = a.Core.Stop(); err != nil {
-		return nil, fmt.Errorf("cannot safely stop the current core: %w", err)
+	// All network downloads and checks finish before touching the live core.
+	// A stopped macOS helper may own the normal core's system proxy: retain it.
+	if wasRunning {
+		a.Emit("updateProgress", "restart")
+		if err = a.Core.Stop(); err != nil {
+			return nil, fmt.Errorf("cannot safely stop the current core: %w", err)
+		}
 	}
 	a.Core.Binary = candidate
 	if wasRunning {
-		if err = a.Core.Start(ctx, profile.Content, a.Store.State.Settings, false); err == nil && proxyWasEnabled {
+		if err = a.Core.Start(ctx, profile.Content, a.Store.State.Settings, a.Privileged); err == nil && proxyWasEnabled {
 			err = a.Core.EnableProxy(a.Store.State.Settings.MixedPort)
 		}
 		if err != nil {
@@ -332,11 +391,36 @@ func (a *App) UpdateCore(ctx context.Context) (any, error) {
 	}
 	accepted = true
 	if wasRunning {
-		a.beginStreams()
+		if !a.Privileged {
+			a.beginStreams()
+		}
 		a.restoreSelections(ctx)
 	}
 	a.Emit("updateProgress", "complete")
 	return selection, nil
+}
+
+// Dispatch holds App.mu while updating, which pauses normal state polling.
+// Keep the existing authenticated service session alive during user downloads;
+// losing its sixty-second lease would stop TUN and strand the download.
+func (s *ServiceClient) keepUpdateLease() func() {
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				if s.Call("status", nil, nil) != nil {
+					return
+				}
+			}
+		}
+	}()
+	return func() { close(stop); <-done }
 }
 
 func (a *App) restoreSelections(ctx context.Context) {

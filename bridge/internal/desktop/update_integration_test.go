@@ -40,6 +40,9 @@ func TestMain(m *testing.M) {
 		if mode == "startup-failure" && !strings.Contains(config, "compat-") {
 			os.Exit(7)
 		}
+		if os.Getenv("ASTER_FAIL_CANDIDATE") == "1" && strings.Contains(filepath.Base(os.Args[0]), "-aster-core") && !strings.Contains(config, "compat-") {
+			os.Exit(7)
+		}
 		if mode == "tun-not-ready" {
 			fmt.Println("Start TUN listening error: permission denied")
 		}
@@ -64,8 +67,18 @@ func TestMain(m *testing.M) {
 				_ = connection.Close()
 			}
 		}()
+		selected := "First"
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			fields := map[string]any{"/version": map[string]any{"version": "fixture"}, "/configs": map[string]any{"mode": "rule"}, "/proxies": map[string]any{"proxies": map[string]any{}}, "/rules": map[string]any{"rules": []any{}}, "/connections": map[string]any{"connections": []any{}}}
+			if mode == "update-ready" {
+				fields["/configs"] = map[string]any{"mode": doc["mode"], "tun": doc["tun"], "mixed-port": doc["mixed-port"]}
+				if r.Method == "PUT" && r.URL.Path == "/proxies/Proxy" {
+					var selection struct{ Name string }
+					_ = json.NewDecoder(r.Body).Decode(&selection)
+					selected = selection.Name
+				}
+				fields["/proxies"] = map[string]any{"proxies": map[string]any{"Proxy": map[string]any{"type": "Selector", "now": selected}}}
+			}
 			if mode == "incompatible" && r.URL.Path == "/configs" {
 				fields[r.URL.Path] = map[string]any{"unsupported": true}
 			}

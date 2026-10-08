@@ -30,6 +30,8 @@ type Core struct {
 	lastError                    string
 	stopping                     bool
 	coreVersion                  string
+	activeContent                string
+	activeSettings               Settings
 	logMu                        sync.Mutex
 	logs                         []string
 	proxy                        *ProxySnapshot
@@ -316,6 +318,7 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 				}
 				c.mu.Lock()
 				c.coreVersion = version.Version
+				c.activeContent, c.activeSettings = content, s
 				c.mu.Unlock()
 				return nil
 			}
@@ -410,6 +413,9 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		_, _ = c.Request(ctx, "PUT", "/configs?force=true", map[string]any{"payload": string(previous)})
 		return err
 	}
+	c.mu.Lock()
+	c.activeContent, c.activeSettings = content, s
+	c.mu.Unlock()
 	return nil
 }
 func (c *Core) Request(ctx context.Context, method, path string, body any) (json.RawMessage, error) {

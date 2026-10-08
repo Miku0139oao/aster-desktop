@@ -38,7 +38,7 @@ func (s *ServiceClient) Call(method string, params, result any) error {
 	}
 	timeout := 2 * time.Minute
 	if method == "updateCore" {
-		timeout = 4 * time.Minute
+		timeout = 10 * time.Minute
 	}
 	_ = s.conn.SetDeadline(time.Now().Add(timeout))
 	if err = json.NewEncoder(s.conn).Encode(Request{ID: s.id, Method: method, Params: p}); err != nil {
@@ -101,6 +101,7 @@ func ServePrivileged(ctx context.Context, listener net.Listener, core *Core) err
 				}
 				var result any
 				var input struct {
+					Port         int
 					Content      string
 					Settings     Settings
 					Method, Path string
@@ -133,7 +134,7 @@ func ServePrivileged(ctx context.Context, listener net.Listener, core *Core) err
 					case "metrics":
 						result = serviceMetrics(ctx, core)
 					case "updateCore":
-						result, err = UpdateServiceCore(ctx, core)
+						result, err = UpdateServiceCore(ctx, core, input.Port)
 					default:
 						err = errors.New("unsupported privileged operation")
 					}
