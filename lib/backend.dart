@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -14,7 +15,14 @@ abstract class DesktopBackend {
 }
 
 class ProcessBackend implements DesktopBackend {
-  ProcessBackend._(this.process);
+  ProcessBackend._(this.process, {bool? nativeMac})
+    : _nativeMac = nativeMac ?? Platform.isMacOS;
+  final bool _nativeMac;
+  @visibleForTesting
+  factory ProcessBackend.forTesting(
+    Process process, {
+    required bool nativeMac,
+  }) => _attach(process, nativeMac: nativeMac);
   final Process process;
   final _events = StreamController<Json>.broadcast();
   final _pending = <int, Completer<dynamic>>{};
@@ -55,7 +63,11 @@ class ProcessBackend implements DesktopBackend {
       '--gui',
       executable.path,
     ]);
-    final backend = ProcessBackend._(process);
+    return _attach(process);
+  }
+
+  static ProcessBackend _attach(Process process, {bool? nativeMac}) {
+    final backend = ProcessBackend._(process, nativeMac: nativeMac);
     process.stdout
         .transform(utf8.decoder)
         .transform(const LineSplitter())
@@ -134,9 +146,37 @@ class ProcessBackend implements DesktopBackend {
     return response['result'];
   }
 
+  Future<void> _restoreMacUpdateSession(Json state, int? previousPid) async {
+    Json status;
+    try {
+      status = await _xpc('status') as Json;
+    } catch (_) {
+      // Keep ownership so Disconnect still reaches the helper. Preserve the
+      // original update error if a recovery query fails.
+      return;
+    }
+    if (status['running'] != true) return;
+    if (status['pid'] != previousPid) {
+      _macTrafficSession = 'mac:${DateTime.now().microsecondsSinceEpoch}';
+    }
+    // The automatic winner alone does not tell the helper whether a node was
+    // pinned. Restore explicit choices after successful activation or rollback.
+    for (final entry in (state['selections'] as Json).entries) {
+      try {
+        await _xpc('controller', {
+          'method': 'PUT',
+          'path': '/proxies/${Uri.encodeComponent(entry.key)}',
+          'body': {'name': entry.value},
+        });
+      } catch (_) {
+        // Removed nodes or a lost helper must not mask the update error.
+      }
+    }
+  }
+
   @override
   Future<dynamic> call(String method, [Json? params]) async {
-    if (!Platform.isMacOS) return _rpc(method, params);
+    if (!_nativeMac) return _rpc(method, params);
     if (method == 'listApplications') {
       final applications = await _rpc(method, params) as List;
       try {
@@ -228,6 +268,7 @@ class ProcessBackend implements DesktopBackend {
       );
       final snapshot = await _rpc('state') as Json;
       final settings = (snapshot['state'] as Json)['settings'] as Json;
+      final tunBefore = _macRunning ? await _xpc('status') as Json : null;
       try {
         // Download the user copy while the currently owned TUN stays online.
         final result = await _rpc(method, {
@@ -247,24 +288,12 @@ class ProcessBackend implements DesktopBackend {
             throw BackendException(
               'Desktop core updated, but background core could not update: $e',
             );
-          }
-          if (_macRunning) {
-            _macTrafficSession = 'mac:${DateTime.now().microsecondsSinceEpoch}';
-            // Include explicit choices inside automatic groups. The helper
-            // snapshots selectors; an automatic group's current winner alone
-            // does not tell it whether the user pinned that node.
-            for (final entry
-                in ((snapshot['state'] as Json)['selections'] as Json)
-                    .entries) {
-              try {
-                await _xpc('controller', {
-                  'method': 'PUT',
-                  'path': '/proxies/${Uri.encodeComponent(entry.key)}',
-                  'body': {'name': entry.value},
-                });
-              } on BackendException {
-                // A removed node must not prevent reconnection.
-              }
+          } finally {
+            if (tunBefore != null) {
+              await _restoreMacUpdateSession(
+                snapshot['state'] as Json,
+                tunBefore['pid'] as int?,
+              );
             }
           }
         }
@@ -280,6 +309,7 @@ class ProcessBackend implements DesktopBackend {
                       as Json)['mixedPort'],
             });
           } else {
+            await _xpc('proxyStop');
             _macProxy = false;
           }
         }

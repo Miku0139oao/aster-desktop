@@ -782,10 +782,15 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		if a.remote != nil {
 			a.Emit("updateProgress", "service")
-			if err = a.remote.Call("updateCore", nil, nil); err != nil {
+			err = a.remote.Call("updateCore", nil, nil)
+			// Activation failure can restart the previous core too. Restore
+			// explicitly pinned automatic groups after either kind of restart.
+			if a.status().Running {
+				a.restoreSelections(ctx)
+			}
+			if err != nil {
 				return nil, fmt.Errorf("desktop core updated, but background core could not update: %w", err)
 			}
-			a.restoreSelections(ctx)
 			a.Emit("updateProgress", "complete")
 			return result, nil
 		}

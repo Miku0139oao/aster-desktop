@@ -200,7 +200,14 @@ func TestUpdateRenewsExistingServiceLease(t *testing.T) {
 }
 
 func TestDesktopCanUpdateWhileOwningServiceConnection(t *testing.T) {
+	testDesktopServiceUpdate(t, false)
+}
+func TestDesktopServiceRollbackRestoresAutomaticSelection(t *testing.T) {
+	testDesktopServiceUpdate(t, true)
+}
+func testDesktopServiceUpdate(t *testing.T, rollback bool) {
 	t.Setenv("ASTER_CORE_FIXTURE", "update-ready")
+	t.Setenv("ASTER_AUTOMATIC_GROUP_FIXTURE", "1")
 	binary, _ := os.Executable()
 	data, err := os.ReadFile(binary)
 	if err != nil {
@@ -215,6 +222,12 @@ func TestDesktopCanUpdateWhileOwningServiceConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Stop()
+	if _, err = root.Request(context.Background(), "PUT", "/proxies/Proxy", map[string]string{"name": "Backup"}); err != nil {
+		t.Fatal(err)
+	}
+	if rollback {
+		t.Setenv("ASTER_FAIL_CANDIDATE", "1")
+	}
 	client, server := net.Pipe()
 	defer server.Close()
 	var updates atomic.Int32
@@ -265,13 +278,13 @@ func TestDesktopCanUpdateWhileOwningServiceConnection(t *testing.T) {
 	app.Store.State.Selections = map[string]string{"Proxy": "Backup"}
 	remote := &ServiceClient{conn: client, reader: bufio.NewReader(client)}
 	app.remote = remote
-	if _, err = app.Dispatch(context.Background(), Request{Method: "updateCore"}); err != nil {
-		t.Fatal(err)
+	if _, err = app.Dispatch(context.Background(), Request{Method: "updateCore"}); (err != nil) != rollback {
+		t.Fatalf("unexpected update result: %v", err)
 	}
 	if app.remote != remote || !root.Status().Running || updates.Load() != 1 {
 		t.Fatal("update lost service ownership or did not update the running service")
 	}
-	if app.Core.Status().Running || app.Core.Binary == binary || root.Binary == binary {
+	if app.Core.Status().Running || app.Core.Binary == binary || (root.Binary == binary) != rollback {
 		t.Fatal("user and service copies were not independently updated")
 	}
 	body, err := app.dispatchCore(context.Background(), "GET", "/proxies", nil)

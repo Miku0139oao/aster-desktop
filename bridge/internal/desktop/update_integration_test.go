@@ -77,7 +77,11 @@ func TestMain(m *testing.M) {
 					_ = json.NewDecoder(r.Body).Decode(&selection)
 					selected = selection.Name
 				}
-				fields["/proxies"] = map[string]any{"proxies": map[string]any{"Proxy": map[string]any{"type": "Selector", "now": selected}}}
+				groupType := "Selector"
+				if os.Getenv("ASTER_AUTOMATIC_GROUP_FIXTURE") == "1" {
+					groupType = "URLTest"
+				}
+				fields["/proxies"] = map[string]any{"proxies": map[string]any{"Proxy": map[string]any{"type": groupType, "now": selected}}}
 			}
 			if mode == "incompatible" && r.URL.Path == "/configs" {
 				fields[r.URL.Path] = map[string]any{"unsupported": true}
