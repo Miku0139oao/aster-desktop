@@ -250,6 +250,22 @@ class ProcessBackend implements DesktopBackend {
           }
           if (_macRunning) {
             _macTrafficSession = 'mac:${DateTime.now().microsecondsSinceEpoch}';
+            // Include explicit choices inside automatic groups. The helper
+            // snapshots selectors; an automatic group's current winner alone
+            // does not tell it whether the user pinned that node.
+            for (final entry
+                in ((snapshot['state'] as Json)['selections'] as Json)
+                    .entries) {
+              try {
+                await _xpc('controller', {
+                  'method': 'PUT',
+                  'path': '/proxies/${Uri.encodeComponent(entry.key)}',
+                  'body': {'name': entry.value},
+                });
+              } on BackendException {
+                // A removed node must not prevent reconnection.
+              }
+            }
           }
         }
         _events.add({'event': 'updateProgress', 'data': 'complete'});
