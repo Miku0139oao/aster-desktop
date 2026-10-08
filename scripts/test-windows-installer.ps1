@@ -19,7 +19,9 @@ function Assert-PayloadMatches([string]$Path,[string]$Archive){
   try {
     $asterCount=0
     foreach($asterEntry in $asterZip.Entries){
-      if($asterEntry.FullName.EndsWith('/')){continue}
+      # Windows PowerShell Compress-Archive can use backslashes for empty
+      # directories. Verify files only, regardless of the ZIP separator.
+      if($asterEntry.FullName.EndsWith('/') -or $asterEntry.FullName.EndsWith('\')){continue}
       $asterFile=Join-Path $Path $asterEntry.FullName
       Assert-InstallerTest (Test-Path -LiteralPath $asterFile -PathType Leaf) "Missing $($asterEntry.FullName)"
       $asterStream=$asterEntry.Open()
