@@ -12,7 +12,9 @@ esac
 if [ "$ID" = ubuntu ] && [ "$VERSION_ID" != 24.04 ]; then
   echo 'Build the Ubuntu package on Ubuntu 24.04' >&2; exit 1
 fi
-tar -C "$bundle" -czf "dist/Aster-Desktop-0.2.1-linux-$target-x64-portable.tar.gz" .
+# DrvFs can report Windows files as 0777. Never preserve group/world write
+# permissions in packages that may become privileged service executables.
+tar --mode='u+rwX,go+rX,go-w' -C "$bundle" -czf "dist/Aster-Desktop-0.2.1-linux-$target-x64-portable.tar.gz" .
 stage="$root/.build/linux-package"
 mkdir -p "$stage/usr/lib/aster-desktop" "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/512x512/apps"
 cp -a "$bundle/." "$stage/usr/lib/aster-desktop/"
@@ -32,7 +34,7 @@ else
   mkdir -p "$debstage"
   printf '2.0\n' > "$debstage/debian-binary"
   tar -C "$stage/DEBIAN" --owner=0 --group=0 -czf "$debstage/control.tar.gz" .
-  tar -C "$stage" --owner=0 --group=0 -czf "$debstage/data.tar.gz" usr
+  tar --mode='u+rwX,go+rX,go-w' -C "$stage" --owner=0 --group=0 -czf "$debstage/data.tar.gz" usr
   (cd "$debstage" && ar rcD "$root/dist/Aster-Desktop-0.2.1-linux-x64.deb" debian-binary control.tar.gz data.tar.gz)
 fi
 fi
@@ -57,5 +59,5 @@ optdepend = kconfig: KDE proxy settings
 optdepend = gsettings-desktop-schemas: GNOME proxy settings
 EOF
 cp packaging/linux/aster-desktop.install "$archstage/.INSTALL"
-tar -C "$archstage" --owner=0 --group=0 --zstd -cf dist/Aster-Desktop-0.2.1-linux-x64.pkg.tar.zst .
+tar --mode='u+rwX,go+rX,go-w' -C "$archstage" --owner=0 --group=0 --zstd -cf dist/Aster-Desktop-0.2.1-linux-x64.pkg.tar.zst .
 fi
