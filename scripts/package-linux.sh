@@ -14,7 +14,7 @@ if [ "$ID" = ubuntu ] && [ "$VERSION_ID" != 24.04 ]; then
 fi
 # DrvFs can report Windows files as 0777. Never preserve group/world write
 # permissions in packages that may become privileged service executables.
-tar --mode='u+rwX,go+rX,go-w' -C "$bundle" -czf "dist/Aster-Desktop-0.2.1-linux-$target-x64-portable.tar.gz" .
+tar --mode='u+rwX,go+rX,go-w' -C "$bundle" -czf "dist/Aster-Desktop-0.2.2-linux-$target-x64-portable.tar.gz" .
 stage="$root/.build/linux-package"
 mkdir -p "$stage/usr/lib/aster-desktop" "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/512x512/apps"
 cp -a "$bundle/." "$stage/usr/lib/aster-desktop/"
@@ -28,14 +28,14 @@ cp packaging/linux/control "$stage/DEBIAN/control"
 cp packaging/linux/prerm "$stage/DEBIAN/prerm"
 chmod 755 "$stage/DEBIAN/prerm"
 if command -v dpkg-deb >/dev/null; then
-  dpkg-deb --build --root-owner-group "$stage" dist/Aster-Desktop-0.2.1-linux-x64.deb
+  dpkg-deb --build --root-owner-group "$stage" dist/Aster-Desktop-0.2.2-linux-x64.deb
 else
   debstage="$root/.build/deb-package"
   mkdir -p "$debstage"
   printf '2.0\n' > "$debstage/debian-binary"
   tar -C "$stage/DEBIAN" --owner=0 --group=0 -czf "$debstage/control.tar.gz" .
   tar --mode='u+rwX,go+rX,go-w' -C "$stage" --owner=0 --group=0 -czf "$debstage/data.tar.gz" usr
-  (cd "$debstage" && ar rcD "$root/dist/Aster-Desktop-0.2.1-linux-x64.deb" debian-binary control.tar.gz data.tar.gz)
+  (cd "$debstage" && ar rcD "$root/dist/Aster-Desktop-0.2.2-linux-x64.deb" debian-binary control.tar.gz data.tar.gz)
 fi
 fi
 if [ "$ID" = arch ]; then
@@ -45,7 +45,7 @@ cp -a "$stage/usr" "$archstage/"
 cat > "$archstage/.PKGINFO" <<'EOF'
 pkgname = aster-desktop
 pkgbase = aster-desktop
-pkgver = 0.2.1-1
+pkgver = 0.2.2-1
 pkgdesc = Material 3 desktop client powered by Aster Core
 url = https://github.com/Miku0139oao/aster-desktop
 arch = x86_64
@@ -59,5 +59,5 @@ optdepend = kconfig: KDE proxy settings
 optdepend = gsettings-desktop-schemas: GNOME proxy settings
 EOF
 cp packaging/linux/aster-desktop.install "$archstage/.INSTALL"
-tar --mode='u+rwX,go+rX,go-w' -C "$archstage" --owner=0 --group=0 --zstd -cf dist/Aster-Desktop-0.2.1-linux-x64.pkg.tar.zst .
+tar --mode='u+rwX,go+rX,go-w' -C "$archstage" --owner=0 --group=0 --zstd -cf dist/Aster-Desktop-0.2.2-linux-x64.pkg.tar.zst .
 fi

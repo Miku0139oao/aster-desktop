@@ -17,6 +17,8 @@ import 'package:yaml/yaml.dart';
 import 'package:aster_desktop/application_rules.dart';
 import 'package:aster_desktop/network_settings.dart';
 import 'package:aster_desktop/connections_page.dart';
+import 'package:aster_desktop/inspection.dart';
+import 'package:aster_desktop/log_entry.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -56,6 +58,7 @@ class FakeBackend implements DesktopBackend {
   Json providerData = {};
   Json connectionData = {'connections': []};
   final closedConnections = <String>[];
+  List<String> logData = [];
   final selections = <String, String>{};
   final controllerPaths = <String>[];
   final delays = <String, int>{};
@@ -184,7 +187,7 @@ class FakeBackend implements DesktopBackend {
         if (params['path'] == '/version') return {'version': 'test-core'};
         return {'connections': [], 'rules': []};
       case 'logs':
-        return <String>[];
+        return logData;
       default:
         return null;
     }
@@ -216,6 +219,187 @@ Future<AppController> setup(
 }
 
 void main() {
+  test('inspection query supports literal terms, exclusions, quoted phrases and fields', () {
+    expect(
+      matchesInspectionQuery(
+        'app:browser host:"example.test" -udp',
+        'TCP Browser example.test',
+        {'app': 'Browser', 'host': 'example.test'},
+      ),
+      isTrue,
+    );
+    expect(
+      matchesInspectionQuery(
+        'app:browser -host:example.test',
+        'Browser example.test',
+        {'app': 'Browser', 'host': 'example.test'},
+      ),
+      isFalse,
+    );
+    expect(matchesInspectionQuery('10.0.0.1:443', '10.0.0.1:443'), isTrue);
+    expect(
+      matchesInspectionQuery(r'C:\\Apps', r'C:\\Apps\browser.exe'),
+      isTrue,
+    );
+    expect(matchesInspectionQuery('browser missing', 'browser'), isFalse);
+  });
+
+  test(
+    'log formats normalize warn, JSON, ANSI, timestamps and desktop messages',
+    () {
+      final entry = LogEntry(
+        '\x1B[33mtime="2026-10-18T12:00:00+08:00" level=warning msg="[TCP] dial failed"\x1B[0m',
+      );
+      expect(entry.level, 'warning');
+      expect(entry.timestamp, '2026-10-18T12:00:00+08:00');
+      expect(entry.message, '[TCP] dial failed');
+      expect(entry.matches('level:warning dial -timeout'), isTrue);
+      final json = LogEntry('{"level":"warn","message":"failed","time":"now"}');
+      expect(json.level, 'warning');
+      expect(json.message, 'failed');
+      expect(LogEntry('[ERROR] socket failed').level, 'error');
+      expect(LogEntry('Desktop: connected').source, 'desktop');
+      expect(LogEntry('{"type":"debug","payload":"lookup"}').message, 'lookup');
+    },
+  );
+
+  testWidgets(
+    'context actions and log filters retain reading state across navigation',
+    (tester) async {
+      final backend = FakeBackend()
+        ..logData = [
+          'time="2026-10-18T12:00:00Z" level=warning msg="dial timeout"',
+          '{"level":"error","message":"DNS failed"}',
+          'time="2026-10-18T12:00:01Z" level=info msg="ready"',
+        ];
+      final c = await setup(tester, backend);
+      for (final page in [0, 1, 3, 4, 5, 6, 7, 8, 9]) {
+        c.navigate(page);
+        await tester.pumpAndSettle();
+        expect(
+          find.byTooltip('Import subscription or configuration'),
+          findsNothing,
+        );
+      }
+      c.navigate(4);
+      await tester.pumpAndSettle();
+      expect(find.text('dial timeout'), findsOneWidget);
+      await tester.tap(find.text('Warning 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('DNS failed'), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('log-search')),
+        'dial -refused',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Pause log updates'));
+      await tester.pumpAndSettle();
+      backend.logData = [...backend.logData, 'level=warning msg="dial newest"'];
+      await c.loadLogs();
+      await tester.pumpAndSettle();
+      expect(find.text('dial newest'), findsNothing);
+      c.navigate(3);
+      await tester.pumpAndSettle();
+      c.navigate(4);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('log-search')))
+            .controller!
+            .text,
+        'dial -refused',
+      );
+      expect(find.byTooltip('Resume log updates'), findsOneWidget);
+      await tester.tap(find.byTooltip('Resume log updates'));
+      await tester.pumpAndSettle();
+      expect(find.text('dial newest'), findsOneWidget);
+      await tester.tap(find.text('dial timeout'));
+      await tester.pumpAndSettle();
+      expect(find.text('Raw log'), findsOneWidget);
+      expect(find.byTooltip('Resume log updates'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'connection facets match exact applications, source filters and split inspection survive updates',
+    (tester) async {
+      final backend = FakeBackend()..running = true;
+      Json row(String id, String app, String path, String inbound) => {
+        'id': id,
+        'metadata': {
+          'host': '$id.example.test',
+          'network': 'tcp',
+          'process': app,
+          'processPath': path,
+          'type': inbound,
+        },
+        'chains': ['Tokyo', 'Proxy'],
+      };
+      backend.connectionData = {
+        'connections': [
+          row('one', 'browser.exe', r'C:\Apps\browser.exe', 'TUN'),
+          row('two', 'aster-core.exe', r'C:\Aster\aster-core.exe', 'HTTP'),
+        ],
+      };
+      final c = await setup(tester, backend, size: const Size(1500, 920));
+      c.navigate(3);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConnectionRow), findsNWidgets(2));
+      await tester.tap(find.text('All applications'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(r'C:\Apps\browser.exe'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConnectionRow), findsOneWidget);
+      await tester.tap(find.byTooltip('Connection details'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text(r'C:\Apps\browser.exe'), findsOneWidget);
+      backend.connectionData = {'connections': []};
+      c.acceptConnections(backend.connectionData);
+      c.reportError(null);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Connection ended · showing last details'),
+        findsOneWidget,
+      );
+      c.navigate(4);
+      await tester.pumpAndSettle();
+      c.navigate(3);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Connection ended · showing last details'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'log reading fits compact enlarged text and renders a large buffer lazily',
+    (tester) async {
+      final backend = FakeBackend()
+        ..logData = List.generate(2000, (i) => 'level=info msg="event $i"');
+      final c = await setup(tester, backend, size: const Size(760, 580));
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      c.navigate(4);
+      await tester.pumpAndSettle();
+      expect(find.byType(LogsPage), findsOneWidget);
+      expect(find.text('event 0'), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('log-search')),
+        '"event 1000"',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('event 1000'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('event 1000'));
+      await tester.pumpAndSettle();
+      expect(find.text('Log details'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'TUN network choice persists, locks while running and retains unavailable selection',
     (tester) async {
@@ -1343,7 +1527,7 @@ void main() {
       expect(find.text(r'C:\Apps\browser.exe'), findsOneWidget);
       expect(find.text('DOMAIN a.example.test'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byTooltip('Close details'));
       await tester.pumpAndSettle();
       c.navigate(0);
       await tester.pumpAndSettle();

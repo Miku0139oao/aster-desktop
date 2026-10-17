@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yaml/yaml.dart';
 
@@ -15,6 +14,7 @@ import 'desktop_components.dart';
 import 'workspace.dart';
 export 'dialogs.dart' show showImportDialog;
 export 'connections_page.dart' show ConnectionsPage;
+export 'logs_page.dart' show LogsPage;
 
 class PageBody extends StatelessWidget {
   const PageBody({super.key, required this.children});
@@ -1194,119 +1194,6 @@ String subscriptionUsage(String raw, AppController c) {
         ' · ${c.tr('到期', 'Expires')} ${DateTime.fromMillisecondsSinceEpoch(expire.toInt() * 1000).toLocal().toString().split(' ').first}';
   }
   return text;
-}
-
-class LogsPage extends StatefulWidget {
-  const LogsPage({super.key, required this.c});
-  final AppController c;
-  @override
-  State<LogsPage> createState() => _LogsPageState();
-}
-
-class _LogsPageState extends State<LogsPage> {
-  String search = '', level = 'all';
-  AppController get c => widget.c;
-  @override
-  Widget build(BuildContext context) {
-    final logs = c.logs
-        .where(
-          (l) =>
-              l.toLowerCase().contains(search.toLowerCase()) &&
-              (level == 'all' || l.contains('level=$level')),
-        )
-        .toList()
-        .reversed
-        .toList();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            children: [
-              SizedBox(
-                width: 260,
-                child: TextField(
-                  onChanged: (v) => setState(() => search = v),
-                  decoration: InputDecoration(
-                    hintText: c.tr('搜尋日誌', 'Search logs'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 160,
-                child: DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: level,
-                  items: [
-                    DropdownMenuItem(
-                      value: 'all',
-                      child: Text(c.tr('所有層級', 'All levels')),
-                    ),
-                    for (final l in ['info', 'warning', 'error', 'debug'])
-                      DropdownMenuItem(value: l, child: Text(l)),
-                  ],
-                  onChanged: (v) => setState(() => level = v!),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: logs.isEmpty
-                    ? null
-                    : () => exportText(
-                        context,
-                        c,
-                        sanitizeLogs(logs.join('\n')),
-                        'aster-logs.txt',
-                      ),
-                icon: const Icon(Icons.download),
-                label: Text(c.tr('匯出日誌', 'Export logs')),
-              ),
-              IconButton(
-                tooltip: c.tr('複製日誌', 'Copy logs'),
-                onPressed: logs.isEmpty
-                    ? null
-                    : () => Clipboard.setData(
-                        ClipboardData(text: sanitizeLogs(logs.join('\n'))),
-                      ),
-                icon: const Icon(Icons.copy),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: logs.isEmpty
-              ? EmptyMessage(
-                  icon: Icons.receipt_long_outlined,
-                  title: c.tr('目前沒有日誌', 'No logs yet'),
-                  detail: c.tr(
-                    '連線後會顯示核心的即時日誌。',
-                    'Core logs appear after connecting.',
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-                  itemCount: logs.length,
-                  itemBuilder: (context, i) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: SelectableText(
-                      logs[i].replaceAll(RegExp(r'\x1B\[[0-9;]*m'), ''),
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                        color: logs[i].contains('level=error')
-                            ? Theme.of(context).colorScheme.error
-                            : null,
-                      ),
-                    ),
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
 }
 
 String sanitizeLogs(String value) => value

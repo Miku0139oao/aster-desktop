@@ -128,6 +128,29 @@ func TestRuntimeManagementIsolation(t *testing.T) {
 		t.Fatal("profile controls TUN")
 	}
 }
+
+func TestRuntimeProcessInspection(t *testing.T) {
+	for _, mode := range []string{"rule", "global", "direct"} {
+		for _, processMode := range []string{"off", "strict", "always"} {
+			for _, tun := range []bool{false, true} {
+				s := DefaultSettings()
+				s.Mode, s.Tun = mode, tun
+				input := "proxies: []\nfind-process-mode: " + processMode + "\nrules: [MATCH,DIRECT]\n"
+				b, err := Runtime(input, s, "127.0.0.1:9000", "managed", t.TempDir(), tun)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var doc map[string]any
+				if err = yaml.Unmarshal(b, &doc); err != nil {
+					t.Fatal(err)
+				}
+				if doc["find-process-mode"] != "always" {
+					t.Fatalf("process lookup disabled in %s / %s / tun=%v", mode, processMode, tun)
+				}
+			}
+		}
+	}
+}
 func TestPrivilegedFilesRejected(t *testing.T) {
 	_, err := Runtime("proxies:\n - name: bad\n   type: socks5\n   server: example.com\n   port: 443\n   certificate: /etc/shadow\nrules: [MATCH,DIRECT]\n", DefaultSettings(), "127.0.0.1:9000", "secret", t.TempDir(), true)
 	if err == nil {

@@ -7,6 +7,7 @@ import 'backend.dart';
 import 'controller.dart';
 import 'desktop_components.dart';
 import 'dialogs.dart' show confirm;
+import 'inspection.dart';
 import 'rules_page.dart';
 
 enum ConnectionSort { recent, download, upload, application, destination }
@@ -55,6 +56,30 @@ class ConnectionEntry {
         '$destination $application $path $protocol $route $rule $id ${metadata['sourceIP'] ?? ''} ${metadata['destinationIP'] ?? ''}'
             .toLowerCase();
   }
+  bool get isInternal =>
+      metadata['type'] == 'Inner' ||
+      {
+        'aster-core',
+        'aster-core.exe',
+        'aster-bridge',
+        'aster-bridge.exe',
+        'aster_desktop',
+        'aster_desktop.exe',
+      }.contains(
+        (path.isEmpty ? application : path.split(RegExp(r'[/\\]')).last)
+            .toLowerCase(),
+      );
+
+  bool matches(String query) => matchesInspectionQuery(query, searchable, {
+    'app': '$application $path',
+    'host': metadata['host']?.toString() ?? '',
+    'ip': '${metadata['sourceIP'] ?? ''} ${metadata['destinationIP'] ?? ''}',
+    'route': route,
+    'rule': rule,
+    'type': protocol,
+    'inbound': metadata['type']?.toString() ?? '',
+  });
+
   final Json data;
   late final Map metadata;
   late final String id,
@@ -80,7 +105,15 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   final search = TextEditingController();
   ConnectionSort sort = ConnectionSort.recent;
   String protocol = 'all';
-  String groupBy = '';
+  String groupBy = '',
+      applicationFilter = '',
+      routeFilter = '',
+      inboundFilter = '';
+  bool hideInternal = false;
+  bool? expandedFilters;
+  final closing = <String>{};
+  ConnectionEntry? selected;
+  bool splitDetails = false;
   List<String> get columns =>
       (c.preferences['connectionColumns'] as List? ??
               connectionColumns.take(4).toList())
@@ -197,7 +230,13 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
         .where(
           (e) =>
               (protocol == 'all' || e.protocol == protocol) &&
-              e.searchable.contains(query),
+              (applicationFilter.isEmpty ||
+                  (e.path.isEmpty ? e.application : e.path) ==
+                      applicationFilter) &&
+              (routeFilter.isEmpty || e.route == routeFilter) &&
+              (inboundFilter.isEmpty || e.metadata['type'] == inboundFilter) &&
+              (!hideInternal || !e.isInternal) &&
+              e.matches(query),
         )
         .toList();
     entries.sort((a, b) {
@@ -221,7 +260,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
 
   Future<void> close(List<ConnectionEntry> entries, {bool ask = false}) async {
     // Capture identities before a refresh changes the visible results.
-    final ids = entries.map((e) => e.id).toSet();
+    final ids = entries
+        .map((e) => e.id)
+        .where((id) => !closing.contains(id))
+        .toSet();
+    if (ids.isEmpty) return;
     if (ask &&
         !await confirm(
           context,
@@ -235,15 +278,34 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     }
     if (!mounted) return;
     final closed = <String>{};
-    await c.perform(() async {
-      for (final id in ids) {
-        await c.api('DELETE', '/connections/${Uri.encodeComponent(id)}');
-        closed.add(id);
+    setState(() => closing.addAll(ids));
+    Object? failure;
+    try {
+      final queue = ids.toList();
+      for (var offset = 0; offset < queue.length; offset += 8) {
+        await Future.wait(
+          queue.skip(offset).take(8).map((id) async {
+            try {
+              await c.api('DELETE', '/connections/${Uri.encodeComponent(id)}');
+              closed.add(id);
+            } catch (e) {
+              failure ??= e;
+            }
+          }),
+        );
       }
-    });
-    if (mounted && paused != null) {
-      setState(() => paused!.removeWhere((e) => closed.contains(e.id)));
+      c.acceptConnections(await c.api('GET', '/connections') as Json);
+    } catch (e) {
+      failure ??= e;
+    } finally {
+      if (mounted) {
+        setState(() {
+          closing.removeAll(ids);
+          paused?.removeWhere((e) => closed.contains(e.id));
+        });
+      }
     }
+    c.reportError(failure?.toString());
   }
 
   String label(ConnectionSort value) => switch (value) {
@@ -254,103 +316,128 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     ConnectionSort.destination => c.tr('目的地', 'Destination'),
   };
 
-  Future<void> details(ConnectionEntry entry) => showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(c.tr('連線詳情', 'Connection details')),
-      content: SizedBox(
-        width: 640,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final field in {
-                c.tr('目的地', 'Destination'): entry.destination,
-                c.tr('應用程式', 'Application'): entry.application.isEmpty
-                    ? '—'
-                    : entry.application,
-                c.tr('執行檔路徑', 'Executable path'): entry.path.isEmpty
-                    ? '—'
-                    : entry.path,
-                c.tr(
-                  '連線來源',
-                  'Source',
-                ): '${entry.metadata['sourceIP'] ?? '—'}:${entry.metadata['sourcePort'] ?? ''}',
-                c.tr('目的 IP', 'Destination IP'):
-                    '${entry.metadata['destinationIP'] ?? '—'}',
-                c.tr('協定／入口', 'Protocol / inbound'):
-                    '${entry.protocol} · ${entry.metadata['type'] ?? '—'}',
-                c.tr('出口鏈', 'Route chain'): entry.route.isEmpty
-                    ? '—'
-                    : entry.route,
-                c.tr('命中規則', 'Matched rule'): entry.rule.isEmpty
-                    ? '—'
-                    : entry.rule,
-                c.tr(
-                  '下載／上傳',
-                  'Download / upload',
-                ): '${bytes(entry.download)} / ${bytes(entry.upload)} (${entry.download} / ${entry.upload} bytes)',
-                c.tr('建立時間', 'Started'):
-                    entry.started?.toLocal().toString() ?? '—',
-                'ID': entry.id,
-              }.entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        field.key,
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      SelectableText(field.value),
-                    ],
-                  ),
-                ),
-            ],
+  Map<String, String> detailFields(ConnectionEntry entry) => {
+    c.tr('目的地', 'Destination'): entry.destination,
+    c.tr('應用程式', 'Application'): entry.application,
+    c.tr('執行檔路徑', 'Executable path'): entry.path,
+    if (entry.isInternal)
+      c.tr('程序辨識', 'Process identity'): c.tr(
+        '核心回報此連線由 Aster 自身建立，並非原始應用程式的別名。',
+        'The core reports an Aster process as the socket owner, not an alias for another application.',
+      ),
+    c.tr(
+      '連線來源',
+      'Source',
+    ): '${entry.metadata['sourceIP'] ?? '—'}:${entry.metadata['sourcePort'] ?? ''}',
+    c.tr('目的 IP', 'Destination IP'):
+        '${entry.metadata['destinationIP'] ?? '—'}',
+    c.tr('協定／入口', 'Protocol / inbound'):
+        '${entry.protocol} · ${entry.metadata['type'] ?? '—'}',
+    c.tr('出口鏈', 'Route chain'): entry.route,
+    c.tr('命中規則', 'Matched rule'): entry.rule,
+    c.tr(
+      '下載／上傳',
+      'Download / upload',
+    ): '${bytes(entry.download)} / ${bytes(entry.upload)} (${entry.download} / ${entry.upload} bytes)',
+    c.tr('建立時間', 'Started'): entry.started?.toLocal().toString() ?? '—',
+    'ID': entry.id,
+  };
+
+  void createRule(ConnectionEntry entry) => showRuleEditor(
+    context,
+    c,
+    path: entry.path,
+    application: entry.application,
+    host: entry.metadata['host'] as String?,
+    ip: entry.metadata['destinationIP'] as String?,
+  );
+
+  Future<void> details(ConnectionEntry entry) async {
+    if (splitDetails) {
+      setState(() => selected = entry);
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(c.tr('連線詳情', 'Connection details')),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(
+            child: InspectionFields(fields: detailFields(entry)),
           ),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: c.busy
+                ? null
+                : () {
+                    Navigator.pop(dialogContext);
+                    createRule(entry);
+                  },
+            icon: const Icon(Icons.alt_route),
+            label: Text(c.tr('建立分流規則', 'Create routing rule')),
+          ),
+          TextButton(
+            onPressed: c.busy
+                ? null
+                : () async {
+                    Navigator.pop(dialogContext);
+                    await close([entry]);
+                  },
+            child: Text(c.tr('中止連線', 'Close connection')),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(c.tr('完成', 'Done')),
+          ),
+        ],
       ),
-      actions: [
-        TextButton.icon(
-          onPressed: c.busy
-              ? null
-              : () {
-                  Navigator.pop(context);
-                  showRuleEditor(
-                    this.context,
-                    c,
-                    path: entry.path,
-                    application: entry.application,
-                    host: entry.metadata['host'] as String?,
-                    ip: entry.metadata['destinationIP'] as String?,
-                  );
-                },
-          icon: const Icon(Icons.alt_route),
-          label: Text(c.tr('建立分流規則', 'Create routing rule')),
-        ),
-        TextButton(
-          onPressed: c.busy
-              ? null
-              : () async {
-                  Navigator.pop(context);
-                  await close([entry]);
-                },
-          child: Text(c.tr('中止連線', 'Close connection')),
-        ),
-        FilledButton.tonal(
-          onPressed: () => Navigator.pop(context),
-          child: Text(c.tr('完成', 'Done')),
-        ),
-      ],
-    ),
-  );
+    );
+  }
+
+  Future<void> facet(String kind) async {
+    final value = await pickInspectionFacet(
+      context,
+      c,
+      switch (kind) {
+        'app' => c.tr('篩選應用程式', 'Filter application'),
+        'route' => c.tr('篩選出口', 'Filter route'),
+        _ => c.tr('篩選入口', 'Filter inbound'),
+      },
+      records.map(
+        (entry) => switch (kind) {
+          'app' => entry.path.isEmpty ? entry.application : entry.path,
+          'route' => entry.route,
+          _ => entry.metadata['type']?.toString() ?? '',
+        },
+      ),
+      switch (kind) {
+        'app' => applicationFilter,
+        'route' => routeFilter,
+        _ => inboundFilter,
+      },
+    );
+    if (value != null && mounted) {
+      setState(() {
+        switch (kind) {
+          case 'app':
+            applicationFilter = value;
+          case 'route':
+            routeFilter = value;
+          default:
+            inboundFilter = value;
+        }
+      });
+    }
+  }
+
+  void resetFilters() => setState(() {
+    search.clear();
+    protocol = 'all';
+    applicationFilter = routeFilter = inboundFilter = '';
+    hideInternal = false;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -362,8 +449,17 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-          final wide = constraints.maxWidth >= 850 * scale;
-          return CustomScrollView(
+          splitDetails = constraints.maxWidth >= 880 * scale;
+          final inspecting = selected == null
+              ? null
+              : live.where((entry) => entry.id == selected!.id).firstOrNull ??
+                    selected;
+          if (inspecting != null) selected = inspecting;
+          final sideWidth = splitDetails && inspecting != null ? 344.0 : 0.0;
+          final wide = constraints.maxWidth - sideWidth >= 850 * scale;
+          final showFilters =
+              expandedFilters ?? constraints.maxWidth >= 880 * scale;
+          final activity = CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
@@ -380,6 +476,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                               ? c.connections['downloadTotal'] as num?
                               : null,
                           c: c,
+                          compact: constraints.maxWidth < 880 * scale,
                           history: [...downHistory],
                         ),
                       ),
@@ -393,6 +490,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                               ? c.connections['uploadTotal'] as num?
                               : null,
                           c: c,
+                          compact: constraints.maxWidth < 880 * scale,
                           history: [...upHistory],
                         ),
                       ),
@@ -409,6 +507,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                                 )
                               : c.tr('尚未連線', 'Disconnected'),
                           c: c,
+                          compact: constraints.maxWidth < 880 * scale,
                         ),
                       ),
                     ],
@@ -426,10 +525,17 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                         search: search,
                         hint: c.tr(
                           '搜尋程式、目的地、出口或規則',
-                          'Search app, destination, route or rule',
+                          'Search · app:browser host:example -exclude',
                         ),
                         onChanged: (_) => setState(() {}),
                         actions: [
+                          IconButton(
+                            tooltip: c.tr('更多篩選', 'More filters'),
+                            isSelected: showFilters,
+                            onPressed: () =>
+                                setState(() => expandedFilters = !showFilters),
+                            icon: const Icon(Icons.filter_list),
+                          ),
                           IconButton(
                             tooltip: c.tr(
                               '欄位顯示與順序',
@@ -450,18 +556,7 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                                   child: Text(label(value)),
                                 ),
                             ],
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.sort, size: 18),
-                                  const SizedBox(width: 6),
-                                  Text(label(sort)),
-                                  const Icon(Icons.arrow_drop_down),
-                                ],
-                              ),
-                            ),
+                            icon: const Icon(Icons.sort),
                           ),
                           IconButton(
                             tooltip: c.tr(
@@ -535,6 +630,72 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                                 ),
                               ),
                             ),
+                            if (showFilters)
+                              ActionChip(
+                                avatar: const Icon(
+                                  Icons.apps_outlined,
+                                  size: 16,
+                                ),
+                                label: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 160,
+                                  ),
+                                  child: Text(
+                                    applicationFilter.isEmpty
+                                        ? c.tr('所有程式', 'All applications')
+                                        : applicationFilter
+                                              .split(RegExp(r'[/\\]'))
+                                              .last,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                onPressed: () => facet('app'),
+                              ),
+                            if (showFilters)
+                              ActionChip(
+                                avatar: const Icon(Icons.alt_route, size: 16),
+                                label: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 160,
+                                  ),
+                                  child: Text(
+                                    routeFilter.isEmpty
+                                        ? c.tr('所有出口', 'All routes')
+                                        : routeFilter,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                onPressed: () => facet('route'),
+                              ),
+                            if (showFilters)
+                              ActionChip(
+                                avatar: const Icon(Icons.input, size: 16),
+                                label: Text(
+                                  inboundFilter.isEmpty
+                                      ? c.tr('所有入口', 'All inbounds')
+                                      : inboundFilter,
+                                ),
+                                onPressed: () => facet('inbound'),
+                              ),
+                            if (showFilters)
+                              FilterChip(
+                                label: Text(
+                                  c.tr('隱藏 Aster 自身連線', 'Hide Aster traffic'),
+                                ),
+                                selected: hideInternal,
+                                onSelected: (value) =>
+                                    setState(() => hideInternal = value),
+                              ),
+                            if (search.text.isNotEmpty ||
+                                protocol != 'all' ||
+                                applicationFilter.isNotEmpty ||
+                                routeFilter.isNotEmpty ||
+                                inboundFilter.isNotEmpty ||
+                                hideInternal)
+                              TextButton(
+                                onPressed: resetFilters,
+                                child: Text(c.tr('清除篩選', 'Reset filters')),
+                              ),
                             if (paused != null)
                               Text(
                                 c.tr(
@@ -630,7 +791,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                     for (final entry in _groups(entries).entries)
                       ListTile(
                         title: Text(
-                          entry.key.isEmpty ? c.tr('未知', 'Unknown') : entry.key,
+                          entry.key.isEmpty
+                              ? c.tr('未知', 'Unknown')
+                              : groupBy == 'application'
+                              ? entry.key.split(RegExp(r'[/\\]')).last
+                              : entry.key,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -638,7 +803,11 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                           '${entry.value.length} ${c.tr('條活動連線', 'active connections')} · ↓ ${bytes(entry.value.fold<num>(0, (sum, e) => sum + e.download))} ↑ ${bytes(entry.value.fold<num>(0, (sum, e) => sum + e.upload))}',
                         ),
                         onTap: () => setState(() {
-                          search.text = entry.key;
+                          if (groupBy == 'application') {
+                            applicationFilter = entry.key;
+                          } else {
+                            routeFilter = entry.key;
+                          }
                           groupBy = '';
                         }),
                         trailing: IconButton(
@@ -660,9 +829,12 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
                         key: ValueKey(entry.id),
                         c: c,
                         entry: entry,
+                        selected: selected?.id == entry.id,
                         wide: wide,
                         onDetails: () => details(entry),
-                        onClose: c.busy ? null : () => close([entry]),
+                        onClose: c.busy || closing.contains(entry.id)
+                            ? null
+                            : () => close([entry]),
                         columns: columns,
                         weights: weights,
                       );
@@ -675,6 +847,93 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
           );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: activity),
+              if (splitDetails && inspecting != null) ...[
+                const VerticalDivider(width: 24),
+                SizedBox(
+                  width: 320,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              c.tr('連線詳情', 'Connection details'),
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: c.tr('關閉詳情', 'Close details'),
+                            onPressed: () => setState(() => selected = null),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      if (!live.any((entry) => entry.id == inspecting.id))
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            c.tr(
+                              '此連線已結束，保留最後資料',
+                              'Connection ended · showing last details',
+                            ),
+                          ),
+                        ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: InspectionFields(
+                            fields: detailFields(inspecting),
+                          ),
+                        ),
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => Clipboard.setData(
+                              ClipboardData(
+                                text: detailFields(inspecting).entries
+                                    .map(
+                                      (field) => '${field.key}: ${field.value}',
+                                    )
+                                    .join('\n'),
+                              ),
+                            ),
+                            icon: const Icon(Icons.copy, size: 18),
+                            label: Text(c.tr('複製', 'Copy')),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: c.busy
+                                ? null
+                                : () => createRule(inspecting),
+                            icon: const Icon(Icons.alt_route, size: 18),
+                            label: Text(c.tr('建立分流規則', 'Create routing rule')),
+                          ),
+                          TextButton(
+                            onPressed:
+                                c.busy ||
+                                    closing.contains(inspecting.id) ||
+                                    !live.any(
+                                      (entry) => entry.id == inspecting.id,
+                                    )
+                                ? null
+                                : () => close([inspecting]),
+                            child: Text(c.tr('中止連線', 'Close connection')),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          );
         },
       ),
     );
@@ -683,7 +942,9 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
   Map<String, List<ConnectionEntry>> _groups(List<ConnectionEntry> entries) {
     final result = <String, List<ConnectionEntry>>{};
     for (final entry in entries) {
-      (result[groupBy == 'application' ? entry.application : entry.route] ??=
+      (result[groupBy == 'application'
+                  ? (entry.path.isEmpty ? entry.application : entry.path)
+                  : entry.route] ??=
               [])
           .add(entry);
     }
@@ -755,12 +1016,13 @@ class ConnectionRow extends StatelessWidget {
     required this.wide,
     required this.onDetails,
     this.onClose,
+    this.selected = false,
     this.columns = const ['destination', 'application', 'route', 'traffic'],
     this.weights = const {},
   });
   final AppController c;
   final ConnectionEntry entry;
-  final bool wide;
+  final bool wide, selected;
   final VoidCallback onDetails;
   final VoidCallback? onClose;
   final List<String> columns;
@@ -820,7 +1082,7 @@ class ConnectionRow extends StatelessWidget {
       ],
     );
     return Material(
-      color: colors.surface,
+      color: selected ? colors.secondaryContainer : colors.surface,
       child: InkWell(
         onTap: onDetails,
         child: Container(
@@ -859,7 +1121,7 @@ class ConnectionRow extends StatelessWidget {
                           'application' => text(
                             entry.application.isEmpty
                                 ? c.tr('未知程式', 'Unknown app')
-                                : entry.application,
+                                : '${entry.application}${entry.isInternal ? c.tr(' · 自身連線', ' · Aster traffic') : ''}',
                           ),
                           'route' => Padding(
                             padding: const EdgeInsets.only(right: 10),
@@ -910,7 +1172,7 @@ class ConnectionRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     text(
-                      '${entry.application.isEmpty ? c.tr('未知程式', 'Unknown app') : entry.application} · ${entry.route}',
+                      '${entry.application.isEmpty ? c.tr('未知程式', 'Unknown app') : entry.application}${entry.isInternal ? c.tr(' · 自身連線', ' · Aster traffic') : ''} · ${entry.route}',
                       secondary: true,
                     ),
                     const SizedBox(height: 8),
@@ -941,6 +1203,7 @@ class _TrafficStat extends StatelessWidget {
     this.total,
     this.subtitle,
     this.history,
+    this.compact = false,
   });
   final String title, value;
   final IconData icon;
@@ -948,11 +1211,12 @@ class _TrafficStat extends StatelessWidget {
   final num? total;
   final String? subtitle;
   final List<double>? history;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(compact ? 10 : 14),
       decoration: BoxDecoration(
         color: colors.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
@@ -998,14 +1262,17 @@ class _TrafficStat extends StatelessWidget {
                   ?.copyWith(color: colors.onSurfaceVariant),
             ),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 18,
-            width: double.infinity,
-            child: history == null
-                ? const SizedBox()
-                : CustomPaint(painter: _RatePainter(history!, colors.primary)),
-          ),
+          if (!compact) const SizedBox(height: 8),
+          if (!compact)
+            SizedBox(
+              height: 18,
+              width: double.infinity,
+              child: history == null
+                  ? const SizedBox()
+                  : CustomPaint(
+                      painter: _RatePainter(history!, colors.primary),
+                    ),
+            ),
         ],
       ),
     );

@@ -183,6 +183,10 @@ func Runtime(content string, s Settings, controller, secret, dir string, privile
 	doc["bind-address"] = "*"
 	doc["mixed-port"] = s.MixedPort
 	doc["mode"] = s.Mode
+	// Connection inspection needs process metadata even when no process rule
+	// matches (and in global/direct mode). Strict performs only lazy rule lookup.
+	// Manage this at runtime so subscription refreshes cannot disable inspection.
+	doc["find-process-mode"] = "always"
 	doc["external-controller-cors"] = map[string]any{"allow-origins": []any{}, "allow-private-network": false}
 	doc["profile"] = map[string]any{"store-selected": true, "store-fake-ip": true}
 	tun, _ := doc["tun"].(map[string]any)

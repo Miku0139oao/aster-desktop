@@ -1,6 +1,10 @@
-# Aster Desktop 0.2.1 測試版
+# Aster Desktop 0.2.2 測試版
 
-[下載 0.2.1 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.1-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+[下載安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+
+0.2.2 重整日誌與連線查閱：移除各頁共用的匯入加號，匯入留在首頁／訂閱，管理操作留在對應頁面。切頁保留搜尋、篩選、捲動與明細。日誌支援多層級、來源、多關鍵字、排除詞及 JSON／純文字格式，捲動或選取明細時暫停列表，可回到即時日誌；複製／匯出只處理目前篩選結果並遮蔽常見憑證。連線新增可搜尋的程式／出口／入口篩選，寬視窗顯示明細側欄，小視窗使用對話框；中止連線不鎖住整個介面，批次中止限制同時執行數。詳見 [日誌與連線操作](docs/INSPECTION.md)。
+
+桌面執行設定統一使用 `find-process-mode: always`，規則／全域／直連均查詢原始 socket 的程序名稱與路徑，訂閱更新不會關閉此功能，匯入 YAML 原文不變。Aster 自身連線明確標示並可篩除；不會把未知來源猜成其他程式。若流量經過另一個本機代理轉接，核心看到的 socket 擁有者可能就是該代理，無法從這條連線反推出原程式。升級後請重連以建立新的程序資料；TUN 的實機辨識仍須確認。
 
 0.2.1 修正核心更新：保持連線即可檢查與下載 GitHub 更新，系統代理及 TUN 都明確使用目前核心的本機代理。下載、SHA-256／架構／API／設定驗證完成後，才短暫重啟並恢復 TUN、模式、連接埠與節點選擇。下載或驗證失敗不停止目前核心；新版啟動失敗會回復舊版。慢速下載期間維持背景服務連線，Mac 更新也保留系統代理的服務所有權。
 
@@ -26,7 +30,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 ## 安裝與第一次使用
 
-1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.1-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。這是桌面程式安裝；之後在 GUI 更新核心時可保持連線。
+1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.2-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。這是桌面程式安裝；之後在 GUI 更新核心時可保持連線。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。

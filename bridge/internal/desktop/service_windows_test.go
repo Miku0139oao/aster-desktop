@@ -3,6 +3,7 @@ package desktop
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,6 +80,19 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 		fmt.Fprint(w, "payload: ['DOMAIN,slow.example']\n")
 	}))
 	defer provider.Close()
+	inspectionRelease := make(chan struct{})
+	inspectionProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-inspectionRelease:
+		case <-r.Context().Done():
+		}
+	}))
+	defer inspectionProxy.Close()
+	defer close(inspectionRelease)
+	_, inspectionPort, err := net.SplitHostPort(strings.TrimPrefix(inspectionProxy.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	content := fmt.Sprintf(`template: &ws
   type: vmess
   server: example.com
@@ -88,14 +102,14 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
   cipher: auto
   network: ws
   ws-opts: {path: /websocket}
-proxies: [{<<: *ws, name: WS}]
+proxies: [{<<: *ws, name: WS}, {name: Inspect, type: http, server: 127.0.0.1, port: %s}]
 log-level: warning
 rule-providers:
   slow: {type: http, behavior: classical, url: %q, interval: 3600}
-rules: ['RULE-SET,slow,DIRECT', 'MATCH,DIRECT']
+rules: ['DST-PORT,18081,Inspect', 'RULE-SET,slow,DIRECT', 'MATCH,DIRECT']
 dns: {enable: true, respect-rules: true, enhanced-mode: redir-host, nameserver: [system], proxy-server-nameserver: [system]}
 tun: {device: AsterSvcTest}
-`, provider.URL)
+`, inspectionPort, provider.URL)
 	params := map[string]any{"content": content, "settings": s}
 	if err = client.Call("start", params, nil); err != nil {
 		t.Fatal(err)
@@ -109,8 +123,9 @@ tun: {device: AsterSvcTest}
 		t.Fatal(err)
 	}
 	var config struct {
-		Interface string `json:"interface-name"`
-		Tun       struct {
+		Interface   string `json:"interface-name"`
+		ProcessMode string `json:"find-process-mode"`
+		Tun         struct {
 			Enable     bool `json:"enable"`
 			AutoDetect bool `json:"auto-detect-interface"`
 		} `json:"tun"`
@@ -120,6 +135,51 @@ tun: {device: AsterSvcTest}
 	}
 	if config.Interface != s.TunInterface || config.Tun.AutoDetect {
 		t.Fatalf("service did not bind to the chosen uplink: %+v", config)
+	}
+	if config.ProcessMode != "always" {
+		t.Fatalf("privileged TUN did not enable process inspection: %+v", config)
+	}
+	// The client has no explicit/system proxy. TUN must capture the original
+	// socket, route it into our loopback HTTP fixture, and identify this test
+	// executable rather than the LocalSystem core's upstream socket.
+	inspectionTransport := &http.Transport{Proxy: nil}
+	defer inspectionTransport.CloseIdleConnections()
+	inspectionClient := &http.Client{Transport: inspectionTransport, Timeout: 20 * time.Second}
+	go func() {
+		response, _ := inspectionClient.Get("http://1.1.1.1:18081/aster-process-inspection")
+		if response != nil {
+			response.Body.Close()
+		}
+	}()
+	executable := currentApplicationExecutable(t)
+	identified := false
+	for limit := time.Now().Add(12 * time.Second); time.Now().Before(limit); {
+		var snapshot struct {
+			Connections []struct {
+				Metadata struct {
+					Process string          `json:"process"`
+					Path    string          `json:"processPath"`
+					Type    string          `json:"type"`
+					Port    json.RawMessage `json:"destinationPort"`
+				} `json:"metadata"`
+			} `json:"connections"`
+		}
+		if err = client.Call("controller", map[string]string{"method": "GET", "path": "/connections"}, &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		for _, connection := range snapshot.Connections {
+			if strings.Trim(string(connection.Metadata.Port), "\"") == "18081" && strings.EqualFold(connection.Metadata.Type, "TUN") && strings.EqualFold(connection.Metadata.Path, executable) && strings.EqualFold(connection.Metadata.Process, filepath.Base(executable)) {
+				identified = true
+				break
+			}
+		}
+		if identified {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !identified {
+		t.Fatal("TUN did not report the original client executable")
 	}
 	if err = client.Call("controller", map[string]string{"method": "POST", "path": "/restart"}, nil); err == nil {
 		t.Fatal("unsupported privileged controller operation accepted")

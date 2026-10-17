@@ -132,6 +132,7 @@ class AppController extends ChangeNotifier {
   StreamSubscription<Json>? _subscription;
   bool _polling = false;
   int _operationEpoch = 0;
+  bool _loadingLogs = false;
   DateTime? _metricsAt;
   num _previousUp = 0, _previousDown = 0;
   final _refreshAttempts = <String, DateTime>{};
@@ -465,7 +466,7 @@ class AppController extends ChangeNotifier {
         }) as Json;
       }
       if (page == 4 && !busy && epoch == _operationEpoch) {
-        logs = (await backend.call('logs') as List? ?? []).cast<String>();
+        await loadLogs();
       }
       // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
       if (Platform.isMacOS) {
@@ -526,6 +527,7 @@ class AppController extends ChangeNotifier {
   void navigate(int index) {
     page = index;
     notifyListeners();
+    if (page == 4) unawaited(loadLogs());
     if (running) {
       unawaited(
         loadRuntime().catchError((Object e) {
@@ -550,6 +552,22 @@ class AppController extends ChangeNotifier {
               if (!_disposed) reportError(e.toString());
             }),
       );
+    }
+  }
+
+  Future<void> loadLogs() async {
+    if (_loadingLogs || _disposed) return;
+    _loadingLogs = true;
+    try {
+      final value = (await backend.call('logs') as List? ?? []).cast<String>();
+      if (!_disposed) {
+        logs = value;
+        notifyListeners();
+      }
+    } catch (e) {
+      if (!_disposed && page == 4) reportError(e.toString());
+    } finally {
+      _loadingLogs = false;
     }
   }
 

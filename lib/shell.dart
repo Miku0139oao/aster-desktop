@@ -27,6 +27,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   AppController get c => widget.controller;
   bool _trayReady = false, _quitting = false;
+  final Map<int, Widget> _pageViews = {};
   @override
   void initState() {
     super.initState();
@@ -120,6 +121,22 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
 
   @override
   Widget build(BuildContext context) {
+    // Keep visited page state, but only rebuild the active page on telemetry.
+    // Hidden large connection/node lists must not compete with log reading.
+    if (c.ready) {
+      _pageViews[c.page] = switch (c.page) {
+        0 => OverviewPage(c: c),
+        1 => NodesPage(c: c),
+        2 => ProfilesPage(c: c),
+        3 => ConnectionsPage(c: c),
+        4 => LogsPage(c: c),
+        6 => ApplicationsPage(c: c),
+        7 => StatisticsPage(c: c),
+        8 => DiagnosticsPage(c: c),
+        9 => RulesPage(c: c),
+        _ => AdvancedPage(c: c),
+      };
+    }
     final cs = Theme.of(context).colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 940;
     final destinations = [
@@ -288,7 +305,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(32, 26, 32, 18),
+                    padding: c.page == 3 || c.page == 4
+                        ? const EdgeInsets.fromLTRB(24, 12, 24, 10)
+                        : const EdgeInsets.fromLTRB(32, 26, 32, 18),
                     child: Row(
                       children: [
                         Expanded(
@@ -299,30 +318,19 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                                 destinations
                                     .firstWhere((d) => d.$1 == c.page)
                                     .$3,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .headlineMedium
+                                style: Theme.of(context).textTheme.headlineSmall
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                c.tr('讓連線變簡單。', 'A simpler way to connect.'),
-                                style: TextStyle(color: cs.onSurfaceVariant),
-                              ),
+                              if (c.page != 3 && c.page != 4) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  c.tr('讓連線變簡單。', 'A simpler way to connect.'),
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                        IconButton(
-                          tooltip: c.tr(
-                            '匯入訂閱或設定',
-                            'Import subscription or configuration',
-                          ),
-                          onPressed: c.busy
-                              ? null
-                              : () => showImportDialog(context, c),
-                          icon: const Icon(Icons.add),
-                        ),
-                        const SizedBox(width: 8),
                         IconButton(
                           tooltip: c.tr('外觀', 'Appearance'),
                           onPressed: c.busy
@@ -350,18 +358,19 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                   Expanded(
                     child: !c.ready
                         ? const Center(child: CircularProgressIndicator())
-                        : switch (c.page) {
-                            0 => OverviewPage(c: c),
-                            1 => NodesPage(c: c),
-                            2 => ProfilesPage(c: c),
-                            3 => ConnectionsPage(c: c),
-                            4 => LogsPage(c: c),
-                            6 => ApplicationsPage(c: c),
-                            7 => StatisticsPage(c: c),
-                            8 => DiagnosticsPage(c: c),
-                            9 => RulesPage(c: c),
-                            _ => AdvancedPage(c: c),
-                          },
+                        : IndexedStack(
+                            index: c.page,
+                            children: [
+                              for (var index = 0; index < 10; index++)
+                                if (!_pageViews.containsKey(index))
+                                  const SizedBox.shrink()
+                                else
+                                  TickerMode(
+                                    enabled: c.page == index,
+                                    child: _pageViews[index]!,
+                                  ),
+                            ],
+                          ),
                   ),
                 ],
               ),
