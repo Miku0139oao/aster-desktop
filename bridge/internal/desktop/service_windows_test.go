@@ -83,14 +83,26 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 	inspectionRelease := make(chan struct{})
 	inspectionReceived := make(chan struct{}, 1)
 	inspectionProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			http.Error(w, "CONNECT required", http.StatusMethodNotAllowed)
+			return
+		}
+		connection, buffer, hijackErr := w.(http.Hijacker).Hijack()
+		if hijackErr != nil {
+			return
+		}
+		defer connection.Close()
+		// The core registers the user's connection after its upstream CONNECT
+		// succeeds. Complete that handshake before holding the tunnel open.
+		fmt.Fprint(buffer, "HTTP/1.1 200 Connection established\r\n\r\n")
+		if err := buffer.Flush(); err != nil {
+			return
+		}
 		select {
 		case inspectionReceived <- struct{}{}:
 		default:
 		}
-		select {
-		case <-inspectionRelease:
-		case <-r.Context().Done():
-		}
+		<-inspectionRelease
 	}))
 	defer inspectionProxy.Close()
 	defer close(inspectionRelease)
