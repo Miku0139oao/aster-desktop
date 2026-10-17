@@ -1,4 +1,23 @@
 # Windows PowerShell 5.1 compatible. The caller supplies a verified, protected ZIP.
+function Get-AsterLiveDesktopProcess {
+  param([Diagnostics.Process[]]$Candidates=@(Get-Process -Name aster_desktop -ErrorAction SilentlyContinue))
+  foreach($asterCandidate in $Candidates){
+    try {
+      $asterCandidate.Refresh()
+      # Windows can enumerate a terminated process object while another handle
+      # still retains it. Such an object has no threads and cannot hold files.
+      if($asterCandidate.Threads.Count -gt 0){$asterCandidate}
+    } catch [ArgumentException] {
+      # The process disappeared between enumeration and inspection.
+    } catch [InvalidOperationException] {
+      # The Process no longer has a live associated operating-system process.
+    } catch {
+      # Unknown/access-denied is not evidence that the application has exited.
+      $asterCandidate
+    }
+  }
+}
+
 function Assert-AsterInstallDirectory {
   param([string]$InstallPath)
   $asterFull=[IO.Path]::GetFullPath($InstallPath).TrimEnd('\')

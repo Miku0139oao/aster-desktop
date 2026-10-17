@@ -42,6 +42,25 @@ function Assert-ExpectedFailure([scriptblock]$Action,[string]$Expected){
   Assert-InstallerTest ($asterFailure -and $asterFailure.Contains($Expected)) "Expected '$Expected', got '$asterFailure'"
 }
 try {
+  # Inspect only our own child; never stop or change the user's desktop app.
+  $asterChildInfo=[Diagnostics.ProcessStartInfo]::new()
+  $asterChildInfo.FileName=Join-Path $PSHOME 'powershell.exe'
+  $asterChildInfo.Arguments='-NoProfile -Command "[Console]::In.ReadToEnd() | Out-Null"'
+  $asterChildInfo.UseShellExecute=$false
+  $asterChildInfo.CreateNoWindow=$true
+  $asterChildInfo.RedirectStandardInput=$true
+  $asterChild=[Diagnostics.Process]::Start($asterChildInfo)
+  try {
+    Assert-InstallerTest (@(Get-AsterLiveDesktopProcess -Candidates @($asterChild)).Count -eq 1) 'Running desktop process must block installation'
+    $asterChild.StandardInput.Close()
+    Assert-InstallerTest ($asterChild.WaitForExit(15000)) 'Isolated process fixture did not exit'
+    Assert-InstallerTest (@(Get-AsterLiveDesktopProcess -Candidates @($asterChild)).Count -eq 0) 'Exited process with retained handle must not block installation'
+  } finally {
+    if(!$asterChild.HasExited){$asterChild.Kill();$asterChild.WaitForExit()}
+    $asterChild.Dispose()
+  }
+  Write-Output 'PASS: live process blocks installation; exited object with retained handle does not'
+
   $asterFresh=New-InstallerCase 'fresh'
   Install-AsterPayload -ArchivePath $PayloadPath -InstallPath $asterFresh
   Assert-PayloadMatches $asterFresh $PayloadPath

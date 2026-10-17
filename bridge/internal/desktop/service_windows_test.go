@@ -81,7 +81,12 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 	}))
 	defer provider.Close()
 	inspectionRelease := make(chan struct{})
+	inspectionReceived := make(chan struct{}, 1)
 	inspectionProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case inspectionReceived <- struct{}{}:
+		default:
+		}
 		select {
 		case <-inspectionRelease:
 		case <-r.Context().Done():
@@ -145,14 +150,17 @@ tun: {device: AsterSvcTest}
 	inspectionTransport := &http.Transport{Proxy: nil}
 	defer inspectionTransport.CloseIdleConnections()
 	inspectionClient := &http.Client{Transport: inspectionTransport, Timeout: 20 * time.Second}
+	inspectionResult := make(chan error, 1)
 	go func() {
-		response, _ := inspectionClient.Get("http://1.1.1.1:18081/aster-process-inspection")
+		response, requestErr := inspectionClient.Get("http://1.1.1.1:18081/aster-process-inspection")
+		inspectionResult <- requestErr
 		if response != nil {
 			response.Body.Close()
 		}
 	}()
 	executable := currentApplicationExecutable(t)
 	identified := false
+	var lastSnapshot json.RawMessage
 	for limit := time.Now().Add(12 * time.Second); time.Now().Before(limit); {
 		var snapshot struct {
 			Connections []struct {
@@ -167,6 +175,7 @@ tun: {device: AsterSvcTest}
 		if err = client.Call("controller", map[string]string{"method": "GET", "path": "/connections"}, &snapshot); err != nil {
 			t.Fatal(err)
 		}
+		lastSnapshot, _ = json.Marshal(snapshot)
 		for _, connection := range snapshot.Connections {
 			if strings.Trim(string(connection.Metadata.Port), "\"") == "18081" && strings.EqualFold(connection.Metadata.Type, "TUN") && strings.EqualFold(connection.Metadata.Path, executable) && strings.EqualFold(connection.Metadata.Process, filepath.Base(executable)) {
 				identified = true
@@ -179,6 +188,19 @@ tun: {device: AsterSvcTest}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !identified {
+		t.Logf("expected original executable: %s; last synthetic connection snapshot: %s", executable, lastSnapshot)
+		select {
+		case <-inspectionReceived:
+			t.Log("loopback inspection proxy received the TUN request")
+		default:
+			t.Log("loopback inspection proxy did not receive the TUN request")
+		}
+		select {
+		case requestErr := <-inspectionResult:
+			t.Logf("inspection client completed: %v", requestErr)
+		default:
+			t.Log("inspection client is still pending")
+		}
 		t.Fatal("TUN did not report the original client executable")
 	}
 	if err = client.Call("controller", map[string]string{"method": "POST", "path": "/restart"}, nil); err == nil {

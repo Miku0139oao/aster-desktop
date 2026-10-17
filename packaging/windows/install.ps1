@@ -9,9 +9,9 @@ if(!$asterPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $asterInstall=Join-Path $env:ProgramFiles 'Aster Desktop'
 $asterExpected=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'Aster Desktop'))
 if([IO.Path]::GetFullPath($asterInstall) -ne $asterExpected){throw 'Invalid installation directory'}
-$asterApp=Get-Process -Name aster_desktop -ErrorAction SilentlyContinue
-if($asterApp){throw 'Please exit Aster Desktop from its tray menu, then run this installer again.'}
 . (Join-Path $PSScriptRoot 'install-files.ps1')
+$asterApp=@(Get-AsterLiveDesktopProcess)
+if($asterApp.Count){throw ('Please exit Aster Desktop from its tray menu, then run this installer again. Running PID: '+(($asterApp | ForEach-Object Id) -join ', '))}
 $asterService=Get-Service -Name AsterDesktop -ErrorAction SilentlyContinue
 $asterWasRunning=$asterService -and $asterService.Status -ne 'Stopped'
 function Stop-AsterInstallerService {
@@ -32,7 +32,7 @@ function Start-AsterInstallerService {
   (Get-Service -Name AsterDesktop).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
 }
 Install-AsterPayload -ArchivePath (Join-Path $PSScriptRoot 'payload.zip') -InstallPath $asterInstall `
-  -BeforeSwitch {Stop-AsterInstallerService} -AfterSwitch {Start-AsterInstallerService} `
+  -BeforeSwitch {if(@(Get-AsterLiveDesktopProcess).Count){throw 'Aster Desktop was opened during installation. Exit it from the tray menu and retry.'};Stop-AsterInstallerService} -AfterSwitch {Start-AsterInstallerService} `
   -BeforeRollback {Stop-AsterInstallerService} -AfterRollback {Start-AsterInstallerService}
 $asterUninstall=Join-Path $asterInstall 'uninstall.ps1'
 $asterRemoval=@'
@@ -45,13 +45,15 @@ if(!$asterPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 $asterTarget=Join-Path $env:ProgramFiles 'Aster Desktop'
 $asterExpected=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'Aster Desktop'))
 if([IO.Path]::GetFullPath($asterTarget) -ne $asterExpected){throw 'Invalid uninstall directory'}
-if(Get-Process -Name aster_desktop -ErrorAction SilentlyContinue){throw 'Close Aster Desktop from its tray menu before uninstalling'}
+#ASTER_LIVE_PROCESS_FUNCTION
+if(@(Get-AsterLiveDesktopProcess).Count){throw 'Close Aster Desktop from its tray menu before uninstalling'}
 if(Get-Service AsterDesktop -ErrorAction SilentlyContinue){& (Join-Path $asterTarget 'aster-bridge.exe') --uninstall-service;if($LASTEXITCODE -ne 0){throw 'Background service could not be removed'}}
 Remove-Item -LiteralPath 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AsterDesktop' -ErrorAction SilentlyContinue
 $asterShortcut=Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Aster Desktop.lnk'
 Remove-Item -LiteralPath $asterShortcut -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $asterTarget -Recurse -Force
 '@
+$asterRemoval=$asterRemoval.Replace('#ASTER_LIVE_PROCESS_FUNCTION',('function Get-AsterLiveDesktopProcess {'+[Environment]::NewLine+${function:Get-AsterLiveDesktopProcess}.ToString()+[Environment]::NewLine+'}'))
 [IO.File]::WriteAllText($asterUninstall,$asterRemoval)
 $asterShell=New-Object -ComObject WScript.Shell
 $asterShortcut=$asterShell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Aster Desktop.lnk'))

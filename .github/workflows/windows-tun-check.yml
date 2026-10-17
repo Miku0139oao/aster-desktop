@@ -1,0 +1,49 @@
+name: Verify Windows TUN process identity
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Build run with a Windows package artifact to test
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache-dependency-path: bridge/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          name: aster-desktop-windows-2022
+          path: .build/tun-package
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify and extract the package binaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $folder=Join-Path $pwd '.build/tun-package'
+          foreach($line in Get-Content "$folder/checksums.txt"){
+            $hash,$name=$line -split '  ',2
+            if([IO.Path]::GetFileName($name) -cne $name){throw 'Invalid artifact path'}
+            if((Get-FileHash -LiteralPath (Join-Path $folder $name) -Algorithm SHA256).Hash -ne $hash){throw "Checksum mismatch: $name"}
+          }
+          $portable=@(Get-ChildItem $folder -Filter '*windows-x64-portable.zip')
+          if($portable.Count -ne 1){throw 'Expected one portable package'}
+          Expand-Archive -LiteralPath $portable[0].FullName -DestinationPath .build/tun-binaries
+      - name: Real LocalSystem TUN and original application identity
+        working-directory: bridge
+        shell: pwsh
+        env:
+          CGO_ENABLED: '0'
+          ASTER_TEST_WINDOWS_SERVICE: disposable-runner
+        run: |
+          $env:ASTER_TEST_CORE=Join-Path (Split-Path $pwd -Parent) '.build/tun-binaries/aster-core.exe'
+          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 3m
