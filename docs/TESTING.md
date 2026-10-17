@@ -6,7 +6,19 @@
 
 本機 Flutter analyze 通過，48 項元件／單元及圖片比對通過，一項 Mac 專用跳過；涵蓋 2,000 筆日誌惰性顯示、760×580／1.5 倍字級、過濾／快照／切頁保存／明細、精確程式路徑篩選、已結束連線的最後資料及 10,000 連線搜尋與中止。Go 真實固定核心完整測試通過（101 秒），`go vet ./...` 通過。新增真實 socket 程序辨識測試，在規則／全域／直連下辨識獨立用戶端的名稱與完整路徑，未使用本機系統代理、服務或 TUN。
 
-Windows disposable CI 的既有服務／TUN 回歸另增加：確認服務設定為 always，建立未使用 HTTP／系統代理的原始用戶端 socket，由 TUN 路由到 loopback fixture，核對 TUN metadata 的程序為原用戶端。此案例只可在 disposable runner 執行，本機明確跳過。跨平台最終建置與套件結果完成後補記；使用者 Wi-Fi TUN 及 Mac 實機網路／授權尚未驗證。
+Windows disposable CI 的既有服務／TUN 回歸另增加：確認服務設定為 always，建立未使用 HTTP／系統代理的原始用戶端 socket，由 TUN 路由到 loopback fixture，核對 TUN metadata 的程序為原用戶端。此案例只可在 disposable runner 執行，本機明確跳過。[獨立真實 TUN 驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/39066735567) 已通過。第一輪 fixture 沒有完成 HTTP CONNECT，使用者連線未完成登記便逾時；修正測試代理握手後通過，未放寬程序名稱、完整路徑及 TUN 入口的斷言。
+
+使用者回報從托盤退出後，安裝器仍稱程式未退出。本機唯讀檢查確認 Windows 列出一個無執行緒／視窗／handle 的同名程序物件。安裝器改為辨識活動執行緒，忽略已結束但被 handle 保留的物件；未知權限錯誤仍阻擋，換檔前再次確認 GUI 未重新開啟。解除安裝採相同檢查。本機 PowerShell 5.1 十項安裝回歸通過，新增獨立子程序的活動／退出保留 handle 案例，原有 SHA-256、升級、ACL、檔案鎖定及回復驗證保留；未終止使用者程式或執行本機正式安裝。
+
+本機 Windows 原生 GUI 匯入、透過固定核心代理 HTTP、停止流程通過。WSL Arch release、可攜包及套件建置通過，bridge VCS 為 `3024018d5cd16e3ecd2ab147cbb53b6f5a77b3d7` 且工作目錄未修改；所有套件項目 root 所有權且無 group／world write，可攜包同樣檢查寫入權限。這不代表 GNOME／KDE 托盤、桌面代理與授權實機通過。跨平台最終套件結果另列；使用者 Wi-Fi TUN 及 Mac 實機網路／授權尚未驗證。
+
+交付產品來源：`3024018d5cd16e3ecd2ab147cbb53b6f5a77b3d7`。
+
+- [最終四平台 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/39066754198) 全部通過：Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 Flutter 靜態分析、單元／元件／正常圖片比對、Go 管理層及真實固定核心測試、release 建置與套件。Windows 原生 GUI、十項 PowerShell 5.1 安裝回歸及 LocalSystem／真實 TUN 原程式名稱與完整路徑辨識均通過；Ubuntu 原生 GUI 通過。Mac 原生 GUI driver 明確跳過，不列為通過。
+- [Apple Silicon 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/39067152933) 與 [Intel 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/39067852068) 均通過：下載最終實際 DMG、套件 SHA-256、DMG 校驗、PKG 安裝、完整 codesign、GUI／Go／Swift 架構、root 所有權與安全目錄權限。實機網路／TUN、SMAppService 授權、Gatekeeper 與睡眠喚醒仍待驗收。
+- 跨平台基準更新時先人工檢視渲染結果，再提交各平台圖片並執行上述正常圖片比對；沒有把重新產生圖片當作比對通過。新增安裝器修正後取消先前正常比對的中途 run，重新跑完整最終 CI。首輪 TUN fixture 握手錯誤的失敗保留於上述說明。
+
+[0.2.2-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.2-beta.1) 已公開，包含 13 份資產。所有 GitHub 資產狀態、大小與 SHA-256 digest 均與本機檔案相符，對應桌面 ZIP／tarball 的追蹤檔案內容與產品提交一致（跨平台文字換行正規化後比較）；tag 指向產品來源。Windows 安裝器 SHA-256：`b94da37555e26737063981871308be0ff658996e9bf56cd5611d3dd2bba04807`。後續文件提交不改動執行程式來源。
 
 ---
 
