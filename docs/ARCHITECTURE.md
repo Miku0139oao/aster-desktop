@@ -2,6 +2,12 @@
 
 Flutter owns Material 3 widgets, localization, keyboard focus, profile interactions, file dialogs and tray/window lifetime. Low-privilege Go owns user data, pinned link conversion, validation, updates and core lifetime. Aster Core is a separate binary. Existing controller REST/WebSocket endpoints supply proxies/groups, delay tests, rules, connections and traffic. No public core API was added.
 
+## Single instance and window lifetime
+
+Before initializing the window or bridge, Flutter acquires an OS file lock in the per-user application support directory. Installed and portable copies use the same directory. The lock file is never unlinked; process exit releases it. A private endpoint file publishes a loopback port and random activation token. A competing launch sends only an authenticated window activation, exits without starting a bridge/core, and fails closed when the current owner cannot respond. Activation restores hidden/minimized windows; macOS LaunchServices reopen also restores the existing window through AppDelegate.
+
+Closing the window hides it when the tray is available. Explicit quit waits for bridge/core cleanup and proxy restoration before process exit. macOS Dock Quit and Cmd+Q use AppLifecycleListener and return the native exit response after cleanup; Windows/Linux window close uses window_manager's prevent-close path. Concurrent quit requests share one cleanup operation.
+
 ## Protocol
 
 Bridge stdin/stdout uses NDJSON `{id,method,params}` → `{id,result}` or `{id,error:{code,message}}`. Events are `{event,data}`. Diagnostics go to stderr. Go `Settings`, `Profile`, `State`, `CoreStatus` and `RPCError` describe stored/state shapes. Requests/configuration and responses are bounded. Storage/core transitions serialize, with request IDs allowing concurrent UI requests.

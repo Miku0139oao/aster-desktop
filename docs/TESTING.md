@@ -1,11 +1,16 @@
 # 0.2.3 防止多開與日常操作
 
-日期：2026-10-18。核心／轉換器仍固定 a9a33503b39a03681bc52d9758907316a22df199。
+日期：2026-10-19。核心／轉換器仍固定 a9a33503b39a03681bc52d9758907316a22df199。
 
 - Windows 真實子程序驗證：同時首次啟動 8 個程序只產生一個擁有者；已啟動後再同時啟動 8 次只送出顯示請求。驗證未授權請求、無法顯示時禁止重開、正常退出及強制結束後恢復。WSL Arch 的相同程序測試亦通過。
 - Flutter analyze 無問題，50 項單元／元件測試通過，1 項 Mac 專用測試依平台跳過。包含最小視窗日常操作、選點後在原頁啟停、搜尋前往頁面、鍵盤快速鍵及 150% 文字縮放。
 - Windows 原生 GUI 驗證隱藏及最小化後喚回，再以獨立資料完成真實核心匯入、選點、loopback HTTP、GUI 分流規則、萬行 YAML 與停止；未變更使用者系統代理／TUN／DNS／服務。Go 管理層測試與 vet 通過。
-- 平台 CI、安裝器與套件驗證結果完成後追加。Mac 實機 TUN／網路／背景服務授權／睡眠喚醒仍待驗證，不以本版建置或鎖測試代替。
+- [最終四平台 CI](https://github.com/Miku0139oao/aster-desktop/actions/runs/39146087052) 全部通過：Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 Flutter analyze、單元／元件／正常圖片比對、真實跨程序鎖、Go 管理層與真實固定核心測試、release 建置與套件。Windows 原生 GUI、十項 PowerShell 5.1 安裝回歸及 LocalSystem／真實 TUN 回歸通過；Ubuntu 原生 GUI 通過。Mac 原生 GUI driver 明確跳過。
+- [Apple Silicon 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/39146706034) 與 [Intel 安裝驗證](https://github.com/Miku0139oao/aster-desktop/actions/runs/39147109105) 均通過：最終實際 DMG／PKG、SHA-256、DMG 校驗、安裝、完整 codesign、GUI／Go／Swift 架構、root 所有權與目錄權限。Mac 實機 TUN／網路／背景服務授權／Gatekeeper 互動／睡眠喚醒仍待驗證。
+- WSL Arch 最終 release、可攜包及套件建置通過，bridge VCS 為產品提交且未修改；檢查可攜包無 group／world write。WSL 不代替 GNOME／KDE 托盤、桌面代理及 polkit 實機驗收。
+- 基準圖片更新先人工檢視，再提交各平台圖片並跑正常比對。中途 Windows CI 暴露原生退出通知與關窗到托盤衝突：第一輪提前結束測試程序，後一輪關窗誤停核心。修正為 Mac 原生退出處理只作用於 macOS，Windows／Linux 維持 window_manager 流程；最終 Windows GUI 重新確認關窗隱藏、核心繼續執行且 HTTP 代理成功。沒有放寬該斷言或將失敗列為通過。
+
+交付產品來源：`e3aab7acba9e245a0858c01fd5be7fd976efd565`。Windows 安裝器 SHA-256：`fb4f23b48bd14f479a5c509a12fb550406e6021b4067cd183479fdfb7870a409`。本輪未重試使用者 Wi-Fi TUN；其上網結果仍待確認。
 
 ---
 # 0.2.2 日誌與連線查閱

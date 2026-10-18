@@ -1,6 +1,6 @@
 # Aster Desktop 0.2.3 測試版
 
-[下載 0.2.2 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.2-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
+[下載 0.2.3 安裝包與校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3-beta.1)。Windows、Mac Intel／Apple Silicon、Ubuntu 與 Arch 套件及對應來源均提供。
 
 0.2.3 加入跨平台防止多開：重複啟動會喚回原本視窗，包含托盤隱藏與最小化；鎖在程序退出或崩潰後自動釋放。所有啟動共用使用者資料鎖，第二個視窗不會啟動 bridge／核心或重複自動連線。托盤「退出」在停止核心、還原代理及關閉 bridge 後結束程序。
 
@@ -35,7 +35,7 @@ Repository 已依使用者指示公開，GitHub Actions 已恢復執行。0.1.4 
 
 ## 安裝與第一次使用
 
-1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.2-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。這是桌面程式安裝；之後在 GUI 更新核心時可保持連線。
+1. Windows：先從托盤退出 Aster Desktop，執行 `Aster-Desktop-0.2.3-windows-x64-setup.exe`，同意安裝權限，從開始功能表開啟。可攜版先將 ZIP 完整解壓到固定資料夾，再開啟 `aster_desktop.exe`。這是桌面程式安裝；之後在 GUI 更新核心時可保持連線。
 2. macOS：開啟對應 Intel / Apple Silicon DMG，執行其中的 PKG，安裝到 `/Applications/Aster Desktop.app`。測試包使用本機簽署；若被系統阻擋，請在「系統設定 → 隱私權與安全性」允許開啟。PKG 安裝已通過 CI，Gatekeeper 互動及背景服務授權需實機驗證。
 3. Ubuntu：以系統套件安裝程式開啟 `.deb`。Arch：以套件管理員安裝 `.pkg.tar.zst`。可攜版解壓後執行 `aster_desktop`，需要 GTK 3、AppIndicator、polkit 授權代理。
 4. 首頁按「匯入訂閱」，貼上 URL／節點連結／YAML，或選擇本機 YAML。匯入後到「節點」選擇節點，再按「連線」。不需要設定核心路徑、Controller 或密碼。
