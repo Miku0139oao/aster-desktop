@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,11 +30,19 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   AppController get c => widget.controller;
   bool _trayReady = false, _quitting = false;
+  AppLifecycleListener? _applicationLifecycle;
   final Map<int, Widget> _pageViews = {};
   @override
   void initState() {
     super.initState();
     if (widget.desktopLifecycle) {
+      _applicationLifecycle = AppLifecycleListener(
+        onExitRequested: () async {
+          // macOS Cmd+Q / Dock Quit follows the same cleanup as the tray.
+          await _quit();
+          return AppExitResponse.cancel;
+        },
+      );
       windowManager.addListener(this);
       trayManager.addListener(this);
       unawaited(_setupTray());
@@ -114,6 +123,7 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
 
   @override
   void dispose() {
+    _applicationLifecycle?.dispose();
     if (widget.desktopLifecycle) {
       windowManager.removeListener(this);
       trayManager.removeListener(this);
