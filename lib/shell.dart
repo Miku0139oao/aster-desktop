@@ -37,14 +37,18 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   void initState() {
     super.initState();
     if (widget.desktopLifecycle) {
-      _applicationLifecycle = AppLifecycleListener(
-        onExitRequested: () async {
-          // macOS Cmd+Q / Dock Quit follows the same cleanup as the tray.
-          return await _prepareExit()
-              ? AppExitResponse.exit
-              : AppExitResponse.cancel;
-        },
-      );
+      if (Platform.isMacOS) {
+        _applicationLifecycle = AppLifecycleListener(
+          onExitRequested: () async {
+            // macOS Cmd+Q / Dock Quit is distinct from closing to the tray.
+            // Windows/Linux window closes are handled by window_manager;
+            // their exit notification can precede its prevent-close handler.
+            return await _prepareExit()
+                ? AppExitResponse.exit
+                : AppExitResponse.cancel;
+          },
+        );
+      }
       windowManager.addListener(this);
       trayManager.addListener(this);
       unawaited(_setupTray());
