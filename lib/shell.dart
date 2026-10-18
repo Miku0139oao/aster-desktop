@@ -29,8 +29,9 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   AppController get c => widget.controller;
-  bool _trayReady = false, _quitting = false;
+  bool _trayReady = false;
   AppLifecycleListener? _applicationLifecycle;
+  Future<bool>? _exitCleanup;
   final Map<int, Widget> _pageViews = {};
   @override
   void initState() {
@@ -39,8 +40,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       _applicationLifecycle = AppLifecycleListener(
         onExitRequested: () async {
           // macOS Cmd+Q / Dock Quit follows the same cleanup as the tray.
-          await _quit();
-          return AppExitResponse.cancel;
+          return await _prepareExit()
+              ? AppExitResponse.exit
+              : AppExitResponse.cancel;
         },
       );
       windowManager.addListener(this);
@@ -74,19 +76,24 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   }
 
   Future<void> _quit() async {
-    if (_quitting) return;
-    _quitting = true;
+    if (await _prepareExit()) exit(0);
+  }
+
+  Future<bool> _prepareExit() => _exitCleanup ??= _cleanUp();
+
+  Future<bool> _cleanUp() async {
     try {
       await c.backend.close();
       if (_trayReady) await trayManager.destroy();
       // Closing the last window does not terminate a macOS tray application.
       // Exit only after the bridge has stopped the core and restored settings.
-      exit(0);
+      return true;
     } catch (e) {
-      _quitting = false;
+      _exitCleanup = null;
       c.error = e.toString();
       c.reportError(c.error);
       await windowManager.show();
+      return false;
     }
   }
 
