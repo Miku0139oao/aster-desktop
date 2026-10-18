@@ -112,7 +112,7 @@ class OverviewPage extends StatelessWidget {
       children: [
         Container(
           margin: const EdgeInsets.only(bottom: 20),
-          padding: const EdgeInsets.all(28),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             gradient: LinearGradient(
@@ -163,8 +163,8 @@ class OverviewPage extends StatelessWidget {
                               ? c.tr('你的代理已啟動。', 'Your proxy is active.')
                               : hasProfile
                               ? c.tr(
-                                  '按一下，就能開始使用。',
-                                  'One click and you are ready.',
+                                  '選好節點後，按「開始連線」。',
+                                  'Choose a node, then connect.',
                                 )
                               : c.tr(
                                   '貼上訂閱網址，或匯入已有的設定。',
@@ -177,7 +177,43 @@ class OverviewPage extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 28),
+              if (hasProfile) ...[
+                const SizedBox(height: 18),
+                Material(
+                  color: cs.surface.withValues(alpha: .65),
+                  borderRadius: BorderRadius.circular(16),
+                  child: ListTile(
+                    key: const Key('overview-node'),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    leading: Icon(Icons.hub_outlined, color: cs.primary),
+                    title: Text(
+                      c.currentNode,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      c.tr('目前節點 · 點擊更換', 'Current node · Click to change'),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => c.navigate(1),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  key: const Key('overview-profile'),
+                  onPressed: () => c.navigate(2),
+                  icon: const Icon(Icons.folder_open_outlined, size: 18),
+                  label: Text(
+                    c.active!.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
               Wrap(
                 spacing: 16,
                 runSpacing: 12,
@@ -207,11 +243,12 @@ class OverviewPage extends StatelessWidget {
                   ),
                   if (hasProfile)
                     Text(
-                      c.active!.name,
-                      style: TextStyle(
-                        color: cs.onPrimaryContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      c.settings.tun
+                          ? c.tr('所有應用程式 · TUN', 'All applications · TUN')
+                          : c.settings.systemProxy
+                          ? c.tr('系統代理', 'System proxy')
+                          : c.tr('手動代理', 'Manual proxy'),
+                      style: TextStyle(color: cs.onPrimaryContainer),
                     ),
                 ],
               ),
@@ -328,7 +365,9 @@ class OverviewPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SectionTitle(c.tr('連線方式', 'Connection settings')),
+              SectionTitle(
+                c.tr('哪些應用程式使用代理？', 'Which applications use the proxy?'),
+              ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: Text(c.tr('系統代理', 'System proxy')),
@@ -358,7 +397,39 @@ class OverviewPage extends StatelessWidget {
                     : (v) => c.saveSettings({'tun': v}),
               ),
               if (c.settings.tun) TunNetworkSelector(controller: c),
+              if (c.settings.tun &&
+                  (c.service['installed'] != true ||
+                      c.service['approved'] == false))
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.admin_panel_settings_outlined),
+                  title: Text(
+                    c.tr(
+                      '首次使用需要背景服務授權',
+                      'Authorize the background service first',
+                    ),
+                  ),
+                  subtitle: Text(
+                    c.tr(
+                      '點擊安裝，完成系統授權後即可連線。',
+                      'Install and approve the system prompt, then connect.',
+                    ),
+                  ),
+                  trailing: FilledButton.tonal(
+                    onPressed: c.busy || c.running
+                        ? null
+                        : () => c.perform(() async {
+                            await c.backend.call('installService');
+                          }),
+                    child: Text(c.tr('安裝／授權', 'Authorize')),
+                  ),
+                ),
               const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                c.tr('流量如何選擇出口？', 'How should traffic be routed?'),
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -377,6 +448,21 @@ class OverviewPage extends StatelessWidget {
                     ),
                 ],
               ),
+              const SizedBox(height: 8),
+              Text(switch (c.settings.mode) {
+                'global' => c.tr(
+                  '全部流量使用全域群組所選的出口。',
+                  'All traffic follows the GLOBAL group selection.',
+                ),
+                'direct' => c.tr(
+                  '全部流量直接連線，不經過代理節點。',
+                  'All traffic connects directly without a proxy node.',
+                ),
+                _ => c.tr(
+                  '依設定檔及應用程式規則，自動選擇代理或直連。',
+                  'Profile and application rules choose proxy or direct routing.',
+                ),
+              }, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
               if (c.running)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -406,15 +492,6 @@ class OverviewPage extends StatelessWidget {
                 Text(
                   c.active!.name,
                   style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.hub_outlined),
-                  title: Text(c.tr('目前節點', 'Current node')),
-                  subtitle: Text(c.currentNode),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => c.navigate(1),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -944,8 +1021,8 @@ class _NodesPageState extends State<NodesPage> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 c.tr(
-                  '先選節點，再到首頁連線。連線後可測速與載入遠端訂閱。',
-                  'Choose nodes before connecting. Remote providers and latency tests load when connected.',
+                  '選好節點後，按左下角「啟動代理」。連線後可測速與載入遠端訂閱。',
+                  'Choose a node, then use Start proxy in the sidebar. Connect to test latency and load remote providers.',
                 ),
               ),
             ),

@@ -219,6 +219,78 @@ Future<AppController> setup(
 }
 
 void main() {
+  testWidgets('daily actions stay visible and navigable in a compact window', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    backend.profiles.add({
+      'id': 'daily',
+      'name': 'Daily subscription',
+      'content': 'proxies: [{name: Tokyo, type: direct}]\nproxy-groups: [{name: Proxy, type: select, proxies: [Tokyo]}]\nrules: ["MATCH,Proxy"]\n',
+    });
+    final c = await setup(tester, backend, size: const Size(760, 580));
+    expect(find.text('Nodes').hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('overview-node')).hitTestable(),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('overview-node')));
+    await tester.pumpAndSettle();
+    expect(c.page, 1);
+    await tester.tap(find.byKey(const Key('sidebar-connect')));
+    await tester.pumpAndSettle();
+    expect(c.running, isTrue);
+    expect(c.page, 1);
+    await tester.tap(find.byKey(const Key('sidebar-connect')));
+    await tester.pumpAndSettle();
+    expect(c.running, isFalse);
+    await tester.tap(find.byTooltip('Go to a page'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('navigation-search')),
+      'diagnos',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(c.page, 8);
+    await tester.tap(find.byTooltip('Appearance'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(CheckedPopupMenuItem<String>, 'System'),
+    );
+    await tester.pumpAndSettle();
+    expect(c.settings.theme, 'system');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'keyboard navigation opens from any page at enlarged text scale',
+    (tester) async {
+      final backend = FakeBackend();
+      final c = await setup(tester, backend, size: const Size(760, 580));
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(
+        Platform.isMacOS ? LogicalKeyboardKey.meta : LogicalKeyboardKey.control,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+      await tester.sendKeyUpEvent(
+        Platform.isMacOS ? LogicalKeyboardKey.meta : LogicalKeyboardKey.control,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('navigation-search')), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('navigation-search')),
+        'logs',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(c.page, 4);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('inspection query supports literal terms, exclusions, quoted phrases and fields', () {
     expect(
       matchesInspectionQuery(
@@ -1058,7 +1130,7 @@ void main() {
         ..serviceInstalled = true
         ..desktopVersion = '0.1.2';
       final c = await setup(tester, backend);
-      expect(find.text('Aster Desktop 0.1.2'), findsOneWidget);
+      expect(find.text('v0.1.2'), findsOneWidget);
       c.reportError(
         'TUN adapter did not become ready; check the background service',
       );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -11,6 +12,7 @@ import 'application_rules.dart';
 import 'brand.dart';
 import 'workspace.dart';
 import 'rules_page.dart';
+import 'window_activation.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -68,8 +70,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
     try {
       await c.backend.close();
       if (_trayReady) await trayManager.destroy();
-      await windowManager.setPreventClose(false);
-      await windowManager.destroy();
+      // Closing the last window does not terminate a macOS tray application.
+      // Exit only after the bridge has stopped the core and restored settings.
+      exit(0);
     } catch (e) {
       _quitting = false;
       c.error = e.toString();
@@ -89,8 +92,7 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
 
   @override
   void onTrayIconMouseDown() {
-    unawaited(windowManager.show());
-    unawaited(windowManager.focus());
+    unawaited(revealMainWindow());
   }
 
   @override
@@ -138,242 +140,374 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       };
     }
     final cs = Theme.of(context).colorScheme;
-    final compact = MediaQuery.sizeOf(context).width < 940;
+    final compact = MediaQuery.sizeOf(context).width < 1000;
     final destinations = [
       (0, Icons.space_dashboard_outlined, c.tr('首頁', 'Overview')),
       (1, Icons.hub_outlined, c.tr('節點', 'Nodes')),
+      (2, Icons.folder_copy_outlined, c.tr('訂閱與設定', 'Profiles')),
       (6, Icons.apps_outlined, c.tr('應用程式', 'Applications')),
       (3, Icons.swap_calls, c.tr('連線', 'Connections')),
       (7, Icons.bar_chart_outlined, c.tr('統計', 'Statistics')),
-      (2, Icons.folder_copy_outlined, c.tr('訂閱與設定', 'Profiles')),
       (9, Icons.alt_route, c.tr('規則', 'Rules')),
       (8, Icons.troubleshoot, c.tr('診斷', 'Diagnostics')),
       (4, Icons.receipt_long_outlined, c.tr('日誌', 'Logs')),
       (5, Icons.tune, c.tr('進階設定', 'Advanced')),
     ];
-    return Scaffold(
-      body: SafeArea(
-        child: Row(
-          children: [
-            Container(
-              width: compact ? 88 : 224,
-              color: cs.surfaceContainerLow,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      compact ? 18 : 24,
-                      28,
-                      compact ? 18 : 24,
-                      24,
-                    ),
-                    child: Row(
-                      children: [
-                        const AsterMark(),
-                        if (!compact) ...[
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Aster',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  'DESKTOP',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.zero,
-                      children: [
-                        for (var i = 0; i < destinations.length; i++)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            child: Tooltip(
-                              message: destinations[i].$3,
-                              child: Material(
-                                color: c.page == destinations[i].$1
-                                    ? cs.secondaryContainer
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(18),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(18),
-                                  onTap: () => c.navigate(destinations[i].$1),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 15,
+    return CallbackShortcuts(
+      bindings: {
+        SingleActivator(
+          LogicalKeyboardKey.keyK,
+          control: !Platform.isMacOS,
+          meta: Platform.isMacOS,
+        ): () =>
+            _jumpTo(destinations),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: SafeArea(
+            child: Row(
+              children: [
+                Container(
+                  width: compact ? 164 : 208,
+                  color: cs.surfaceContainerLow,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(18, 20, 18, 16),
+                        child: Row(
+                          children: [
+                            const AsterMark(size: 30),
+                            ...[
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Aster',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 23,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                    child: Row(
-                                      mainAxisAlignment: compact
-                                          ? MainAxisAlignment.center
-                                          : MainAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          destinations[i].$2,
-                                          color: c.page == destinations[i].$1
-                                              ? cs.onSecondaryContainer
-                                              : cs.onSurfaceVariant,
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: [
+                            for (var i = 0; i < destinations.length; i++) ...[
+                              if (i == 0 || i == 4 || i == 7)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    10,
+                                    12,
+                                    6,
+                                  ),
+                                  child: Text(
+                                    i == 0
+                                        ? c.tr('日常使用', 'Everyday')
+                                        : i == 4
+                                        ? c.tr('活動與分流', 'Activity & routing')
+                                        : c.tr('工具', 'Tools'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 2,
+                                ),
+                                child: Tooltip(
+                                  message: destinations[i].$3,
+                                  child: Material(
+                                    color: c.page == destinations[i].$1
+                                        ? cs.secondaryContainer
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: InkWell(
+                                      key: ValueKey(
+                                        'nav:${destinations[i].$1}',
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () =>
+                                          c.navigate(destinations[i].$1),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 11,
                                         ),
-                                        if (!compact) ...[
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Text(
-                                              destinations[i].$3,
-                                              style: TextStyle(
-                                                fontWeight:
-                                                    c.page == destinations[i].$1
-                                                    ? FontWeight.w700
-                                                    : FontWeight.w500,
-                                              ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              destinations[i].$2,
+                                              size: 20,
+                                              color:
+                                                  c.page == destinations[i].$1
+                                                  ? cs.onSecondaryContainer
+                                                  : cs.onSurfaceVariant,
                                             ),
-                                          ),
-                                        ],
-                                      ],
+                                            ...[
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  destinations[i].$3,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        c.page ==
+                                                            destinations[i].$1
+                                                        ? FontWeight.w700
+                                                        : FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        if (!compact)
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.circle,
-                                size: 8,
-                                color: c.running ? cs.primary : cs.outline,
-                              ),
-                              const SizedBox(width: 8),
-                              Flexible(
+                            ],
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                        child: Column(
+                          children: [
+                            if (c.active != null)
+                              Tooltip(
+                                message: c.active!.name,
                                 child: Text(
-                                  c.running
-                                      ? c.tr('代理運作中', 'Proxy is active')
-                                      : c.tr('尚未連線', 'Disconnected'),
+                                  c.active!.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: cs.onSurfaceVariant,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        const SizedBox(height: 12),
-                        Text(
-                          compact
-                              ? c.desktopVersion
-                              : 'Aster Desktop ${c.desktopVersion}',
-                          style: TextStyle(fontSize: 11, color: cs.outline),
-                        ),
-                        if (widget.desktopLifecycle)
-                          TextButton(
-                            onPressed: _quit,
-                            child: Text(c.tr('退出', 'Quit')),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: c.page == 3 || c.page == 4
-                        ? const EdgeInsets.fromLTRB(24, 12, 24, 10)
-                        : const EdgeInsets.fromLTRB(32, 26, 32, 18),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                destinations
-                                    .firstWhere((d) => d.$1 == c.page)
-                                    .$3,
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              if (c.page != 3 && c.page != 4) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  c.tr('讓連線變簡單。', 'A simpler way to connect.'),
-                                  style: TextStyle(color: cs.onSurfaceVariant),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: c.tr('外觀', 'Appearance'),
-                          onPressed: c.busy
-                              ? null
-                              : () => c.saveSettings({
-                                  'theme': c.settings.theme == 'dark'
-                                      ? 'light'
-                                      : 'dark',
-                                }),
-                          icon: Icon(
-                            c.settings.theme == 'dark'
-                                ? Icons.light_mode_outlined
-                                : Icons.dark_mode_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (c.busy) const LinearProgressIndicator(minHeight: 2),
-                  if (c.error != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
-                      child: ErrorCard(c: c),
-                    ),
-                  Expanded(
-                    child: !c.ready
-                        ? const Center(child: CircularProgressIndicator())
-                        : IndexedStack(
-                            index: c.page,
-                            children: [
-                              for (var index = 0; index < 10; index++)
-                                if (!_pageViews.containsKey(index))
-                                  const SizedBox.shrink()
-                                else
-                                  TickerMode(
-                                    enabled: c.page == index,
-                                    child: _pageViews[index]!,
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.tonalIcon(
+                                key: const Key('sidebar-connect'),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 12,
                                   ),
-                            ],
-                          ),
+                                ),
+                                onPressed:
+                                    !c.ready || c.busy || c.active == null
+                                    ? null
+                                    : c.toggle,
+                                icon: Icon(
+                                  c.running
+                                      ? Icons.stop_circle_outlined
+                                      : Icons.play_arrow_rounded,
+                                  size: 20,
+                                ),
+                                label: Text(
+                                  c.running
+                                      ? c.tr('停止代理', 'Stop proxy')
+                                      : c.tr('啟動代理', 'Start proxy'),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'v${c.desktopVersion}',
+                              style: TextStyle(fontSize: 11, color: cs.outline),
+                            ),
+                            if (widget.desktopLifecycle)
+                              TextButton(
+                                onPressed: _quit,
+                                child: Text(
+                                  c.tr('退出並停止代理', 'Quit and stop proxy'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 16, 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    destinations
+                                        .firstWhere((d) => d.$1 == c.page)
+                                        .$3,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: c.tr('快速前往', 'Go to a page'),
+                              onPressed: () => _jumpTo(destinations),
+                              icon: const Icon(Icons.search),
+                            ),
+                            PopupMenuButton<String>(
+                              tooltip: c.tr('外觀', 'Appearance'),
+                              initialValue: c.settings.theme,
+                              onSelected: (theme) =>
+                                  c.saveSettings({'theme': theme}),
+                              itemBuilder: (_) => [
+                                for (final theme in [
+                                  ('system', c.tr('跟隨系統', 'System')),
+                                  ('light', c.tr('淺色', 'Light')),
+                                  ('dark', c.tr('深色', 'Dark')),
+                                ])
+                                  CheckedPopupMenuItem(
+                                    value: theme.$1,
+                                    checked: c.settings.theme == theme.$1,
+                                    enabled: !c.busy,
+                                    child: Text(theme.$2),
+                                  ),
+                              ],
+                              icon: Icon(
+                                c.settings.theme == 'dark'
+                                    ? Icons.light_mode_outlined
+                                    : Icons.dark_mode_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (c.busy) const LinearProgressIndicator(minHeight: 2),
+                      if (c.error != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
+                          child: ErrorCard(c: c),
+                        ),
+                      Expanded(
+                        child: !c.ready
+                            ? const Center(child: CircularProgressIndicator())
+                            : IndexedStack(
+                                index: c.page,
+                                children: [
+                                  for (var index = 0; index < 10; index++)
+                                    if (!_pageViews.containsKey(index))
+                                      const SizedBox.shrink()
+                                    else
+                                      TickerMode(
+                                        enabled: c.page == index,
+                                        child: _pageViews[index]!,
+                                      ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _jumpTo(List<(int, IconData, String)> destinations) async {
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) => _PagePicker(c: c, destinations: destinations),
+    );
+    if (mounted && selected != null) c.navigate(selected);
+  }
+}
+
+class _PagePicker extends StatefulWidget {
+  const _PagePicker({required this.c, required this.destinations});
+  final AppController c;
+  final List<(int, IconData, String)> destinations;
+  @override
+  State<_PagePicker> createState() => _PagePickerState();
+}
+
+class _PagePickerState extends State<_PagePicker> {
+  String query = '';
+  @override
+  Widget build(BuildContext context) {
+    final matches = widget.destinations
+        .where((d) => d.$3.toLowerCase().contains(query.toLowerCase()))
+        .toList();
+    return AlertDialog(
+      title: Text(widget.c.tr('快速前往', 'Go to a page')),
+      content: SizedBox(
+        width: 420,
+        height: 360,
+        child: Column(
+          children: [
+            TextField(
+              key: const Key('navigation-search'),
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: widget.c.tr(
+                  '搜尋頁面 · Enter 開啟',
+                  'Find a page · Enter to open',
+                ),
+                prefixIcon: const Icon(Icons.search),
               ),
+              onChanged: (value) => setState(() => query = value),
+              onSubmitted: (value) {
+                final first = widget.destinations
+                    .where(
+                      (d) => d.$3.toLowerCase().contains(value.toLowerCase()),
+                    )
+                    .firstOrNull;
+                if (first != null) {
+                  Navigator.pop(context, first.$1);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: matches.isEmpty
+                  ? Center(
+                      child: Text(widget.c.tr('找不到頁面', 'No matching pages')),
+                    )
+                  : ListView.builder(
+                      itemCount: matches.length,
+                      itemBuilder: (context, i) => ListTile(
+                        leading: Icon(matches[i].$2),
+                        title: Text(matches[i].$3),
+                        selected: widget.c.page == matches[i].$1,
+                        onTap: () => Navigator.pop(context, matches[i].$1),
+                      ),
+                    ),
             ),
           ],
         ),

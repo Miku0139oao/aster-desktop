@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:aster_desktop/backend.dart';
 import 'package:aster_desktop/controller.dart';
@@ -8,6 +9,8 @@ import 'package:aster_desktop/dialogs.dart';
 import 'package:aster_desktop/application_rules.dart';
 import 'package:aster_desktop/network_settings.dart';
 import 'package:aster_desktop/pages.dart';
+import 'package:aster_desktop/single_instance.dart';
+import 'package:aster_desktop/window_activation.dart';
 import 'package:re_editor/re_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,14 +26,63 @@ void main() {
     await windowManager.ensureInitialized();
     await windowManager.setSize(const Size(1180, 800));
     await windowManager.show();
+    await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+    await tester.pumpAndSettle();
     final directory = await Directory.systemTemp.createTemp(
       'aster-desktop-integration-',
     );
+    final instance = await SingleInstance.acquire(
+      directory,
+      onActivate: revealMainWindow,
+    );
+    expect(instance, isNotNull);
+    addTearDown(instance!.close);
+    Future<void> activate() async {
+      final endpoint = jsonDecode(
+        await File('${directory.path}/desktop.instance.json').readAsString(),
+      ) as Map;
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        endpoint['port'] as int,
+      );
+      try {
+        socket.write('activate ${endpoint['token']}\n');
+        await socket.flush();
+        final reply = await socket
+            .cast<List<int>>()
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .first
+            .timeout(const Duration(seconds: 5));
+        expect(reply, 'ok');
+      } finally {
+        socket.destroy();
+      }
+    }
+
+    await windowManager.hide();
+    expect(await windowManager.isVisible(), isFalse);
+    await activate();
+    for (var i = 0; i < 20 && !await windowManager.isVisible(); i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(await windowManager.isVisible(), isTrue);
+    if (Platform.isWindows || Platform.isMacOS) {
+      await windowManager.minimize();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(await windowManager.isMinimized(), isTrue);
+      await activate();
+      for (var i = 0; i < 20 && await windowManager.isMinimized(); i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(await windowManager.isMinimized(), isFalse);
+    }
     final backend = await ProcessBackend.start(dataDirectory: directory);
     final c = AppController(backend);
     addTearDown(() async {
       c.dispose();
       await backend.close();
+      await instance.close();
       await directory.delete(recursive: true);
     });
     await backend.call(

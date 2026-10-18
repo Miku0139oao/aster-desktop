@@ -4,13 +4,56 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'backend.dart';
 import 'controller.dart';
 import 'shell.dart';
+import 'single_instance.dart';
+import 'window_activation.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final instance = await SingleInstance.acquire(
+      await getApplicationSupportDirectory(),
+      onActivate: revealMainWindow,
+    );
+    if (instance == null) exit(0);
+  } catch (e) {
+    // Fail closed: never start another bridge/core if the owner is busy.
+    await windowManager.ensureInitialized();
+    await windowManager.show();
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.hourglass_top, size: 40),
+                  const SizedBox(height: 16),
+                  if (e is! InstanceActivationException)
+                    const Text(
+                      '無法建立安全的啟動環境 / Could not initialize the application',
+                    ),
+                  Text(e.toString(), textAlign: TextAlign.center),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: () => exit(0),
+                    child: const Text('關閉 / Close'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
+  }
   await windowManager.ensureInitialized();
   const options = WindowOptions(
     size: Size(1180, 800),
