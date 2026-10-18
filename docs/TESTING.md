@@ -12,6 +12,8 @@
 
 交付產品來源：`e3aab7acba9e245a0858c01fd5be7fd976efd565`。Windows 安裝器 SHA-256：`fb4f23b48bd14f479a5c509a12fb550406e6021b4067cd183479fdfb7870a409`。本輪未重試使用者 Wi-Fi TUN；其上網結果仍待確認。
 
+[0.2.3-beta.1](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3-beta.1) 已公開。13 份資產的 GitHub 狀態、大小與 SHA-256 digest 均與本機檔案相符；桌面來源 ZIP／tarball 的追蹤檔案與產品提交一致（文字換行正規化）。本機 `dist` 已同步最終發佈套件；後續文件提交未改動執行程式來源。
+
 ---
 # 0.2.2 日誌與連線查閱
 
