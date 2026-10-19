@@ -1,8 +1,41 @@
 # Aster Desktop
 
-以 Flutter／Material 3 打造的跨平台 Aster Core 圖形客戶端。匯入訂閱、選擇節點、開始連線，全程透過 GUI 操作，不需要設定核心路徑或 Controller 密碼。預設繁體中文，支援英文與淺色／深色／跟隨系統。
+**用桌面視窗管理代理，匯入訂閱 → 選擇節點 → 按下連線。**
+
+Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS 與 Linux，預設繁體中文；不用自行安裝核心或設定 Controller 位址與密碼。你需要準備自己的訂閱、節點連結或 Clash YAML。
 
 **[下載 0.2.3 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
+
+## 看看介面
+
+首頁集中顯示連線狀態與常用操作；左側文字選單可進入節點、訂閱、應用程式分流、連線、統計、日誌與診斷。
+
+![Aster Desktop 繁體中文首頁：訂閱匯入、側欄導覽與連線方式](docs/screenshots/overview-zh.png)
+
+以上是目前介面的初次使用畫面，以測試資料渲染，未包含私人訂閱。
+
+<details>
+<summary>查看淺色與深色介面</summary>
+
+![Aster Desktop 淺色介面](docs/screenshots/overview-light.png)
+
+![Aster Desktop 深色介面](docs/screenshots/overview-dark.png)
+
+</details>
+
+## 可以用它做什麼？
+
+| 你想做的事 | 在哪裡操作 |
+| --- | --- |
+| 匯入訂閱、換一份設定、自動更新訂閱 | 訂閱與設定 |
+| 挑節點、測延遲、收藏常用節點 | 節點 |
+| 讓瀏覽器走某個節點、另一個程式直連 | 應用程式：從程式清單選擇，再指定出口 |
+| 讓遊戲等不遵循系統代理的程式也使用代理 | 首頁：代理所有應用程式（TUN） |
+| 查看哪個程式連去哪裡，並中止連線 | 連線 |
+| 查看每日流量，或找出連不上網的原因 | 統計、診斷與日誌 |
+| 調整 DNS、網域／IP 分流或完整 YAML | 規則、進階設定 |
+
+**一般上網先用系統代理；按程式指定出口時，使用 TUN +「依規則」。** 系統代理／TUN 決定哪些流量進入核心，規則則決定流量使用哪個出口。[查看完整操作範例](docs/USER_GUIDE.md#應用程式與分流規則)。
 
 ## 下載與安裝
 
