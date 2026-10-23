@@ -132,7 +132,6 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - name: Build Android engine and APKs
-        env:
         run: python3 scripts/build-android.py
       - name: Verify packaged native engines
         run: |
