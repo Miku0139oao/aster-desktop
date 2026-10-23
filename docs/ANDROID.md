@@ -59,7 +59,7 @@ Android 的 `VpnService` 只能以套件為單位決定是否進入 VPN，因此
 python3 scripts/build-android.py
 ```
 
-腳本會用 gomobile 產生 `android/app/libs/mobileapi.aar`（arm64-v8a 與 x86_64），再執行 `flutter build apk --release`。GitHub CI 的 `android` job 會下載 r28c、放進 SDK 的 `ndk/28.2.13676358`，並上傳名為 `aster-android` 的 artifact，內容包含 `app-release.apk` 與 checksums。
+腳本會用 gomobile 產生 `android/app/libs/mobileapi.aar`（arm64-v8a 與 x86_64），再以 `--target-platform android-arm64,android-x64` 執行 `flutter build apk --release`。建置後會檢查 APK 只包含這兩個 ABI，且兩者都有 `libgojni.so`；若 Flutter 額外打包了沒有對應 Go 引擎的 armeabi-v7a，建置會直接失敗。GitHub CI 的 `android` job 會下載 r28c、放進 SDK 的 `ndk/28.2.13676358`，並上傳名為 `aster-android` 的 artifact，內容包含 `app-release.apk` 與 checksums。
 
 ## 驗證清單
 

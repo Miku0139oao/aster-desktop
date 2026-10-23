@@ -3,8 +3,10 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import zipfile
 
 
 def run(command, *, cwd=None, env=None, capture=False):
@@ -31,6 +33,27 @@ def write_checksum(root):
     (root / "checksums.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def verify_apk(path):
+    if not path.exists():
+        raise RuntimeError(f"APK was not produced at {path}")
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+    abis = {
+        name.split("/")[1]
+        for name in names
+        if name.startswith("lib/") and name.count("/") >= 2
+    }
+    expected = {"arm64-v8a", "x86_64"}
+    if abis != expected:
+        found = ", ".join(sorted(abis)) or "none"
+        raise RuntimeError(
+            f"APK contains {found}; expected only {', '.join(sorted(expected))}"
+        )
+    for abi in sorted(expected):
+        if f"lib/{abi}/libgojni.so" not in names:
+            raise RuntimeError(f"APK is missing lib/{abi}/libgojni.so")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build the Android engine binding and Flutter APK")
     parser.add_argument("--skip-apk", action="store_true")
@@ -42,8 +65,6 @@ def main():
     output = project / options.out
     libraries = output / "app"
     if libraries.exists():
-        import shutil
-
         shutil.rmtree(libraries)
     libraries.mkdir(parents=True)
     go_bin = Path(run([os.environ.get("ASTER_GO", "go"), "env", "GOPATH"], capture=True).stdout.strip()) / "bin"
@@ -67,6 +88,8 @@ def main():
             # embedded TUN configuration.
             "-tags",
             "with_gvisor cmfa",
+            "-trimpath",
+            "-ldflags=-s -w",
             "-o",
             libraries / "mobileapi.aar",
             "./mobileapi",
@@ -75,10 +98,9 @@ def main():
     )
     app_libraries = project / "android/app/libs"
     app_libraries.mkdir(parents=True, exist_ok=True)
-    import shutil
 
     shutil.copy2(libraries / "mobileapi.aar", app_libraries / "mobileapi.aar")
-    with __import__("zipfile").ZipFile(app_libraries / "mobileapi.aar") as archive:
+    with zipfile.ZipFile(app_libraries / "mobileapi.aar") as archive:
         names = set(archive.namelist())
         for required in (
             "classes.jar",
@@ -92,7 +114,20 @@ def main():
     # root and reference app/mobileapi.aar rather than being scoped to app/.
     write_checksum(output)
     if not options.skip_apk:
-        run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release"], cwd=project)
+        run(
+            [
+                os.environ.get("ASTER_FLUTTER", "flutter"),
+                "build",
+                "apk",
+                "--release",
+                # Keep Flutter from adding an armeabi-v7a libapp.so that has no
+                # matching libgojni.so; the Go engine only targets 64-bit ABIs.
+                "--target-platform",
+                "android-arm64,android-x64",
+            ],
+            cwd=project,
+        )
+        verify_apk(project / "build/app/outputs/flutter-apk/app-release.apk")
     print(f"Android engine binding: {app_libraries / 'mobileapi.aar'}")
     if not options.skip_apk:
         print(f"APK output: {project / 'build/app/outputs/flutter-apk/app-release.apk'}")
