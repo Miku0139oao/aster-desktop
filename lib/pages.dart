@@ -1562,25 +1562,37 @@ class AdvancedPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(c.tr('版本與更新', 'Versions and updates')),
-            Text('Aster Desktop ${c.desktopVersion}'),
+            Text(
+              Platform.isAndroid
+                  ? 'Aster Android ${c.desktopVersion}'
+                  : 'Aster Desktop ${c.desktopVersion}',
+            ),
             if (c.coreVersion.isNotEmpty) Text('Aster Core ${c.coreVersion}'),
             const SizedBox(height: 8),
             Text(
-              c.tr(
-                '核心使用官方 main 測試版，更新只會在你點擊時執行。',
-                'Core updates use official main prereleases and run only when you choose.',
-              ),
+              Platform.isAndroid
+                  ? c.tr(
+                      '核心已內建於 APK，會隨 App 版本更新。',
+                      'The core is bundled in the APK and updates with the app.',
+                    )
+                  : c.tr(
+                      '核心使用官方 main 測試版，更新只會在你點擊時執行。',
+                      'Core updates use official main prereleases and run only when you choose.',
+                    ),
             ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
               runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: c.busy ? null : () => showUpdateDialog(context, c),
-                  icon: const Icon(Icons.system_update_alt),
-                  label: Text(c.tr('檢查更新', 'Check for updates')),
-                ),
+                if (!Platform.isAndroid)
+                  OutlinedButton.icon(
+                    onPressed: c.busy
+                        ? null
+                        : () => showUpdateDialog(context, c),
+                    icon: const Icon(Icons.system_update_alt),
+                    label: Text(c.tr('檢查更新', 'Check for updates')),
+                  ),
                 TextButton(
                   onPressed: () => launchUrl(
                     Uri.parse('https://astercore.fubukishop.app/'),
