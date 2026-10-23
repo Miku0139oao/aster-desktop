@@ -37,6 +37,7 @@ func TestApplyMobileTunOptions(t *testing.T) {
 		"include-package":       []any{"stale.example"},
 		"exclude-package":       []any{"stale.example"},
 		"auto-detect-interface": true,
+		"stack":                 "mixed",
 		"mtu":                   9000,
 	}
 	applyMobileTunOptions(tun, 42, []string{"com.example.app"}, []string{"org.test"})
@@ -45,6 +46,9 @@ func TestApplyMobileTunOptions(t *testing.T) {
 	}
 	if tun["auto-detect-interface"] != false {
 		t.Fatalf("auto-detect-interface = %#v", tun["auto-detect-interface"])
+	}
+	if tun["stack"] != "gvisor" {
+		t.Fatalf("stack = %#v", tun["stack"])
 	}
 	if tun["file-descriptor"] != 42 {
 		t.Fatalf("file-descriptor = %#v", tun["file-descriptor"])
