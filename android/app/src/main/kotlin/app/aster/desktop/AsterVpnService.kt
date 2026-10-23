@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -263,21 +264,29 @@ class AsterVpnService : VpnService(), SocketProtector {
             if (manager == null) {
                 ""
             } else {
-                val network = manager.activeNetwork
-                if (network == null) {
-                    ""
-                } else {
-                    manager.getLinkProperties(network)?.dnsServers
-                        ?.mapNotNull { it.hostAddress }
-                        ?.joinToString(",")
-                        .orEmpty()
+                val candidates = manager.allNetworks.filter { network ->
+                    val capabilities = manager.getNetworkCapabilities(network)
+                        ?: return@filter false
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
                 }
+                // The active network may already be the VPN from a previous
+                // session. Its DNS 198.18.0.2 is served by the core, which is
+                // not running yet, so prefer the underlying network instead.
+                val active = manager.activeNetwork
+                val network = candidates.firstOrNull { it == active }
+                    ?: candidates.firstOrNull()
+                network?.let { manager.getLinkProperties(it) }?.dnsServers
+                    ?.mapNotNull { it.hostAddress }
+                    ?.joinToString(",")
+                    .orEmpty()
             }
         } catch (error: Throwable) {
             Log.w(TAG, "Could not read the active DNS servers", error)
             ""
         }
         val value = servers.ifBlank { "1.1.1.1,8.8.8.8" }
+        Log.i(TAG, "System DNS: $value")
         try {
             mobileHost.setSystemDNS(value)
         } catch (error: Throwable) {
