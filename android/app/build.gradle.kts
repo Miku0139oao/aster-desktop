@@ -43,6 +43,11 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // Flutter still ships engine libraries for 32-bit ARM in a
+            // universal APK, but gomobile only builds libgojni.so for 64-bit
+            // ABIs. Excluding the directory keeps 32-bit devices from
+            // installing a build whose engine cannot start.
+            excludes += listOf("lib/armeabi-v7a/**", "lib/x86/**")
         }
     }
 }
