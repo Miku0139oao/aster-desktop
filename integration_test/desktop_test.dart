@@ -60,22 +60,28 @@ void main() {
       }
     }
 
-    await windowManager.hide();
-    expect(await windowManager.isVisible(), isFalse);
-    await activate();
-    for (var i = 0; i < 20 && !await windowManager.isVisible(); i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+    // Window state changes are dispatched asynchronously on the platform
+    // thread, so a state assertion immediately after the call races the
+    // transition (and stalls behind pending resizes on CI runners).
+    Future<void> waitForWindow(
+      Future<bool> Function() state,
+      bool expected,
+    ) async {
+      for (var i = 0; i < 100 && await state() != expected; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(await state(), expected);
     }
-    expect(await windowManager.isVisible(), isTrue);
+
+    await windowManager.hide();
+    await waitForWindow(windowManager.isVisible, false);
+    await activate();
+    await waitForWindow(windowManager.isVisible, true);
     if (Platform.isWindows || Platform.isMacOS) {
       await windowManager.minimize();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      expect(await windowManager.isMinimized(), isTrue);
+      await waitForWindow(windowManager.isMinimized, true);
       await activate();
-      for (var i = 0; i < 20 && await windowManager.isMinimized(); i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      expect(await windowManager.isMinimized(), isFalse);
+      await waitForWindow(windowManager.isMinimized, false);
     }
     final backend = await ProcessBackend.start(dataDirectory: directory);
     final c = AppController(backend);
