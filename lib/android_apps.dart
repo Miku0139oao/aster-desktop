@@ -136,7 +136,7 @@ class _AndroidApplicationsPageState extends State<AndroidApplicationsPage> {
       error = null;
       routing = {
         ...routing,
-        if (mode != null) 'mode': mode,
+        'mode': ?mode,
         'apps': {...modes, ...changes},
       };
     });
