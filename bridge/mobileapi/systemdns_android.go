@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Miku0139oao/aster-core/dns"
+	"github.com/sirupsen/logrus"
 )
 
 func setSystemDNS(servers string) error {
@@ -27,6 +28,7 @@ func setSystemDNS(servers string) error {
 	if len(values) == 0 {
 		return errors.New("Android did not report a usable DNS server")
 	}
+	logrus.Infof("Android system DNS: %v", values)
 	dns.UpdateSystemDNS(values)
 	return nil
 }

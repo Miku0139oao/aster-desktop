@@ -123,7 +123,11 @@ class AsterVpnService : VpnService(), SocketProtector {
     }
 
     /** gomobile maps the Go interface method Protect(int32) to protect(int). */
-    override fun protect(fd: Int): Boolean = super.protect(fd)
+    override fun protect(fd: Int): Boolean {
+        val protected = super.protect(fd)
+        if (!protected) Log.w(TAG, "Android refused to protect socket fd $fd")
+        return protected
+    }
 
     fun call(request: String): String {
         ensureHost()
