@@ -18,13 +18,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Miku0139oao/aster-core/hub"
+	"github.com/Miku0139oao/aster-core/hub/executor"
+	"github.com/sirupsen/logrus"
+
 	"gopkg.in/yaml.v3"
 )
 
 type Core struct {
+	InProcess                    bool
 	mu                           sync.Mutex
 	Binary, Dir, Address, Secret string
 	BundledBinary                string
+	running                      bool
+	fd                           int
 	cmd                          *exec.Cmd
 	done                         chan struct{}
 	lastError                    string
@@ -56,6 +63,10 @@ func (c *Core) Status() CoreStatus {
 		s.Running = true
 		s.PID = c.cmd.Process.Pid
 	}
+	if c.InProcess {
+		s.Running = c.running
+		s.PID = os.Getpid()
+	}
 	return s
 }
 func (c *Core) appendLog(line string) {
@@ -72,6 +83,19 @@ func (c *Core) Logs() []string {
 	return append([]string{}, c.logs...)
 }
 func (c *Core) Validate(ctx context.Context, content string, s Settings, privileged bool) ([]byte, error) {
+	if c.InProcess {
+		if err := os.MkdirAll(c.Dir, 0700); err != nil {
+			return nil, err
+		}
+		b, err := Runtime(content, s, c.Address, c.Secret, c.Dir, privileged)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = executor.ParseWithBytes(b); err != nil {
+			return nil, fmt.Errorf("configuration validation failed: %w", err)
+		}
+		return b, nil
+	}
 	if _, err := os.Stat(c.Binary); err != nil {
 		return nil, errors.New("bundled core is missing; reinstall Aster Desktop")
 	}
@@ -160,6 +184,9 @@ func (c *Core) Start(ctx context.Context, content string, s Settings, privileged
 func (c *Core) start(ctx context.Context, content string, s Settings, privileged bool) error {
 	if c.Status().Running {
 		return errors.New("core is already running")
+	}
+	if c.InProcess {
+		return c.startInProcess(ctx, content, s)
 	}
 	if _, err := c.Validate(ctx, content, s, privileged); err != nil {
 		return err
@@ -326,6 +353,78 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	}
 }
 
+func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd int) error {
+	if !c.InProcess {
+		return errors.New("mobile core is not enabled")
+	}
+	if fd <= 0 {
+		return errors.New("Android VPN descriptor is not available")
+	}
+	c.fd = fd
+	defer func() {
+		if err := recover(); err != nil {
+			c.recordError(fmt.Errorf("mobile core failed: %v", err))
+		}
+	}()
+	return c.start(ctx, content, s, false)
+}
+
+func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
+	if _, err := c.Validate(ctx, content, s, false); err != nil {
+		return err
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(s.MixedPort)))
+	if err != nil {
+		return fmt.Errorf("proxy port %d is in use; stop the other proxy or choose another port", s.MixedPort)
+	}
+	_ = listener.Close()
+	packet, err := net.ListenPacket("udp", net.JoinHostPort("127.0.0.1", fmt.Sprint(s.MixedPort)))
+	if err != nil {
+		return fmt.Errorf("proxy UDP port %d is unavailable; stop the other proxy or choose another port", s.MixedPort)
+	}
+	_ = packet.Close()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	address := l.Addr().String()
+	l.Close()
+	b, err := Runtime(content, s, address, c.Secret, c.Dir, false)
+	if err != nil {
+		return err
+	}
+	doc := yamlMap(b)
+	tun, _ := doc["tun"].(map[string]any)
+	if tun == nil {
+		tun = map[string]any{}
+	}
+	tun["auto-route"] = false
+	tun["file-descriptor"] = c.fd
+	doc["tun"] = tun
+	final, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	logrus.SetOutput(coreLogWriter(c))
+	if err = hub.Parse(final, hub.WithExternalController(address), hub.WithSecret(c.Secret)); err != nil {
+		c.appendLog("Mobile core: " + err.Error())
+		return err
+	}
+	c.mu.Lock()
+	c.Address = address
+	c.running = true
+	c.coreVersion = "mobile-" + CoreCommit[:7]
+	c.lastError = ""
+	c.activeContent, c.activeSettings = content, s
+	c.done = make(chan struct{})
+	c.mu.Unlock()
+	go func() {
+		<-ctx.Done()
+		_ = c.Stop()
+	}()
+	return nil
+}
+
 func startupTimeout(content []byte) time.Duration {
 	var config struct {
 		Proxies map[string]struct {
@@ -350,6 +449,20 @@ func startupTimeout(content []byte) time.Duration {
 }
 func (c *Core) Stop() error {
 	c.mu.Lock()
+	if c.InProcess {
+		if !c.running {
+			c.mu.Unlock()
+			return nil
+		}
+		c.running = false
+		done := c.done
+		c.mu.Unlock()
+		executor.Shutdown()
+		if done != nil {
+			close(done)
+		}
+		return nil
+	}
 	cmd, done := c.cmd, c.done
 	if cmd != nil {
 		c.stopping = true
@@ -372,6 +485,21 @@ func (c *Core) Stop() error {
 	}
 	return err
 }
+
+func coreLogWriter(c *Core) io.Writer { return &coreWriter{core: c} }
+
+type coreWriter struct{ core *Core }
+
+func (w *coreWriter) Write(p []byte) (int, error) {
+	w.core.appendLog(strings.TrimRight(string(p), "\r\n"))
+	return len(p), nil
+}
+
+func yamlMap(value []byte) map[string]any {
+	var doc map[string]any
+	_ = yaml.Unmarshal(value, &doc)
+	return doc
+}
 func (c *Core) restoreProxy() error {
 	c.proxyMu.Lock()
 	defer c.proxyMu.Unlock()
@@ -388,6 +516,41 @@ func (c *Core) restoreProxy() error {
 func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged bool) error {
 	if _, err := c.Validate(ctx, content, s, privileged); err != nil {
 		return err
+	}
+	if c.InProcess {
+		if !c.Status().Running {
+			return nil
+		}
+		listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(s.MixedPort)))
+		if err != nil {
+			return fmt.Errorf("proxy port %d is in use; stop the other proxy or choose another port", s.MixedPort)
+		}
+		_ = listener.Close()
+		b, err := Runtime(content, s, c.Address, c.Secret, c.Dir, privileged)
+		if err != nil {
+			return err
+		}
+		doc := yamlMap(b)
+		tun, _ := doc["tun"].(map[string]any)
+		if tun == nil {
+			tun = map[string]any{}
+		}
+		tun["auto-route"] = false
+		if c.fd > 0 {
+			tun["file-descriptor"] = c.fd
+		}
+		doc["tun"] = tun
+		final, err := yaml.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		if err = hub.Parse(final, hub.WithExternalController(c.Address), hub.WithSecret(c.Secret)); err != nil {
+			return err
+		}
+		c.mu.Lock()
+		c.activeContent, c.activeSettings = content, s
+		c.mu.Unlock()
+		return nil
 	}
 	if !c.Status().Running {
 		return nil

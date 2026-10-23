@@ -7,12 +7,6 @@ import subprocess
 import sys
 
 
-ABIS = {
-    "arm64-v8a": ("arm64", ""),
-    "x86_64": ("amd64", ""),
-}
-
-
 def run(command, *, cwd=None, env=None, capture=False):
     print("+", " ".join(str(value) for value in command), flush=True)
     merged_env = os.environ.copy()
@@ -28,21 +22,9 @@ def run(command, *, cwd=None, env=None, capture=False):
     )
 
 
-def core_source(bridge_dir):
-    result = run(
-        ["go", "list", "-m", "-f", "{{.Dir}}", "github.com/Miku0139oao/aster-core"],
-        cwd=bridge_dir,
-        capture=True,
-    )
-    path = Path(result.stdout.strip())
-    if not path.is_dir():
-        raise RuntimeError(f"Aster Core source is unavailable: {path}")
-    return path
-
-
 def write_checksum(root):
     lines = []
-    for path in sorted(root.rglob("*.so")):
+    for path in sorted(root.rglob("*.aar")):
         if path.is_file():
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             lines.append(f"{digest}  {path.relative_to(root).as_posix()}")
@@ -50,51 +32,49 @@ def write_checksum(root):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build native Android engines and the Flutter APK")
-    parser.add_argument("--abis", default="arm64-v8a")
+    parser = argparse.ArgumentParser(description="Build the Android engine binding and Flutter APK")
+    parser.add_argument("--skip-apk", action="store_true")
     parser.add_argument("--out", default="build/android")
     options = parser.parse_args()
 
     project = Path(__file__).resolve().parents[1]
     bridge = project / "bridge"
     output = project / options.out
-    libraries = output / "jniLibs"
+    libraries = output / "app"
     if libraries.exists():
         import shutil
 
         shutil.rmtree(libraries)
-
-    go = os.environ.get("ASTER_GO", "go")
-    core_dir = core_source(bridge)
-    ldflags = (
-        '-X "github.com/Miku0139oao/aster-core/constant.Version=android-a9a33503" '
-        '-X "github.com/Miku0139oao/aster-core/constant.BuildTime=1970-01-01T00:00:00Z" '
-        '-X "github.com/Miku0139oao/aster-core/constant.ReleaseAsset=aster-core-android" -w -s -buildid='
+    libraries.mkdir(parents=True)
+    go_bin = Path(run([os.environ.get("ASTER_GO", "go"), "env", "GOPATH"], capture=True).stdout.strip()) / "bin"
+    gomobile = Path(os.environ.get("ASTER_GOMOBILE", go_bin / ("gomobile.exe" if os.name == "nt" else "gomobile")))
+    if not gomobile.exists():
+        go = os.environ.get("ASTER_GO", "go")
+        mobile_version = "v0.0.0-20261011034528-197770444867"
+        run([go, "install", "golang.org/x/mobile/cmd/gomobile@" + mobile_version], cwd=bridge)
+        run([go, "install", "golang.org/x/mobile/cmd/gobind@" + mobile_version], cwd=bridge)
+    run([gomobile, "init"], cwd=bridge)
+    run(
+        [gomobile, "bind", "-target=android/arm64", "-androidapi", "24", "-tags", "with_gvisor", "-o", libraries / "mobileapi.aar", "./mobileapi"],
+        cwd=bridge,
     )
+    app_libraries = project / "android/app/libs"
+    app_libraries.mkdir(parents=True, exist_ok=True)
+    import shutil
 
-    for abi in [value.strip() for value in options.abis.split(",") if value.strip()]:
-        try:
-            goarch, _ = ABIS[abi]
-        except KeyError:
-            raise SystemExit(f"Unsupported Android ABI: {abi}")
-        target = libraries / abi
-        target.mkdir(parents=True, exist_ok=True)
-        env = {"GOOS": "android", "GOARCH": goarch, "CGO_ENABLED": "0"}
-        run(
-            [go, "build", "-tags", "with_gvisor", "-trimpath", f"-ldflags={ldflags}", "-o", target / "libaster_core.so", "."],
-            cwd=core_dir,
-            env=env,
-        )
-        run(
-            [go, "build", "-tags", "with_gvisor", "-trimpath", "-o", target / "libaster_bridge.so", "./cmd/aster-bridge"],
-            cwd=bridge,
-            env=env,
-        )
+    shutil.copy2(libraries / "mobileapi.aar", app_libraries / "mobileapi.aar")
+    with __import__("zipfile").ZipFile(app_libraries / "mobileapi.aar") as archive:
+        names = set(archive.namelist())
+        for required in ("classes.jar", "jni/arm64-v8a/libgojni.so"):
+            if required not in names:
+                raise RuntimeError(f"mobile AAR is missing {required}")
 
     write_checksum(libraries)
-    run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release"], cwd=project)
-    print(f"Android engine libraries: {libraries}")
-    print(f"APK output: {project / 'build/app/outputs/flutter-apk/app-release.apk'}")
+    if not options.skip_apk:
+        run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release"], cwd=project)
+    print(f"Android engine binding: {app_libraries / 'mobileapi.aar'}")
+    if not options.skip_apk:
+        print(f"APK output: {project / 'build/app/outputs/flutter-apk/app-release.apk'}")
 
 
 if __name__ == "__main__":

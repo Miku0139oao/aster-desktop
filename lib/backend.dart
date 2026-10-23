@@ -27,7 +27,6 @@ class ProcessBackend implements DesktopBackend {
   final _events = StreamController<Json>.broadcast();
   final _pending = <int, Completer<dynamic>>{};
   static const _native = MethodChannel('app.astercore/privilege');
-  static const _android = MethodChannel('app.astercore/android');
   int _next = 0;
   bool _macRunning = false;
   bool _macProxy = false;
@@ -36,7 +35,7 @@ class ProcessBackend implements DesktopBackend {
   @override
   Stream<Json> get events => _events.stream;
 
-  static Future<ProcessBackend> start({Directory? dataDirectory}) async {
+  static Future<DesktopBackend> start({Directory? dataDirectory}) async {
     final data = dataDirectory ?? await getApplicationSupportDirectory();
     await data.create(recursive: true);
     final executable = File(Platform.resolvedExecutable);
@@ -44,32 +43,7 @@ class ProcessBackend implements DesktopBackend {
     if (Platform.isMacOS) {
       directory = '${executable.parent.parent.path}/Resources';
     }
-    if (Platform.isAndroid) {
-      final nativeDirectory = await _android.invokeMethod<String>(
-        'nativeLibraryDir',
-      );
-      if (nativeDirectory == null || nativeDirectory.isEmpty) {
-        throw const BackendException(
-          'The mobile engine location is unavailable.',
-        );
-      }
-      directory = nativeDirectory;
-      final mobileBridge = '$directory/libaster_bridge.so';
-      final mobileCore = '$directory/libaster_core.so';
-      if (!await File(mobileBridge).exists() ||
-          !await File(mobileCore).exists()) {
-        throw const BackendException(
-          'The Android engine is missing. Rebuild the mobile package.',
-        );
-      }
-      final process = await Process.start(mobileBridge, [
-        '--data',
-        data.path,
-        '--core',
-        mobileCore,
-      ]);
-      return _attach(process, nativeMac: false);
-    }
+    if (Platform.isAndroid) return AndroidBackend();
     final development = Directory.current.path;
     final suffix = Platform.isWindows ? '.exe' : '';
     var bridge = '$directory/aster-bridge$suffix';
@@ -504,6 +478,49 @@ class ProcessBackend implements DesktopBackend {
           return -1;
         },
       );
+      await _events.close();
+    }
+  }
+}
+
+class AndroidBackend implements DesktopBackend {
+  final _events = StreamController<Json>.broadcast();
+  final _channel = const MethodChannel('app.astercore/android');
+  int _next = 0;
+
+  @override
+  Stream<Json> get events => _events.stream;
+
+  @override
+  Future<dynamic> call(String method, [Json? params]) async {
+    final request = jsonEncode({
+      'id': ++_next,
+      'method': method,
+      'params': params ?? {},
+    });
+    final encoded = await _channel
+        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+          'request': request,
+        })
+        .timeout(
+          method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
+          onTimeout: () => throw const BackendException(
+            'The operation timed out. Check your connection and try again.',
+          ),
+        );
+    if (encoded == null || encoded.isEmpty) return null;
+    final value = jsonDecode(encoded) as Json;
+    if (value['error'] != null) {
+      throw BackendException((value['error'] as Json)['message'] as String);
+    }
+    return value['result'];
+  }
+
+  @override
+  Future<void> close() async {
+    try {
+      await _channel.invokeMethod<String>('stopVpn');
+    } finally {
       await _events.close();
     }
   }

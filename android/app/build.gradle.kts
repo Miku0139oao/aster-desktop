@@ -56,3 +56,7 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation(files("libs/mobileapi.aar"))
+}

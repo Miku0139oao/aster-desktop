@@ -56,6 +56,9 @@ func NewApp(dir, binary, gui string) (*App, error) {
 		return nil, err
 	}
 	core := NewCore(binary, filepath.Join(dir, "runtime"))
+	if binary == "" {
+		core.InProcess = true
+	}
 	a := &App{Store: s, Core: core, Binary: binary, GUIPath: gui, instanceLock: lock, Emit: func(string, any) {}}
 	a.metrics = NewTrafficHistory(dir)
 	if err = core.RecoverProxy(); err != nil {
@@ -63,6 +66,8 @@ func NewApp(dir, binary, gui string) (*App, error) {
 	}
 	return a, nil
 }
+
+func NewMobileApp(dir string) (*App, error) { return NewApp(dir, "", "") }
 func decode(p json.RawMessage, v any) error {
 	if len(p) == 0 {
 		return nil
@@ -601,7 +606,10 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		return profile, nil
 	case "connect":
-		var options struct{ SkipSystemProxy bool }
+		var options struct {
+			SkipSystemProxy bool
+			FD              int
+		}
 		if err := decode(req.Params, &options); err != nil {
 			return nil, err
 		}
@@ -618,27 +626,33 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		}
 		settings := s.State.Settings
 		if settings.Tun {
-			remote, err := ConnectService()
-			if err != nil {
-				return nil, errors.New("install and approve the background service to proxy all applications")
-			}
-			a.remote = remote
-			if err = remote.Call("start", map[string]any{"content": profile.Content, "settings": settings}, nil); err != nil {
-				// Keep the failure available after releasing the privileged session.
-				var logs []string
-				if remote.Call("logs", nil, &logs) == nil {
-					for _, line := range logs {
-						a.Core.appendLog(line)
-					}
+			if a.Core.InProcess {
+				if err = a.Core.StartWithFD(ctx, profile.Content, settings, options.FD); err != nil {
+					return nil, err
 				}
-				a.Core.recordError(err)
-				remote.Close()
-				a.remote = nil
-				return nil, err
+			} else {
+				remote, err := ConnectService()
+				if err != nil {
+					return nil, errors.New("install and approve the background service to proxy all applications")
+				}
+				a.remote = remote
+				if err = remote.Call("start", map[string]any{"content": profile.Content, "settings": settings}, nil); err != nil {
+					// Keep the failure available after releasing the privileged session.
+					var logs []string
+					if remote.Call("logs", nil, &logs) == nil {
+						for _, line := range logs {
+							a.Core.appendLog(line)
+						}
+					}
+					a.Core.recordError(err)
+					remote.Close()
+					a.remote = nil
+					return nil, err
+				}
+				a.Core.mu.Lock()
+				a.Core.lastError = ""
+				a.Core.mu.Unlock()
 			}
-			a.Core.mu.Lock()
-			a.Core.lastError = ""
-			a.Core.mu.Unlock()
 		} else {
 			if err = a.Core.Start(ctx, profile.Content, settings, false); err != nil {
 				return nil, err

@@ -4,20 +4,16 @@ Aster 目前先在同一個 Flutter 專案中加入 Android 平台。介面、�
 
 ## 目前架構
 
-Android APK 會把兩個 Go 引擎包進 native library：
+Android APK 會打包 `mobileapi.aar`。這是 gomobile binding，內含現有的設定、訂閱、RPC、核心管理工作，以及固定版本的 Aster Core。
 
-- `libaster_bridge.so`：現有的設定、訂閱、RPC 與核心管理工作。
-- `libaster_core.so`：固定版本的 Aster Core，使用 `with_gvisor`。
+Flutter 透過 Android service bridge 呼叫這個 binding。因此訂閱匯入、節點選擇、設定驗證與備援資料模型不必在 Dart 裡重寫一次。
 
-Flutter 透過 Android `nativeLibraryDir` 找到這兩個引擎，再沿用既有的 line-based JSON RPC。因此訂閱匯入、節點選擇、設定驗證與備援資料模型不必在 Dart 裡重寫一次。
-
-Android 的 VPN 權限服務已註冊為 `AsterVpnService`。下一階段會在這個服務內建立 Go mobile bridge，讓 Android `VpnService` 取得的 TUN file descriptor 交給 core，並啟用「代理所有應用程式」與 package 分流。
+Android 的 VPN 權限服務是 `AsterVpnService`。它取得 TUN file descriptor 後交給 in-process core，並透過 socket hook 呼叫 Android `protect()`，避免 core 自身的節點連線再回到 VPN。
 
 ## 這個階段的限制
 
 - Android 版仍在開發分支，不是 v0.2.3 正式桌面版的一部分。
-- 目前可啟動本機 mixed proxy 與共用管理工作；還沒有完整 Android 全域 VPN。
-- 「代理所有應用程式」仍需要下一階段的 VpnService fd bridge。
+- 全域 VPN 需要在 Android 實機完成連線、DNS、UDP 與節點切換測試。
 - 應用程式分流會改用 Android package 管理，而不是桌面版的 executable path 規則。
 
 ## 本機建置
@@ -25,7 +21,7 @@ Android 的 VPN 權限服務已註冊為 `AsterVpnService`。下一階段會在�
 從專案根目錄執行：
 
 ```bash
-python3 scripts/build-android.py --abis arm64-v8a
+python3 scripts/build-android.py
 ```
 
-腳本會先產生 Android 64-bit 引擎，再執行 `flutter build apk --release --split-per-abi`。GitHub CI 也會產出 APK artifact，名稱為 `aster-android`。
+腳本會先用 gomobile 產生 Android arm64 binding，再執行 `flutter build apk --release`。GitHub CI 也會產出 APK artifact，名稱為 `aster-android`。
