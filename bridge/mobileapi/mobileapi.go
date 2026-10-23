@@ -13,6 +13,7 @@ import (
 	"github.com/Miku0139oao/aster-core/component/dialer"
 	"github.com/Miku0139oao/aster-desktop/bridge/internal/desktop"
 	_ "golang.org/x/mobile/bind"
+	"gopkg.in/yaml.v3"
 )
 
 // SocketProtector is implemented by Android's VpnService. Every outbound core
@@ -108,6 +109,37 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 	})
 	result, err := h.app.Dispatch(h.ctx, desktop.Request{Method: "connect", Params: params})
 	return encodeResponse(result, err)
+}
+
+// Geodata returns the active profile's geox-url entries so the Android
+// service can fetch them with the platform HTTP stack before the core starts.
+// The core's own download runs before its DNS is ready, which fails on
+// networks whose resolver only returns fake IPs.
+func (h *Host) Geodata() (string, error) {
+	if h == nil || h.app == nil {
+		return "", errors.New("mobile host is not ready")
+	}
+	profile, err := h.app.Store.Profile(h.app.Store.State.ActiveID)
+	if err != nil {
+		return "", errors.New("import a subscription or configuration before connecting")
+	}
+	var doc struct {
+		GeoxURL struct {
+			MMDB    string `yaml:"mmdb"`
+			GeoSite string `yaml:"geosite"`
+		} `yaml:"geox-url"`
+	}
+	// A profile without a geox-url section is valid; the core will use its
+	// defaults. Do not fail the download step just because the shape differs.
+	_ = yaml.Unmarshal([]byte(profile.Content), &doc)
+	encoded, err := json.Marshal(map[string]string{
+		"mmdb":    doc.GeoxURL.MMDB,
+		"geosite": doc.GeoxURL.GeoSite,
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
 }
 
 // ValidateVPN checks the active configuration before the service creates a

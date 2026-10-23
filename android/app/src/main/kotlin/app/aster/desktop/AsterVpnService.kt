@@ -20,6 +20,10 @@ import mobileapi.Mobileapi
 import mobileapi.SocketProtector
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
 class AsterVpnService : VpnService(), SocketProtector {
@@ -31,6 +35,7 @@ class AsterVpnService : VpnService(), SocketProtector {
         private const val PREFS = "aster_android"
         private const val ROUTING_KEY = "app_routing"
         private const val MAX_APPS = 512
+        private const val MAX_GEODATA_BYTES = 64L * 1024 * 1024
         private val packagePattern =
             Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$")
         private val routeModes = setOf("proxy", "direct", "exclude")
@@ -140,6 +145,7 @@ class AsterVpnService : VpnService(), SocketProtector {
             val mobileHost = host ?: throw IllegalStateException("Aster engine is not ready")
             mobileHost.setProtector(this)
             applySystemDNS(mobileHost)
+            ensureGeodata(mobileHost)
             val routing = readRouting(this)
             startAsterForeground("Connecting")
             val tun = try {
@@ -309,6 +315,72 @@ class AsterVpnService : VpnService(), SocketProtector {
             mobileHost.setSystemDNS(value)
         } catch (error: Throwable) {
             Log.w(TAG, "Core system DNS initialization failed", error)
+        }
+    }
+
+    private fun ensureGeodata(mobileHost: Host) {
+        val runtime = File(filesDir, "runtime")
+        if (!runtime.isDirectory && !runtime.mkdirs()) {
+            Log.w(TAG, "Could not create the core runtime directory")
+            return
+        }
+        val geoip = File(runtime, "geoip.metadb")
+        val geosite = File(runtime, "GeoSite.dat")
+        if (geoip.isFile && geosite.isFile) return
+        val urls = try {
+            JSONObject(mobileHost.geodata())
+        } catch (error: Throwable) {
+            Log.w(TAG, "Could not read the geodata URLs", error)
+            return
+        }
+        if (!geoip.isFile) {
+            urls.optString("mmdb")
+                .takeIf { it.isNotEmpty() }
+                ?.let { downloadGeodata(it, geoip) }
+        }
+        if (!geosite.isFile) {
+            urls.optString("geosite")
+                .takeIf { it.isNotEmpty() }
+                ?.let { downloadGeodata(it, geosite) }
+        }
+    }
+
+    private fun downloadGeodata(url: String, target: File) {
+        val temporary = File(target.parentFile, "${target.name}.part")
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 15000
+            connection.readTimeout = 60000
+            try {
+                if (connection.responseCode !in 200..299) {
+                    throw IOException("HTTP ${connection.responseCode}")
+                }
+                var total = 0L
+                connection.inputStream.use { input ->
+                    temporary.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > MAX_GEODATA_BYTES) {
+                                throw IOException("geodata is too large")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+            if (!temporary.renameTo(target)) {
+                temporary.copyTo(target, overwrite = true)
+                temporary.delete()
+            }
+            Log.i(TAG, "Downloaded ${target.name}")
+        } catch (error: Throwable) {
+            temporary.delete()
+            Log.w(TAG, "Could not download ${target.name}", error)
         }
     }
 

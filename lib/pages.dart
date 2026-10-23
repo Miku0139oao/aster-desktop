@@ -1467,18 +1467,21 @@ class AdvancedPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(c.tr('網路與分流', 'Network and routing')),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: Text(c.tr('允許區域網路使用代理', 'Allow LAN access')),
-              subtitle: Text(
-                c.tr(
-                  '讓其他裝置使用這台電腦的代理連接埠。',
-                  'Allow other devices to use this computer’s proxy port.',
+            if (!Platform.isAndroid)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: Text(c.tr('允許區域網路使用代理', 'Allow LAN access')),
+                subtitle: Text(
+                  c.tr(
+                    '讓其他裝置使用這台電腦的代理連接埠。',
+                    'Allow other devices to use this computer’s proxy port.',
+                  ),
                 ),
+                value: c.settings.allowLan,
+                onChanged: c.busy
+                    ? null
+                    : (v) => c.saveSettings({'allowLan': v}),
               ),
-              value: c.settings.allowLan,
-              onChanged: c.busy ? null : (v) => c.saveSettings({'allowLan': v}),
-            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(c.tr('本機代理連接埠', 'Local proxy port')),

@@ -87,10 +87,13 @@ func NewMobileApp(dir string) (*App, error) {
 	}
 	// Older mobile builds could save TUN off while still connecting through
 	// VpnService. Normalize them once so the UI matches what connect does.
+	// Android also has no need to expose the mixed proxy to the LAN.
 	settings := app.Store.State.Settings
-	if runtime.GOOS == "android" && (!settings.Tun || settings.SystemProxy) {
+	if runtime.GOOS == "android" &&
+		(!settings.Tun || settings.SystemProxy || settings.AllowLAN) {
 		settings.Tun = true
 		settings.SystemProxy = false
+		settings.AllowLAN = false
 		if err = settings.Validate(); err != nil {
 			_ = app.Close()
 			return nil, err

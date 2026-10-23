@@ -19,8 +19,10 @@ import (
 	"time"
 
 	C "github.com/Miku0139oao/aster-core/constant"
+	"github.com/Miku0139oao/aster-core/dns"
 	"github.com/Miku0139oao/aster-core/hub"
 	"github.com/Miku0139oao/aster-core/hub/executor"
+	"github.com/Miku0139oao/aster-core/listener"
 	"github.com/sirupsen/logrus"
 
 	"gopkg.in/yaml.v3"
@@ -489,6 +491,11 @@ func (c *Core) Stop() error {
 			cancel()
 		}
 		executor.Shutdown()
+		// Shutdown only closes the TUN listener. The mixed proxy and DNS
+		// server are owned by the core's listener/dns packages, so release
+		// them explicitly or a reconnect fails with "proxy port in use".
+		listener.ReCreateMixed(0, nil)
+		dns.ReCreateServer("", nil, nil)
 		if done != nil {
 			close(done)
 		}

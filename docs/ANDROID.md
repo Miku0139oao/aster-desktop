@@ -22,6 +22,8 @@ Flutter 透過 `app.astercore/android` MethodChannel 呼叫 `AsterVpnService`。
 
 gomobile 使用 `with_gvisor cmfa` build tag。`cmfa` 會停用 core 內建的 `/data/system/packages.xml` 讀取；一般 Android App 沒有權限讀取該檔案，若不停用會讓 TUN 建立失敗。應用程式分流因此由 `VpnService.Builder` 執行。Android 的系統 DNS 由 Kotlin 從 `LinkProperties` 讀取後，透過 `MobileHost.setSystemDNS` 注入 core。讀取發生在建立 TUN 之前，需要 `ACCESS_NETWORK_STATE`，並優先選擇非 VPN 的底層網路；否則重連時可能讀到上一條 VPN 的 `198.19.0.2`，而此時 core 尚未啟動，遠端 MMDB／規則資料庫會解析失敗。
 
+服務在建立 TUN 前，會用 Android 的 HTTP stack 依 profile 的 `geox-url` 預先下載 `geoip.metadb` 與 `GeoSite.dat` 到 App 私有的 `runtime` 目錄；core 的驗證與啟動直接使用這些檔案。若網路環境的 DNS 只回傳 fake IP，core 內部的下載會在 DNS 就緒前失敗，預先下載可避開該問題。Android 版也不使用 `allow-lan`；混合代理只提供本機使用，設定頁不顯示該開關。
+
 ## 應用程式分流
 
 Android 版不使用桌面版的 `PROCESS-PATH`／執行檔路徑 UI。應用到「應用程式」頁會列出已安裝套件，支援搜尋與多選，每個 App 可設定：
