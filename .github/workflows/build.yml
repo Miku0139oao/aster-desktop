@@ -120,6 +120,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install the Android NDK used by gomobile
+        run: sdkmanager --install "ndk;28.2.13656396"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.6'
@@ -127,20 +129,19 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - name: Build Android engine and APKs
-        run: python3 scripts/build-android.py --abis arm64-v8a
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13656396
+        run: python3 scripts/build-android.py
       - name: Verify packaged native engines
         run: |
           set -euo pipefail
-          cd build/android/jniLibs
+          cd build/android
           sha256sum -c checksums.txt
-          for abi in arm64-v8a; do
-            file "$abi/libaster_bridge.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
-            file "$abi/libaster_core.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
-          done
+          unzip -t app/mobileapi.aar > /dev/null
       - name: Preserve Android packages
         uses: actions/upload-artifact@v4
         with:
           name: aster-android
           path: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/android/jniLibs/checksums.txt
+            build/android/checksums.txt
