@@ -96,6 +96,9 @@ void main() {
     await activate();
     await waitForWindow(windowManager.isVisible, true);
     if (Platform.isWindows || Platform.isMacOS) {
+      // show() and focus() dispatch makeKeyAndOrderFront asynchronously; a
+      // pending call would restore the window right after minimize().
+      await Future<void>.delayed(const Duration(milliseconds: 500));
       await windowManager.minimize();
       await waitForWindow(windowManager.isMinimized, true);
       await activate();
