@@ -41,6 +41,7 @@ Android 的 `VpnService` 只能以套件為單位決定是否進入 VPN，因此
 - 尚未在本專案的 CI 或開發環境中完成 Android 實機／emulator 的 VPN 連線、DNS、UDP、節點切換與斷線清理驗證。在完成實機驗證前，不應宣稱 Android VPN 已可正式使用。
 - `QUERY_ALL_PACKAGES` 用來列出所有已安裝 App。直接安裝 APK 沒問題；若要上架 Google Play，需依該權限政策提出 VPN／安全用途說明，或改為只列出有啟動圖示的 App。
 - Android 13 以上首次連線會請求通知權限。即使拒絕，VPN 仍可運作，但通知列可能不顯示。
+- CI 產生的 APK 目前使用 Gradle 的 debug 簽章，且每個 runner 的除錯金鑰不同，只能視為測試包；要提供可覆蓋更新的正式 APK，必須另外設定固定的 release keystore。
 - 桌面版的系統代理、TUN 網路介面選擇與背景服務授權不適用於 Android，已在設定頁隱藏。
 
 ## 建置需求
