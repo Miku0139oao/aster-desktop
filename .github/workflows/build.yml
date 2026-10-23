@@ -142,6 +142,5 @@ jobs:
         with:
           name: aster-android
           path: |
-            build/app/outputs/flutter-apk/*arm64-v8a*.apk
-            build/app/outputs/flutter-apk/*x86_64*.apk
+            build/app/outputs/flutter-apk/app-release.apk
             build/android/jniLibs/checksums.txt

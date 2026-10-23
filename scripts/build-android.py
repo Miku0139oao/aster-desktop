@@ -92,9 +92,9 @@ def main():
         )
 
     write_checksum(libraries)
-    run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release", "--split-per-abi"], cwd=project)
+    run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release"], cwd=project)
     print(f"Android engine libraries: {libraries}")
-    print(f"APK output: {project / 'build/app/outputs/flutter-apk'}")
+    print(f"APK output: {project / 'build/app/outputs/flutter-apk/app-release.apk'}")
 
 
 if __name__ == "__main__":
