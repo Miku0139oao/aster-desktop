@@ -16,7 +16,7 @@ Flutter 透過 `app.astercore/android` MethodChannel 呼叫 `AsterVpnService`。
 
 1. Flutter 呼叫 `startVpn`。
 2. `MainActivity` 先請求通知權限（Android 13+），完成後才取得 Android VPN 授權（第一次會顯示系統對話框）。兩個對話框循序顯示，避免前景服務啟動被授權流程延遲。
-3. `AsterVpnService` 先用 `MobileHost.validateVPN` 驗證目前設定（包含遠端 rule-provider 與 MMDB 下載），通過後才建立 TUN；驗證失敗不會留下已 detach 的 fd 或系統 VPN 介面。接著讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、IPv4 `198.18.0.1/30`、IPv6 `fdfe:dcba:9876::1/126`、DNS `198.18.0.2` 與 `fdfe:dcba:9876::2`、IPv4/IPv6 預設路由。IPv6 位址是必要的：只加 IPv6 路由而沒有介面位址時，應用程式的 IPv6 socket 會因沒有來源位址而先失敗。
+3. `AsterVpnService` 讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、IPv4 `198.18.0.1/30`、IPv6 `fdfe:dcba:9876::1/126`、DNS `198.18.0.2` 與 `fdfe:dcba:9876::2`、IPv4/IPv6 預設路由。IPv6 位址是必要的：只加 IPv6 路由而沒有介面位址時，應用程式的 IPv6 socket 會因沒有來源位址而先失敗。TUN 建立後先以 `MobileHost.validateVPN` 驗證目前設定（包含遠端 rule-provider 與 MMDB 下載）；此時 `VpnService.protect()` 已能保護下載 socket。驗證失敗會直接關閉 TUN，不會把 fd 交給 core；通過後才 `detachFd()`。
 4. TUN file descriptor 交給同一程序內的 Aster Core。Core 使用 `auto-route: false` 與 `auto-detect-interface: false`：路由由 Android 的 VpnService 管理，而 `auto-detect-interface` 的 netlink 監控在 Android 14 以上的 App 可能被 SELinux 禁止；對外 socket 改由 `VpnService.protect()` 保證繞過 VPN。
 5. Core 的對外 socket 透過 `SocketProtector` 呼叫 `VpnService.protect()`，避免節點連線再繞回 VPN。
 

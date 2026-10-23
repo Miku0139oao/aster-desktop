@@ -138,13 +138,27 @@ class AsterVpnService : VpnService(), SocketProtector {
             applySystemDNS(mobileHost)
             val routing = readRouting(this)
             startAsterForeground("Connecting")
+            val tun = try {
+                buildTun(routing)
+            } catch (error: Throwable) {
+                stopAsterForeground()
+                throw error
+            }
             try {
-                // Validate before creating the descriptor. Validation can
-                // download remote rule databases; failing here must not leave
-                // a live, unmanaged VPN interface behind.
+                // Validate while the TUN is up so VpnService.protect() can
+                // release the remote-download sockets. Java still owns the
+                // descriptor here, so a failure can close the interface.
                 mobileHost.validateVPN()
-                // The detached descriptor is owned by the core from here on.
-                val fd = buildTun(routing).detachFd()
+            } catch (error: Throwable) {
+                runCatching { tun.close() }
+                runCatching { mobileHost.stopVPN() }
+                stopAsterForeground()
+                Log.e(TAG, "VPN validation failed", error)
+                throw error
+            }
+            // The detached descriptor is owned by the core from here on.
+            val fd = tun.detachFd()
+            try {
                 val encoded = mobileHost.startVPN(fd, packageOptions(routing).toString())
                 updateNotification("Connected")
                 Log.i(TAG, "VPN connected")
