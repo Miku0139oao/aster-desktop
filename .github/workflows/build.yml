@@ -120,10 +120,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install the Android NDK used by gomobile
-        env:
-          NDK_VERSION: 28.2.13656396
-        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME --install \"ndk;$NDK_VERSION\""
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.6'
@@ -132,7 +128,7 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Build Android engine and APKs
         env:
-          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13656396
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.2.12479018
         run: python3 scripts/build-android.py
       - name: Verify packaged native engines
         run: |
