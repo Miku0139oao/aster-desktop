@@ -88,7 +88,9 @@ def main():
             if required not in names:
                 raise RuntimeError(f"mobile AAR is missing {required}")
 
-    write_checksum(libraries)
+    # CI verifies the AAR from build/android, so the manifest must live at that
+    # root and reference app/mobileapi.aar rather than being scoped to app/.
+    write_checksum(output)
     if not options.skip_apk:
         run([os.environ.get("ASTER_FLUTTER", "flutter"), "build", "apk", "--release"], cwd=project)
     print(f"Android engine binding: {app_libraries / 'mobileapi.aar'}")
