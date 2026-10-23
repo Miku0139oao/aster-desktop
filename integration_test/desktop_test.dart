@@ -24,10 +24,12 @@ void main() {
     tester,
   ) async {
     await windowManager.ensureInitialized();
-    await windowManager.setSize(const Size(1180, 800));
-    await windowManager.show();
+    // Render a layer before resizing: macOS resize synchronization stalls on
+    // empty frames, which leaves the window at its default size on CI.
     await tester.pumpWidget(const MaterialApp(home: Scaffold()));
     await tester.pumpAndSettle();
+    await windowManager.setSize(const Size(1180, 800));
+    await windowManager.show();
     final directory = await Directory.systemTemp.createTemp(
       'aster-desktop-integration-',
     );
@@ -132,13 +134,13 @@ void main() {
     final uplink = networks.first['name'] as String;
     expect(await c.saveSettings({'tun': true}), isTrue, reason: c.error);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(TunNetworkSelector));
-    await tester.tap(
-      find.descendant(
-        of: find.byType(TunNetworkSelector),
-        matching: find.byType(DropdownButtonFormField<String>),
-      ),
+    final tunDropdown = find.descendant(
+      of: find.byType(TunNetworkSelector),
+      matching: find.byType(DropdownButtonFormField<String>),
     );
+    await tester.ensureVisible(tunDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(tunDropdown);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text(uplink).last);
     await tester.tap(find.text(uplink).last);
@@ -259,10 +261,14 @@ void main() {
       ),
       isTrue,
     );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('application-route-0')),
+    );
     await tester.tap(find.byKey(const ValueKey('application-route-0')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('route-search')), 'DIRECT');
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('target:DIRECT')));
     await tester.tap(find.byKey(const ValueKey('target:DIRECT')));
     for (
       var attempt = 0;
@@ -325,6 +331,7 @@ void main() {
     expect(editor.text == draft, isFalse);
     editor.text =
         before; // Keep the fixture configuration valid for real validation.
+    await tester.ensureVisible(find.text('儲存並套用'));
     await tester.tap(find.text('儲存並套用'));
     for (
       var attempt = 0;
@@ -340,6 +347,7 @@ void main() {
     expect(c.active!.content == before, isTrue);
     c.navigate(0);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('primary-connect')));
     await tester.tap(find.byKey(const Key('primary-connect')));
     for (var attempt = 0; attempt < 150 && c.running; attempt++) {
       await tester.pump(const Duration(milliseconds: 100));
