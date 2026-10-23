@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "app.aster.desktop"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.2.12479018"
+    ndkVersion = "28.2.13656396"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
