@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 	"unicode"
@@ -32,7 +33,10 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: true, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
+	// Android does not have a user-level global system proxy. Keep a new
+	// mobile installation on its local mixed listener until VPN routing is on.
+	systemProxy := runtime.GOOS != "android"
+	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: systemProxy, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
 }
 func (s Settings) Validate() error {
 	if utf8.RuneCountInString(s.TunInterface) > 256 || stringsContainControl(s.TunInterface) {

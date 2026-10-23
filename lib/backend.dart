@@ -27,6 +27,7 @@ class ProcessBackend implements DesktopBackend {
   final _events = StreamController<Json>.broadcast();
   final _pending = <int, Completer<dynamic>>{};
   static const _native = MethodChannel('app.astercore/privilege');
+  static const _android = MethodChannel('app.astercore/android');
   int _next = 0;
   bool _macRunning = false;
   bool _macProxy = false;
@@ -42,6 +43,32 @@ class ProcessBackend implements DesktopBackend {
     var directory = executable.parent.path;
     if (Platform.isMacOS) {
       directory = '${executable.parent.parent.path}/Resources';
+    }
+    if (Platform.isAndroid) {
+      final nativeDirectory = await _android.invokeMethod<String>(
+        'nativeLibraryDir',
+      );
+      if (nativeDirectory == null || nativeDirectory.isEmpty) {
+        throw const BackendException(
+          'The mobile engine location is unavailable.',
+        );
+      }
+      directory = nativeDirectory;
+      final mobileBridge = '$directory/libaster_bridge.so';
+      final mobileCore = '$directory/libaster_core.so';
+      if (!await File(mobileBridge).exists() ||
+          !await File(mobileCore).exists()) {
+        throw const BackendException(
+          'The Android engine is missing. Rebuild the mobile package.',
+        );
+      }
+      final process = await Process.start(mobileBridge, [
+        '--data',
+        data.path,
+        '--core',
+        mobileCore,
+      ]);
+      return _attach(process, nativeMac: false);
     }
     final development = Directory.current.path;
     final suffix = Platform.isWindows ? '.exe' : '';

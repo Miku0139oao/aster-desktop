@@ -108,3 +108,41 @@ jobs:
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verify_gui)
         timeout-minutes: 15
         run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache-dependency-path: bridge/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Build Android engine and APKs
+        run: python3 scripts/build-android.py --abis arm64-v8a,x86_64
+      - name: Verify packaged native engines
+        run: |
+          set -euo pipefail
+          cd build/android/jniLibs
+          sha256sum -c checksums.txt
+          for abi in arm64-v8a x86_64; do
+            file "$abi/libaster_bridge.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
+            file "$abi/libaster_core.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
+          done
+      - name: Preserve Android packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: aster-android
+          path: |
+            build/app/outputs/flutter-apk/*arm64-v8a*.apk
+            build/app/outputs/flutter-apk/*x86_64*.apk
+            build/android/jniLibs/checksums.txt
