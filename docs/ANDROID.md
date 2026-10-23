@@ -25,7 +25,7 @@ Android 的 VPN 權限服務已註冊為 `AsterVpnService`。下一階段會在�
 從專案根目錄執行：
 
 ```bash
-python3 scripts/build-android.py --abis arm64-v8a,x86_64
+python3 scripts/build-android.py --abis arm64-v8a
 ```
 
 腳本會先產生 Android 64-bit 引擎，再執行 `flutter build apk --release --split-per-abi`。GitHub CI 也會產出 APK artifact，名稱為 `aster-android`。

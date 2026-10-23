@@ -127,13 +127,13 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - name: Build Android engine and APKs
-        run: python3 scripts/build-android.py --abis arm64-v8a,x86_64
+        run: python3 scripts/build-android.py --abis arm64-v8a
       - name: Verify packaged native engines
         run: |
           set -euo pipefail
           cd build/android/jniLibs
           sha256sum -c checksums.txt
-          for abi in arm64-v8a x86_64; do
+          for abi in arm64-v8a; do
             file "$abi/libaster_bridge.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
             file "$abi/libaster_core.so" | grep -q "ELF 64-bit.*ARM aarch64\|ELF 64-bit.*x86-64"
           done

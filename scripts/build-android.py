@@ -51,7 +51,7 @@ def write_checksum(root):
 
 def main():
     parser = argparse.ArgumentParser(description="Build native Android engines and the Flutter APK")
-    parser.add_argument("--abis", default="arm64-v8a,x86_64")
+    parser.add_argument("--abis", default="arm64-v8a")
     parser.add_argument("--out", default="build/android")
     options = parser.parse_args()
 
