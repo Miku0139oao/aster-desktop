@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -368,36 +369,72 @@ class OverviewPage extends StatelessWidget {
               SectionTitle(
                 c.tr('哪些應用程式使用代理？', 'Which applications use the proxy?'),
               ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: Text(c.tr('系統代理', 'System proxy')),
-                subtitle: Text(
-                  c.tr(
-                    '讓支援系統代理的應用程式自動連線。',
-                    'Connect applications that follow system proxy settings.',
+              if (Platform.isAndroid)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    c.tr(
+                      '所有應用程式經 Aster VPN',
+                      'All applications through Aster VPN',
+                    ),
                   ),
-                ),
-                value: c.settings.systemProxy,
-                onChanged: c.busy || c.running
-                    ? null
-                    : (v) => c.saveSettings({'systemProxy': v}),
-              ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: Text(c.tr('代理所有應用程式', 'Proxy all applications')),
-                subtitle: Text(
-                  c.tr(
-                    '使用 TUN，需要一次性的系統授權。',
-                    'Uses TUN and requires system approval once.',
+                  subtitle: Text(
+                    c.tr(
+                      'Android 版固定使用 VpnService；連線時會要求一次系統授權。',
+                      'Android always uses VpnService and asks for system approval once when connecting.',
+                    ),
                   ),
+                  value: true,
+                  onChanged: null,
+                )
+              else
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(c.tr('系統代理', 'System proxy')),
+                  subtitle: Text(
+                    c.tr(
+                      '讓支援系統代理的應用程式自動連線。',
+                      'Connect applications that follow system proxy settings.',
+                    ),
+                  ),
+                  value: c.settings.systemProxy,
+                  onChanged: c.busy || c.running
+                      ? null
+                      : (v) => c.saveSettings({'systemProxy': v}),
                 ),
-                value: c.settings.tun,
-                onChanged: c.busy || c.running
-                    ? null
-                    : (v) => c.saveSettings({'tun': v}),
-              ),
-              if (c.settings.tun) TunNetworkSelector(controller: c),
-              if (c.settings.tun &&
+              if (Platform.isAndroid)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.apps_outlined),
+                  title: Text(c.tr('應用程式分流', 'Application routing')),
+                  subtitle: Text(
+                    c.tr(
+                      '選擇代理、直連或排除的應用程式。',
+                      'Choose applications to proxy, connect directly, or exclude.',
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => c.navigate(6),
+                )
+              else
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(c.tr('代理所有應用程式', 'Proxy all applications')),
+                  subtitle: Text(
+                    c.tr(
+                      '使用 TUN，需要一次性的系統授權。',
+                      'Uses TUN and requires system approval once.',
+                    ),
+                  ),
+                  value: c.settings.tun,
+                  onChanged: c.busy || c.running
+                      ? null
+                      : (v) => c.saveSettings({'tun': v}),
+                ),
+              if (!Platform.isAndroid && c.settings.tun)
+                TunNetworkSelector(controller: c),
+              if (!Platform.isAndroid &&
+                  c.settings.tun &&
                   (c.service['installed'] != true ||
                       c.service['approved'] == false))
                 ListTile(
@@ -1335,17 +1372,20 @@ class AdvancedPage extends StatelessWidget {
               onChanged: c.busy ? null : (v) => c.saveSettings({'theme': v}),
             ),
             const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: Text(c.tr('登入後自動啟動並連線', 'Start and connect at login')),
-              subtitle: Text(
-                c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
+            if (!Platform.isAndroid)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  c.tr('登入後自動啟動並連線', 'Start and connect at login'),
+                ),
+                subtitle: Text(
+                  c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
+                ),
+                value: c.settings.autoStart,
+                onChanged: c.busy
+                    ? null
+                    : (v) => c.saveSettings({'autoStart': v}),
               ),
-              value: c.settings.autoStart,
-              onChanged: c.busy
-                  ? null
-                  : (v) => c.saveSettings({'autoStart': v}),
-            ),
             DropdownButtonFormField<int>(
               isExpanded: true,
               initialValue:
@@ -1373,54 +1413,55 @@ class AdvancedPage extends StatelessWidget {
           ],
         ),
       ),
-      Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionTitle(c.tr('背景服務', 'Background service')),
-            Text(
-              c.service['installed'] == true
-                  ? c.tr(
-                      '已安裝；代理所有應用程式時會使用。',
-                      'Installed. Used when proxying all applications.',
-                    )
-                  : c.tr(
-                      '安裝後可使用 TUN，主介面維持一般權限。',
-                      'Install to use TUN while keeping the interface unprivileged.',
-                    ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: c.busy || c.running
-                      ? null
-                      : () => c.perform(() async {
-                          await c.backend.call('installService');
-                        }),
-                  icon: const Icon(Icons.admin_panel_settings_outlined),
-                  label: Text(
-                    c.service['installed'] == true
-                        ? c.tr('重新安裝／授權', 'Reinstall / authorize')
-                        : c.tr('安裝背景服務', 'Install service'),
-                  ),
-                ),
-                if (c.service['installed'] == true)
-                  TextButton(
+      if (!Platform.isAndroid)
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionTitle(c.tr('背景服務', 'Background service')),
+              Text(
+                c.service['installed'] == true
+                    ? c.tr(
+                        '已安裝；代理所有應用程式時會使用。',
+                        'Installed. Used when proxying all applications.',
+                      )
+                    : c.tr(
+                        '安裝後可使用 TUN，主介面維持一般權限。',
+                        'Install to use TUN while keeping the interface unprivileged.',
+                      ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  FilledButton.tonalIcon(
                     onPressed: c.busy || c.running
                         ? null
                         : () => c.perform(() async {
-                            await c.backend.call('uninstallService');
+                            await c.backend.call('installService');
                           }),
-                    child: Text(c.tr('移除服務', 'Remove service')),
+                    icon: const Icon(Icons.admin_panel_settings_outlined),
+                    label: Text(
+                      c.service['installed'] == true
+                          ? c.tr('重新安裝／授權', 'Reinstall / authorize')
+                          : c.tr('安裝背景服務', 'Install service'),
+                    ),
                   ),
-              ],
-            ),
-          ],
+                  if (c.service['installed'] == true)
+                    TextButton(
+                      onPressed: c.busy || c.running
+                          ? null
+                          : () => c.perform(() async {
+                              await c.backend.call('uninstallService');
+                            }),
+                      child: Text(c.tr('移除服務', 'Remove service')),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
       Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1525,25 +1566,37 @@ class AdvancedPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(c.tr('版本與更新', 'Versions and updates')),
-            Text('Aster Desktop ${c.desktopVersion}'),
+            Text(
+              Platform.isAndroid
+                  ? 'Aster Android ${c.desktopVersion}'
+                  : 'Aster Desktop ${c.desktopVersion}',
+            ),
             if (c.coreVersion.isNotEmpty) Text('Aster Core ${c.coreVersion}'),
             const SizedBox(height: 8),
             Text(
-              c.tr(
-                '核心使用官方 main 測試版，更新只會在你點擊時執行。',
-                'Core updates use official main prereleases and run only when you choose.',
-              ),
+              Platform.isAndroid
+                  ? c.tr(
+                      '核心已內建於 APK，會隨 App 版本更新。',
+                      'The core is bundled in the APK and updates with the app.',
+                    )
+                  : c.tr(
+                      '核心使用官方 main 測試版，更新只會在你點擊時執行。',
+                      'Core updates use official main prereleases and run only when you choose.',
+                    ),
             ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
               runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: c.busy ? null : () => showUpdateDialog(context, c),
-                  icon: const Icon(Icons.system_update_alt),
-                  label: Text(c.tr('檢查更新', 'Check for updates')),
-                ),
+                if (!Platform.isAndroid)
+                  OutlinedButton.icon(
+                    onPressed: c.busy
+                        ? null
+                        : () => showUpdateDialog(context, c),
+                    icon: const Icon(Icons.system_update_alt),
+                    label: Text(c.tr('檢查更新', 'Check for updates')),
+                  ),
                 TextButton(
                   onPressed: () => launchUrl(
                     Uri.parse('https://astercore.fubukishop.app/'),

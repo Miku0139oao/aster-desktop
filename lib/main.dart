@@ -14,6 +14,10 @@ import 'window_activation.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isAndroid || Platform.isIOS) {
+    await runMobileApp(args);
+    return;
+  }
   try {
     final instance = await SingleInstance.acquire(
       await getApplicationSupportDirectory(),
@@ -105,6 +109,51 @@ Future<void> main(List<String> args) async {
                       onPressed: () => exit(1),
                       child: const Text('關閉 / Close'),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> runMobileApp(List<String> args) async {
+  try {
+    final backend = await ProcessBackend.start();
+    final controller = AppController(backend);
+    runApp(AsterApp(controller: controller, desktopLifecycle: false));
+    await controller.initialize();
+    if (args.contains('--autostart') && controller.profiles.isNotEmpty) {
+      await controller.toggle();
+    }
+  } catch (e) {
+    runApp(
+      MaterialApp(
+        theme: asterTheme(Brightness.light),
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.build_circle_outlined, size: 56),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Aster 無法啟動 / Could not start',
+                      style: TextStyle(fontSize: 24),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '行動版引擎不完整。請重新安裝 APK。\nThe mobile engine is incomplete. Reinstall the APK.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    SelectableText(e.toString(), textAlign: TextAlign.center),
                   ],
                 ),
               ),

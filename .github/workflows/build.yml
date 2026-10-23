@@ -108,3 +108,46 @@ jobs:
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verify_gui)
         timeout-minutes: 15
         run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache-dependency-path: bridge/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Download the Android NDK used by gomobile
+        run: |
+          curl --fail --location --retry 3 "https://dl.google.com/android/repository/android-ndk-r28c-linux.zip" --output "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          sudo mkdir -p "$SDK_ROOT/ndk"
+          sudo rm -rf "$SDK_ROOT/ndk/28.2.13676358"
+          sudo mv "$RUNNER_TEMP/android-ndk-r28c" "$SDK_ROOT/ndk/28.2.13676358"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Build Android engine and APKs
+        run: python3 scripts/build-android.py
+      - name: Verify packaged native engines
+        run: |
+          set -euo pipefail
+          cd build/android
+          sha256sum -c checksums.txt
+          unzip -t app/mobileapi.aar > /dev/null
+      - name: Preserve Android packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: aster-android
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/android/checksums.txt

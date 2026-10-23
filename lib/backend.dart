@@ -35,7 +35,7 @@ class ProcessBackend implements DesktopBackend {
   @override
   Stream<Json> get events => _events.stream;
 
-  static Future<ProcessBackend> start({Directory? dataDirectory}) async {
+  static Future<DesktopBackend> start({Directory? dataDirectory}) async {
     final data = dataDirectory ?? await getApplicationSupportDirectory();
     await data.create(recursive: true);
     final executable = File(Platform.resolvedExecutable);
@@ -43,6 +43,7 @@ class ProcessBackend implements DesktopBackend {
     if (Platform.isMacOS) {
       directory = '${executable.parent.parent.path}/Resources';
     }
+    if (Platform.isAndroid) return AndroidBackend();
     final development = Directory.current.path;
     final suffix = Platform.isWindows ? '.exe' : '';
     var bridge = '$directory/aster-bridge$suffix';
@@ -477,6 +478,80 @@ class ProcessBackend implements DesktopBackend {
           return -1;
         },
       );
+      await _events.close();
+    }
+  }
+}
+
+class AndroidBackend implements DesktopBackend {
+  final _events = StreamController<Json>.broadcast();
+  final _channel = const MethodChannel('app.astercore/android');
+  int _next = 0;
+
+  @override
+  Stream<Json> get events => _events.stream;
+
+  @override
+  Future<dynamic> call(String method, [Json? params]) async {
+    final request = jsonEncode({
+      'id': ++_next,
+      'method': method,
+      'params': params ?? {},
+    });
+    final encoded = await _channel
+        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+          if (method != 'connect') 'request': request,
+        })
+        .timeout(
+          method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
+          onTimeout: () => throw const BackendException(
+            'The operation timed out. Check your connection and try again.',
+          ),
+        );
+    return _decode(encoded);
+  }
+
+  /// Native application routing is device-wide, so subscription refreshes and
+  /// profile changes never replace it.
+  Future<Json> appRouting() async {
+    final encoded = await _channel.invokeMethod<String>('appRouting');
+    return _decode(encoded) as Json? ??
+        {'mode': 'all', 'apps': <String, dynamic>{}};
+  }
+
+  Future<Json> saveAppRouting(Json routing) async {
+    final encoded = await _channel.invokeMethod<String>('saveAppRouting', {
+      'routing': jsonEncode(routing),
+    });
+    return _decode(encoded) as Json;
+  }
+
+  Future<List<Json>> installedApplications() async {
+    final encoded = await _channel.invokeMethod<String>('listApplications');
+    if (encoded == null || encoded.isEmpty) return [];
+    return (jsonDecode(encoded) as List)
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+  }
+
+  dynamic _decode(String? encoded) {
+    if (encoded == null || encoded.isEmpty) return null;
+    final value = jsonDecode(encoded);
+    if (value is! Json) return value;
+    if (value['error'] != null) {
+      throw BackendException(
+        ((value['error'] as Json)['message'] as String?) ??
+            'Android operation failed',
+      );
+    }
+    return value.containsKey('result') ? value['result'] : value;
+  }
+
+  @override
+  Future<void> close() async {
+    try {
+      await _channel.invokeMethod<String>('stopVpn');
+    } finally {
       await _events.close();
     }
   }
