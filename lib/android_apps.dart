@@ -127,12 +127,16 @@ class _AndroidApplicationsPageState extends State<AndroidApplicationsPage> {
   int count(String mode) =>
       applications.where((app) => modeFor(app) == mode).length;
 
-  Future<void> _save(Map<String, dynamic> changes) async {
+  Future<void> _save(
+    Map<String, dynamic> changes, {
+    String? mode,
+  }) async {
     setState(() {
       saving = true;
       error = null;
       routing = {
         ...routing,
+        if (mode != null) 'mode': mode,
         'apps': {...modes, ...changes},
       };
     });
@@ -156,7 +160,7 @@ class _AndroidApplicationsPageState extends State<AndroidApplicationsPage> {
   Future<void> _setMode(String package, String mode) => _save({package: mode});
 
   Future<void> _setSelectedOnly(bool value) =>
-      _save({'mode': value ? 'selected' : 'all'});
+      _save(const {}, mode: value ? 'selected' : 'all');
 
   Future<void> _applyBatch(String mode) async {
     if (selected.isEmpty) return;

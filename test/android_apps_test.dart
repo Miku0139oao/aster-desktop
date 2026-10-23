@@ -116,6 +116,19 @@ void main() {
     expect(saved.last['apps'], containsPair('com.beta', 'exclude'));
   });
 
+  testWidgets('switches to selected-only without adding a fake app route', (
+    tester,
+  ) async {
+    await pumpPage(tester);
+    await tester.tap(find.text('只代理選取的應用程式'));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotEmpty);
+    expect(saved.last['mode'], 'selected');
+    expect(saved.last['apps'], isNot(contains('mode')));
+    expect(find.textContaining('連線會失敗'), findsOneWidget);
+  });
+
   testWidgets('warns when selected-only mode has no proxied app', (
     tester,
   ) async {
