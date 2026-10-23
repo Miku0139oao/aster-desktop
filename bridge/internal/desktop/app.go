@@ -68,6 +68,18 @@ func NewApp(dir, binary, gui string) (*App, error) {
 	return a, nil
 }
 
+// ValidateConnect checks the active profile with the current settings without
+// starting the core. Mobile callers use it before creating a TUN descriptor so
+// a bad configuration cannot leave a detached VPN interface behind.
+func (a *App) ValidateConnect(ctx context.Context) error {
+	profile, err := a.Store.Profile(a.Store.State.ActiveID)
+	if err != nil {
+		return errors.New("import a subscription or configuration before connecting")
+	}
+	_, err = a.Core.Validate(ctx, profile.Content, a.Store.State.Settings, false)
+	return err
+}
+
 func NewMobileApp(dir string) (*App, error) {
 	app, err := NewApp(dir, "", "")
 	if err != nil {

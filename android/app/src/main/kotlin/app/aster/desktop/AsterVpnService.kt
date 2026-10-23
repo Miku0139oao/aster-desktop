@@ -137,9 +137,13 @@ class AsterVpnService : VpnService(), SocketProtector {
             applySystemDNS(mobileHost)
             val routing = readRouting(this)
             startAsterForeground("Connecting")
-            // The detached descriptor is owned by the core from here on.
-            val fd = buildTun(routing).detachFd()
             try {
+                // Validate before creating the descriptor. Validation can
+                // download remote rule databases; failing here must not leave
+                // a live, unmanaged VPN interface behind.
+                mobileHost.validateVPN()
+                // The detached descriptor is owned by the core from here on.
+                val fd = buildTun(routing).detachFd()
                 val encoded = mobileHost.startVPN(fd, packageOptions(routing).toString())
                 updateNotification("Connected")
                 Log.i(TAG, "VPN connected")

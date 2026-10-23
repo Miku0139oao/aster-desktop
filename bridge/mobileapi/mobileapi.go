@@ -110,6 +110,16 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 	return encodeResponse(result, err)
 }
 
+// ValidateVPN checks the active configuration before the service creates a
+// TUN descriptor, so a validation failure cannot leave a detached descriptor
+// (and the Android VPN interface) behind.
+func (h *Host) ValidateVPN() error {
+	if h == nil || h.app == nil {
+		return errors.New("mobile host is not ready")
+	}
+	return h.app.ValidateConnect(h.ctx)
+}
+
 func (h *Host) StopVPN() (string, error) {
 	if h == nil || h.app == nil {
 		return "", errors.New("mobile host is not ready")

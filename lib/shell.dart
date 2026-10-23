@@ -744,16 +744,16 @@ class ErrorCard extends StatelessWidget {
               'Install the background service in Advanced and approve the system prompt.',
             );
     }
-    if (message.contains('subscription') || message.contains('download')) {
-      return c.tr(
-        '請檢查訂閱網址與網路，再試一次。',
-        'Check the subscription URL and your network, then try again.',
-      );
-    }
     if (message.contains('configuration') || message.contains('validation')) {
       return c.tr(
         '請檢查設定內容，或還原上一份有效設定。',
         'Check the configuration or restore its previous version.',
+      );
+    }
+    if (message.contains('subscription') || message.contains('download')) {
+      return c.tr(
+        '請檢查訂閱網址與網路，再試一次。',
+        'Check the subscription URL and your network, then try again.',
       );
     }
     return c.tr(
