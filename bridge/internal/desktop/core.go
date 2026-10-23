@@ -32,8 +32,11 @@ type Core struct {
 	BundledBinary                string
 	running                      bool
 	fd                           int
+	includePackages              []string
+	excludePackages              []string
 	cmd                          *exec.Cmd
 	done                         chan struct{}
+	runCancel                    context.CancelFunc
 	lastError                    string
 	stopping                     bool
 	coreVersion                  string
@@ -360,13 +363,25 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 	if fd <= 0 {
 		return errors.New("Android VPN descriptor is not available")
 	}
+	c.mu.Lock()
 	c.fd = fd
+	c.mu.Unlock()
+	failed := true
 	defer func() {
 		if err := recover(); err != nil {
 			c.recordError(fmt.Errorf("mobile core failed: %v", err))
 		}
+		if failed {
+			c.mu.Lock()
+			c.fd = 0
+			c.mu.Unlock()
+		}
 	}()
-	return c.start(ctx, content, s, false)
+	err := c.start(ctx, content, s, false)
+	if err == nil {
+		failed = false
+	}
+	return err
 }
 
 func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
@@ -398,8 +413,11 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	if tun == nil {
 		tun = map[string]any{}
 	}
-	tun["auto-route"] = false
-	tun["file-descriptor"] = c.fd
+	c.mu.Lock()
+	fd := c.fd
+	include, exclude := c.includePackages, c.excludePackages
+	c.mu.Unlock()
+	applyMobileTunOptions(tun, fd, include, exclude)
 	doc["tun"] = tun
 	final, err := yaml.Marshal(doc)
 	if err != nil {
@@ -410,6 +428,7 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 		c.appendLog("Mobile core: " + err.Error())
 		return err
 	}
+	runCtx, cancel := context.WithCancel(ctx)
 	c.mu.Lock()
 	c.Address = address
 	c.running = true
@@ -417,9 +436,10 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	c.lastError = ""
 	c.activeContent, c.activeSettings = content, s
 	c.done = make(chan struct{})
+	c.runCancel = cancel
 	c.mu.Unlock()
 	go func() {
-		<-ctx.Done()
+		<-runCtx.Done()
 		_ = c.Stop()
 	}()
 	return nil
@@ -456,7 +476,13 @@ func (c *Core) Stop() error {
 		}
 		c.running = false
 		done := c.done
+		cancel := c.runCancel
+		c.runCancel = nil
+		c.fd = 0
 		c.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
 		executor.Shutdown()
 		if done != nil {
 			close(done)
@@ -535,10 +561,11 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		if tun == nil {
 			tun = map[string]any{}
 		}
-		tun["auto-route"] = false
-		if c.fd > 0 {
-			tun["file-descriptor"] = c.fd
-		}
+		c.mu.Lock()
+		fd := c.fd
+		include, exclude := c.includePackages, c.excludePackages
+		c.mu.Unlock()
+		applyMobileTunOptions(tun, fd, include, exclude)
 		doc["tun"] = tun
 		final, err := yaml.Marshal(doc)
 		if err != nil {

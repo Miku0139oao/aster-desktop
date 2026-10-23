@@ -55,7 +55,22 @@ def main():
         run([go, "install", "golang.org/x/mobile/cmd/gobind@" + mobile_version], cwd=bridge)
     run([gomobile, "init"], cwd=bridge)
     run(
-        [gomobile, "bind", "-target=android/arm64", "-androidapi", "24", "-tags", "with_gvisor", "-o", libraries / "mobileapi.aar", "./mobileapi"],
+        [
+            gomobile,
+            "bind",
+            "-target=android/arm64,android/amd64",
+            "-androidapi",
+            "24",
+            # cmfa disables the core's /data/system/packages.xml lookup, which a
+            # normal Android app cannot read. VpnService.Builder owns per-app
+            # routing; the core only receives include/exclude lists for its
+            # embedded TUN configuration.
+            "-tags",
+            "with_gvisor cmfa",
+            "-o",
+            libraries / "mobileapi.aar",
+            "./mobileapi",
+        ],
         cwd=bridge,
     )
     app_libraries = project / "android/app/libs"
@@ -65,7 +80,11 @@ def main():
     shutil.copy2(libraries / "mobileapi.aar", app_libraries / "mobileapi.aar")
     with __import__("zipfile").ZipFile(app_libraries / "mobileapi.aar") as archive:
         names = set(archive.namelist())
-        for required in ("classes.jar", "jni/arm64-v8a/libgojni.so"):
+        for required in (
+            "classes.jar",
+            "jni/arm64-v8a/libgojni.so",
+            "jni/x86_64/libgojni.so",
+        ):
             if required not in names:
                 raise RuntimeError(f"mobile AAR is missing {required}")
 

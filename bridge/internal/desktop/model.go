@@ -33,10 +33,10 @@ type Settings struct {
 }
 
 func DefaultSettings() Settings {
-	// Android does not have a user-level global system proxy. Keep a new
-	// mobile installation on its local mixed listener until VPN routing is on.
-	systemProxy := runtime.GOOS != "android"
-	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: systemProxy, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
+	// Android has no user-level global system proxy; its VPNService is the only
+	// way to route other applications, so a fresh install starts with TUN on.
+	android := runtime.GOOS == "android"
+	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: !android, Tun: android, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
 }
 func (s Settings) Validate() error {
 	if utf8.RuneCountInString(s.TunInterface) > 256 || stringsContainControl(s.TunInterface) {

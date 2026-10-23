@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -368,36 +369,72 @@ class OverviewPage extends StatelessWidget {
               SectionTitle(
                 c.tr('哪些應用程式使用代理？', 'Which applications use the proxy?'),
               ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: Text(c.tr('系統代理', 'System proxy')),
-                subtitle: Text(
-                  c.tr(
-                    '讓支援系統代理的應用程式自動連線。',
-                    'Connect applications that follow system proxy settings.',
+              if (Platform.isAndroid)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    c.tr(
+                      '所有應用程式經 Aster VPN',
+                      'All applications through Aster VPN',
+                    ),
                   ),
-                ),
-                value: c.settings.systemProxy,
-                onChanged: c.busy || c.running
-                    ? null
-                    : (v) => c.saveSettings({'systemProxy': v}),
-              ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: Text(c.tr('代理所有應用程式', 'Proxy all applications')),
-                subtitle: Text(
-                  c.tr(
-                    '使用 TUN，需要一次性的系統授權。',
-                    'Uses TUN and requires system approval once.',
+                  subtitle: Text(
+                    c.tr(
+                      'Android 版固定使用 VpnService；連線時會要求一次系統授權。',
+                      'Android always uses VpnService and asks for system approval once when connecting.',
+                    ),
                   ),
+                  value: true,
+                  onChanged: null,
+                )
+              else
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(c.tr('系統代理', 'System proxy')),
+                  subtitle: Text(
+                    c.tr(
+                      '讓支援系統代理的應用程式自動連線。',
+                      'Connect applications that follow system proxy settings.',
+                    ),
+                  ),
+                  value: c.settings.systemProxy,
+                  onChanged: c.busy || c.running
+                      ? null
+                      : (v) => c.saveSettings({'systemProxy': v}),
                 ),
-                value: c.settings.tun,
-                onChanged: c.busy || c.running
-                    ? null
-                    : (v) => c.saveSettings({'tun': v}),
-              ),
-              if (c.settings.tun) TunNetworkSelector(controller: c),
-              if (c.settings.tun &&
+              if (Platform.isAndroid)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.apps_outlined),
+                  title: Text(c.tr('應用程式分流', 'Application routing')),
+                  subtitle: Text(
+                    c.tr(
+                      '選擇代理、直連或排除的應用程式。',
+                      'Choose applications to proxy, connect directly, or exclude.',
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => c.navigate(6),
+                )
+              else
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(c.tr('代理所有應用程式', 'Proxy all applications')),
+                  subtitle: Text(
+                    c.tr(
+                      '使用 TUN，需要一次性的系統授權。',
+                      'Uses TUN and requires system approval once.',
+                    ),
+                  ),
+                  value: c.settings.tun,
+                  onChanged: c.busy || c.running
+                      ? null
+                      : (v) => c.saveSettings({'tun': v}),
+                ),
+              if (!Platform.isAndroid && c.settings.tun)
+                TunNetworkSelector(controller: c),
+              if (!Platform.isAndroid &&
+                  c.settings.tun &&
                   (c.service['installed'] != true ||
                       c.service['approved'] == false))
                 ListTile(

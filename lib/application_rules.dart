@@ -6,14 +6,24 @@ import 'package:flutter/material.dart';
 
 import 'backend.dart';
 import 'controller.dart';
+import 'android_apps.dart';
 import 'proxy_browser.dart';
 import 'dialogs.dart' show selectApplicationExecutable;
 
-Future<void> showApplicationRouting(BuildContext context, AppController c) =>
-    showDialog<void>(
-      context: context,
-      builder: (_) => _ApplicationRouting(c: c),
-    );
+Future<void> showApplicationRouting(
+  BuildContext context,
+  AppController c,
+) async {
+  if (Platform.isAndroid) {
+    // Android routes by package instead of executable path; open its page.
+    c.navigate(6);
+    return;
+  }
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _ApplicationRouting(c: c),
+  );
+}
 
 class _ApplicationRule {
   _ApplicationRule(
@@ -88,23 +98,26 @@ class ApplicationsPage extends StatelessWidget {
   const ApplicationsPage({super.key, required this.c});
   final AppController c;
   @override
-  Widget build(BuildContext context) => c.active == null
-      ? Center(
-          child: Text(
-            c.tr(
-              '先匯入訂閱或本機設定',
-              'Import a subscription or local configuration first',
+  Widget build(BuildContext context) {
+    if (Platform.isAndroid) return AndroidApplicationsPage(c: c);
+    return c.active == null
+        ? Center(
+            child: Text(
+              c.tr(
+                '先匯入訂閱或本機設定',
+                'Import a subscription or local configuration first',
+              ),
             ),
-          ),
-        )
-      : Padding(
-          padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-          child: _ApplicationRouting(
-            key: ValueKey(c.activeId),
-            c: c,
-            embedded: true,
-          ),
-        );
+          )
+        : Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+            child: _ApplicationRouting(
+              key: ValueKey(c.activeId),
+              c: c,
+              embedded: true,
+            ),
+          );
+  }
 }
 
 Future<Json?> pickApplicationRoute(

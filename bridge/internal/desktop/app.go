@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -67,7 +68,29 @@ func NewApp(dir, binary, gui string) (*App, error) {
 	return a, nil
 }
 
-func NewMobileApp(dir string) (*App, error) { return NewApp(dir, "", "") }
+func NewMobileApp(dir string) (*App, error) {
+	app, err := NewApp(dir, "", "")
+	if err != nil {
+		return nil, err
+	}
+	// Older mobile builds could save TUN off while still connecting through
+	// VpnService. Normalize them once so the UI matches what connect does.
+	settings := app.Store.State.Settings
+	if runtime.GOOS == "android" && (!settings.Tun || settings.SystemProxy) {
+		settings.Tun = true
+		settings.SystemProxy = false
+		if err = settings.Validate(); err != nil {
+			_ = app.Close()
+			return nil, err
+		}
+		app.Store.State.Settings = settings
+		if err = app.Store.Save(); err != nil {
+			_ = app.Close()
+			return nil, err
+		}
+	}
+	return app, nil
+}
 func decode(p json.RawMessage, v any) error {
 	if len(p) == 0 {
 		return nil

@@ -500,7 +500,7 @@ class AndroidBackend implements DesktopBackend {
     });
     final encoded = await _channel
         .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
-          'request': request,
+          if (method != 'connect') 'request': request,
         })
         .timeout(
           method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
@@ -508,12 +508,43 @@ class AndroidBackend implements DesktopBackend {
             'The operation timed out. Check your connection and try again.',
           ),
         );
+    return _decode(encoded);
+  }
+
+  /// Native application routing is device-wide, so subscription refreshes and
+  /// profile changes never replace it.
+  Future<Json> appRouting() async {
+    final encoded = await _channel.invokeMethod<String>('appRouting');
+    return _decode(encoded) as Json? ??
+        {'mode': 'all', 'apps': <String, dynamic>{}};
+  }
+
+  Future<Json> saveAppRouting(Json routing) async {
+    final encoded = await _channel.invokeMethod<String>('saveAppRouting', {
+      'routing': jsonEncode(routing),
+    });
+    return _decode(encoded) as Json;
+  }
+
+  Future<List<Json>> installedApplications() async {
+    final encoded = await _channel.invokeMethod<String>('listApplications');
+    if (encoded == null || encoded.isEmpty) return [];
+    return (jsonDecode(encoded) as List)
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+  }
+
+  dynamic _decode(String? encoded) {
     if (encoded == null || encoded.isEmpty) return null;
-    final value = jsonDecode(encoded) as Json;
+    final value = jsonDecode(encoded);
+    if (value is! Json) return value;
     if (value['error'] != null) {
-      throw BackendException((value['error'] as Json)['message'] as String);
+      throw BackendException(
+        ((value['error'] as Json)['message'] as String?) ??
+            'Android operation failed',
+      );
     }
-    return value['result'];
+    return value.containsKey('result') ? value['result'] : value;
   }
 
   @override

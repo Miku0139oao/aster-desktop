@@ -124,7 +124,12 @@ jobs:
         run: |
           curl --fail --location --retry 3 "https://dl.google.com/android/repository/android-ndk-r28c-linux.zip" --output "$RUNNER_TEMP/android-ndk.zip"
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
-          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r28c" >> "$GITHUB_ENV"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          sudo mkdir -p "$SDK_ROOT/ndk"
+          sudo rm -rf "$SDK_ROOT/ndk/28.2.13676358"
+          sudo mv "$RUNNER_TEMP/android-ndk-r28c" "$SDK_ROOT/ndk/28.2.13676358"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.6'
