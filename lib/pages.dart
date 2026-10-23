@@ -1372,17 +1372,20 @@ class AdvancedPage extends StatelessWidget {
               onChanged: c.busy ? null : (v) => c.saveSettings({'theme': v}),
             ),
             const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: Text(c.tr('登入後自動啟動並連線', 'Start and connect at login')),
-              subtitle: Text(
-                c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
+            if (!Platform.isAndroid)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  c.tr('登入後自動啟動並連線', 'Start and connect at login'),
+                ),
+                subtitle: Text(
+                  c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
+                ),
+                value: c.settings.autoStart,
+                onChanged: c.busy
+                    ? null
+                    : (v) => c.saveSettings({'autoStart': v}),
               ),
-              value: c.settings.autoStart,
-              onChanged: c.busy
-                  ? null
-                  : (v) => c.saveSettings({'autoStart': v}),
-            ),
             DropdownButtonFormField<int>(
               isExpanded: true,
               initialValue:
@@ -1410,54 +1413,55 @@ class AdvancedPage extends StatelessWidget {
           ],
         ),
       ),
-      Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionTitle(c.tr('背景服務', 'Background service')),
-            Text(
-              c.service['installed'] == true
-                  ? c.tr(
-                      '已安裝；代理所有應用程式時會使用。',
-                      'Installed. Used when proxying all applications.',
-                    )
-                  : c.tr(
-                      '安裝後可使用 TUN，主介面維持一般權限。',
-                      'Install to use TUN while keeping the interface unprivileged.',
-                    ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: c.busy || c.running
-                      ? null
-                      : () => c.perform(() async {
-                          await c.backend.call('installService');
-                        }),
-                  icon: const Icon(Icons.admin_panel_settings_outlined),
-                  label: Text(
-                    c.service['installed'] == true
-                        ? c.tr('重新安裝／授權', 'Reinstall / authorize')
-                        : c.tr('安裝背景服務', 'Install service'),
-                  ),
-                ),
-                if (c.service['installed'] == true)
-                  TextButton(
+      if (!Platform.isAndroid)
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SectionTitle(c.tr('背景服務', 'Background service')),
+              Text(
+                c.service['installed'] == true
+                    ? c.tr(
+                        '已安裝；代理所有應用程式時會使用。',
+                        'Installed. Used when proxying all applications.',
+                      )
+                    : c.tr(
+                        '安裝後可使用 TUN，主介面維持一般權限。',
+                        'Install to use TUN while keeping the interface unprivileged.',
+                      ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  FilledButton.tonalIcon(
                     onPressed: c.busy || c.running
                         ? null
                         : () => c.perform(() async {
-                            await c.backend.call('uninstallService');
+                            await c.backend.call('installService');
                           }),
-                    child: Text(c.tr('移除服務', 'Remove service')),
+                    icon: const Icon(Icons.admin_panel_settings_outlined),
+                    label: Text(
+                      c.service['installed'] == true
+                          ? c.tr('重新安裝／授權', 'Reinstall / authorize')
+                          : c.tr('安裝背景服務', 'Install service'),
+                    ),
                   ),
-              ],
-            ),
-          ],
+                  if (c.service['installed'] == true)
+                    TextButton(
+                      onPressed: c.busy || c.running
+                          ? null
+                          : () => c.perform(() async {
+                              await c.backend.call('uninstallService');
+                            }),
+                      child: Text(c.tr('移除服務', 'Remove service')),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
       Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
