@@ -63,9 +63,13 @@ func (c *Core) tunPackages() ([]string, []string) {
 }
 
 // applyMobileTunOptions owns the fields that differ when Android supplies the
-// TUN descriptor. auto-route must stay off because VpnService owns routing.
+// TUN descriptor. auto-route must stay off because VpnService owns routing, and
+// auto-detect-interface must stay off because its netlink-based monitor is
+// banned for Android 14+ apps. The core's sockets are protected through
+// VpnService.protect(), which makes interface binding unnecessary.
 func applyMobileTunOptions(tun map[string]any, fd int, include, exclude []string) {
 	tun["auto-route"] = false
+	tun["auto-detect-interface"] = false
 	delete(tun, "file-descriptor")
 	delete(tun, "include-package")
 	delete(tun, "exclude-package")

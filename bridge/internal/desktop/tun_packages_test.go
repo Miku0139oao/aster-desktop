@@ -37,10 +37,14 @@ func TestApplyMobileTunOptions(t *testing.T) {
 		"include-package":       []any{"stale.example"},
 		"exclude-package":       []any{"stale.example"},
 		"auto-detect-interface": true,
+		"mtu":                   9000,
 	}
 	applyMobileTunOptions(tun, 42, []string{"com.example.app"}, []string{"org.test"})
 	if tun["auto-route"] != false {
 		t.Fatalf("auto-route = %#v", tun["auto-route"])
+	}
+	if tun["auto-detect-interface"] != false {
+		t.Fatalf("auto-detect-interface = %#v", tun["auto-detect-interface"])
 	}
 	if tun["file-descriptor"] != 42 {
 		t.Fatalf("file-descriptor = %#v", tun["file-descriptor"])
@@ -51,7 +55,7 @@ func TestApplyMobileTunOptions(t *testing.T) {
 	if want := []any{"org.test"}; !reflect.DeepEqual(tun["exclude-package"], want) {
 		t.Fatalf("exclude-package = %#v, want %#v", tun["exclude-package"], want)
 	}
-	if tun["auto-detect-interface"] != true {
+	if tun["mtu"] != 9000 {
 		t.Fatalf("unrelated TUN settings were changed")
 	}
 
