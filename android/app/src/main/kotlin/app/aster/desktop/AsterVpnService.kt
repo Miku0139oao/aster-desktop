@@ -14,7 +14,8 @@ import android.os.Binder
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import mobileapi.MobileHost
+import mobileapi.Host
+import mobileapi.Mobileapi
 import mobileapi.SocketProtector
 import org.json.JSONArray
 import org.json.JSONObject
@@ -95,7 +96,7 @@ class AsterVpnService : VpnService(), SocketProtector {
 
     private val executor = Executors.newSingleThreadExecutor()
     private val binder = LocalBinder()
-    private var host: MobileHost? = null
+    private var host: Host? = null
 
     inner class LocalBinder : Binder() {
         fun service(): AsterVpnService = this@AsterVpnService
@@ -196,7 +197,7 @@ class AsterVpnService : VpnService(), SocketProtector {
         if (host == null) {
             synchronized(this) {
                 if (host == null) {
-                    host = MobileHost.newHost(filesDir.absolutePath)
+                    host = Mobileapi.newHost(filesDir.absolutePath)
                 }
             }
         }
@@ -247,7 +248,7 @@ class AsterVpnService : VpnService(), SocketProtector {
         }
     }
 
-    private fun applySystemDNS(mobileHost: MobileHost) {
+    private fun applySystemDNS(mobileHost: Host) {
         val servers = try {
             val manager = getSystemService(ConnectivityManager::class.java)
             if (manager == null) {

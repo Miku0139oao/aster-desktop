@@ -22,7 +22,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private val executor = Executors.newSingleThreadExecutor()
-    private val serviceLock = Object()
+    private val serviceLock = Any()
     private var service: AsterVpnService? = null
     private var bound = false
     private var vpnResult: MethodChannel.Result? = null
@@ -31,14 +31,12 @@ class MainActivity : FlutterActivity() {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             synchronized(serviceLock) {
                 service = (binder as? AsterVpnService.LocalBinder)?.service()
-                serviceLock.notifyAll()
             }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             synchronized(serviceLock) {
                 service = null
-                serviceLock.notifyAll()
             }
         }
     }
@@ -141,16 +139,18 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun awaitService(timeoutMillis: Long = 8000): AsterVpnService {
-        synchronized(serviceLock) {
-            service?.let { return it }
-            val deadline = System.currentTimeMillis() + timeoutMillis
-            while (service == null) {
-                val remaining = deadline - System.currentTimeMillis()
-                if (remaining <= 0) break
-                serviceLock.wait(remaining)
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (true) {
+            synchronized(serviceLock) { service }?.let { return it }
+            if (System.currentTimeMillis() >= deadline) break
+            try {
+                Thread.sleep(25)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
             }
-            return service ?: throw IllegalStateException("Aster service is still starting")
         }
+        throw IllegalStateException("Aster service is still starting")
     }
 
     private fun requestNotificationPermission() {
