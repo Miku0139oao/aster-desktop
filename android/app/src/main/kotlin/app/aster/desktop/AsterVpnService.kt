@@ -208,7 +208,12 @@ class AsterVpnService : VpnService(), SocketProtector {
             .setSession("Aster")
             .setMtu(9000)
             .addAddress("198.18.0.1", 30)
+            // The IPv6 default route needs an IPv6 address on the interface;
+            // otherwise IPv6 sockets have no source address and fail before
+            // falling back to IPv4.
+            .addAddress("fdfe:dcba:9876::1", 126)
             .addDnsServer("198.18.0.2")
+            .addDnsServer("fdfe:dcba:9876::2")
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
         val apps = routing.optJSONObject("apps") ?: JSONObject()

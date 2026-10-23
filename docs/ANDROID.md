@@ -16,7 +16,7 @@ Flutter 透過 `app.astercore/android` MethodChannel 呼叫 `AsterVpnService`。
 
 1. Flutter 呼叫 `startVpn`。
 2. `MainActivity` 取得 Android VPN 授權（第一次會顯示系統對話框）。
-3. `AsterVpnService` 讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、`198.18.0.1/30`、DNS `198.18.0.2`、IPv4/IPv6 預設路由。
+3. `AsterVpnService` 讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、IPv4 `198.18.0.1/30`、IPv6 `fdfe:dcba:9876::1/126`、DNS `198.18.0.2` 與 `fdfe:dcba:9876::2`、IPv4/IPv6 預設路由。IPv6 位址是必要的：只加 IPv6 路由而沒有介面位址時，應用程式的 IPv6 socket 會因沒有來源位址而先失敗。
 4. TUN file descriptor 交給同一程序內的 Aster Core。Core 使用 `auto-route: false`，路由由 Android 的 VpnService 管理。
 5. Core 的對外 socket 透過 `SocketProtector` 呼叫 `VpnService.protect()`，避免節點連線再繞回 VPN。
 
