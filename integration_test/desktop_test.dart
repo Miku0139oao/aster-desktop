@@ -75,6 +75,22 @@ void main() {
       expect(await state(), expected);
     }
 
+    // A route transition can briefly leave its target under an absorbing
+    // barrier on CI runners, so wait until the target is actually hittable.
+    Future<void> waitUntilHittable(Finder finder) async {
+      for (var i = 0; i < 50 && finder.hitTestable().evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    Future<void> tapWhenReady(Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
+      await waitUntilHittable(finder);
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
     await windowManager.hide();
     await waitForWindow(windowManager.isVisible, false);
     await activate();
@@ -138,13 +154,8 @@ void main() {
       of: find.byType(TunNetworkSelector),
       matching: find.byType(DropdownButtonFormField<String>),
     );
-    await tester.ensureVisible(tunDropdown);
-    await tester.pumpAndSettle();
-    await tester.tap(tunDropdown);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text(uplink).last);
-    await tester.tap(find.text(uplink).last);
-    await tester.pumpAndSettle();
+    await tapWhenReady(tunDropdown);
+    await tapWhenReady(find.text(uplink).last);
     expect(c.settings.tunInterface, uplink);
     // The workstation workflow only checks UI/persistence. Real privileged TUN
     // is exercised separately on the disposable Windows service runner.
@@ -239,14 +250,15 @@ void main() {
                   .replaceFirst(RegExp(r'\.exe$', caseSensitive: false), '') ==
               executableName,
     );
-    await tester.tap(application.first);
-    await tester.pumpAndSettle();
+    await tapWhenReady(application.first);
+    // The route picker dialog opens while the application picker is still
+    // closing; wait for it to accept input before typing into it.
+    await waitUntilHittable(find.byKey(const Key('route-search')));
     // Different native font metrics can put a later route below the viewport.
     // Follow the user search flow before tapping rather than an offscreen row.
     await tester.enterText(find.byKey(const Key('route-search')), 'Local A');
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('target:Local A')));
-    await tester.tap(find.byKey(const ValueKey('target:Local A')));
+    await tapWhenReady(find.byKey(const ValueKey('target:Local A')));
     for (
       var attempt = 0;
       attempt < 150 && (c.active!.json['desktopRules'] as List? ?? []).isEmpty;
@@ -261,15 +273,13 @@ void main() {
       ),
       isTrue,
     );
-    await tester.ensureVisible(
+    await tapWhenReady(
       find.byKey(const ValueKey('application-route-0')),
     );
-    await tester.tap(find.byKey(const ValueKey('application-route-0')));
-    await tester.pumpAndSettle();
+    await waitUntilHittable(find.byKey(const Key('route-search')));
     await tester.enterText(find.byKey(const Key('route-search')), 'DIRECT');
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('target:DIRECT')));
-    await tester.tap(find.byKey(const ValueKey('target:DIRECT')));
+    await tapWhenReady(find.byKey(const ValueKey('target:DIRECT')));
     for (
       var attempt = 0;
       attempt < 150 &&
@@ -298,8 +308,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(c.active!.json['desktopRules'] as List? ?? [], isEmpty);
-    await tester.tap(find.text('完成'));
-    await tester.pumpAndSettle();
+    await tapWhenReady(find.text('完成'));
     expect(tester.takeException(), isNull);
     // Edit a large document in the real desktop window while the core runs.
     unawaited(
@@ -331,8 +340,7 @@ void main() {
     expect(editor.text == draft, isFalse);
     editor.text =
         before; // Keep the fixture configuration valid for real validation.
-    await tester.ensureVisible(find.text('儲存並套用'));
-    await tester.tap(find.text('儲存並套用'));
+    await tapWhenReady(find.text('儲存並套用'));
     for (
       var attempt = 0;
       attempt < 150 &&
@@ -347,8 +355,7 @@ void main() {
     expect(c.active!.content == before, isTrue);
     c.navigate(0);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('primary-connect')));
-    await tester.tap(find.byKey(const Key('primary-connect')));
+    await tapWhenReady(find.byKey(const Key('primary-connect')));
     for (var attempt = 0; attempt < 150 && c.running; attempt++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
