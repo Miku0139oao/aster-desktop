@@ -87,7 +87,24 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun prepareVpn(result: MethodChannel.Result) {
-        requestNotificationPermission()
+        // Ask for notifications first. Showing both system dialogs at once
+        // delays the foreground service start until the second one closes.
+        if (needsNotificationPermission()) {
+            val previous = vpnResult
+            if (previous != null) {
+                previous.error("vpn_busy", "Another VPN permission request is pending", null)
+            }
+            vpnResult = result
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_REQUEST,
+            )
+            return
+        }
+        beginVpnConsent(result)
+    }
+
+    private fun beginVpnConsent(result: MethodChannel.Result) {
         val intent = VpnService.prepare(this)
         if (intent != null) {
             val previous = vpnResult
@@ -153,14 +170,23 @@ class MainActivity : FlutterActivity() {
         throw IllegalStateException("Aster service is still starting")
     }
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != NOTIFICATION_REQUEST) return
+        val pending = vpnResult
+        vpnResult = null
+        // Notifications are optional; continue even when they were denied.
+        if (pending != null) beginVpnConsent(pending)
+    }
+
+    private fun needsNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_REQUEST)
     }
 
     private fun describe(error: Throwable): String =

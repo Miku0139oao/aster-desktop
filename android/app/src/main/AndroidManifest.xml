@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- applySystemDNS reads the active network's resolvers before the VPN is
+         established. Without this, the core falls back to public DNS and can
+         fail to resolve remote rule/provider downloads. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Split tunneling lists installed packages. This app is distributed as a
          direct APK; see docs/ANDROID.md for the Play policy note. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />

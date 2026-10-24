@@ -15,12 +15,15 @@ Flutter 透過 `app.astercore/android` MethodChannel 呼叫 `AsterVpnService`。
 連線流程：
 
 1. Flutter 呼叫 `startVpn`。
-2. `MainActivity` 取得 Android VPN 授權（第一次會顯示系統對話框）。
-3. `AsterVpnService` 讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、IPv4 `198.18.0.1/30`、IPv6 `fdfe:dcba:9876::1/126`、DNS `198.18.0.2` 與 `fdfe:dcba:9876::2`、IPv4/IPv6 預設路由。IPv6 位址是必要的：只加 IPv6 路由而沒有介面位址時，應用程式的 IPv6 socket 會因沒有來源位址而先失敗。
-4. TUN file descriptor 交給同一程序內的 Aster Core。Core 使用 `auto-route: false` 與 `auto-detect-interface: false`：路由由 Android 的 VpnService 管理，而 `auto-detect-interface` 的 netlink 監控在 Android 14 以上的 App 可能被 SELinux 禁止；對外 socket 改由 `VpnService.protect()` 保證繞過 VPN。
+2. `MainActivity` 先請求通知權限（Android 13+），完成後才取得 Android VPN 授權（第一次會顯示系統對話框）。兩個對話框循序顯示，避免前景服務啟動被授權流程延遲。
+3. `AsterVpnService` 讀取裝置上的應用程式分流設定，用 `VpnService.Builder` 建立 TUN，MTU 9000、IPv4 `198.19.0.1/30`、IPv6 `fdfe:dcba:9876::1/126`、DNS `198.19.0.2` 與 `fdfe:dcba:9876::2`、IPv4/IPv6 預設路由。Android 版固定使用 `198.19.0.0/16` 作為 fake-IP 範圍，避開底層透明代理常用的 `198.18.0.0/16`；兩者重疊時，應用程式可能拿到另一個代理的 fake IP，連線會卡在 SYN-SENT。IPv6 位址是必要的：只加 IPv6 路由而沒有介面位址時，應用程式的 IPv6 socket 會因沒有來源位址而先失敗。TUN 建立後先以 `MobileHost.validateVPN` 驗證目前設定（包含遠端 rule-provider 與 MMDB 下載）；此時 `VpnService.protect()` 已能保護下載 socket。驗證失敗會直接關閉 TUN，不會把 fd 交給 core；通過後才 `detachFd()`。
+4. TUN file descriptor 交給同一程序內的 Aster Core。Core 使用 `auto-route: false` 與 `auto-detect-interface: false`：路由由 Android 的 VpnService 管理，而 `auto-detect-interface` 的 netlink 監控在 Android 14 以上的 App 可能被 SELinux 禁止；對外 socket 改由 `VpnService.protect()` 保證繞過 VPN。Core 也強制使用 `stack: gvisor`；system／mixed stack 需要自行管理介面，在 fd 模式下不會回應應用程式連線。
+5. 斷線時 `Core.Stop` 會依序關閉 TUN、mixed proxy 與 DNS listener，service 再停止前景通知。in-process core 不能只依賴程序結束，否則 7890 會殘留，下一次連線會因連接埠佔用而失敗。
 5. Core 的對外 socket 透過 `SocketProtector` 呼叫 `VpnService.protect()`，避免節點連線再繞回 VPN。
 
-gomobile 使用 `with_gvisor cmfa` build tag。`cmfa` 會停用 core 內建的 `/data/system/packages.xml` 讀取；一般 Android App 沒有權限讀取該檔案，若不停用會讓 TUN 建立失敗。應用程式分流因此由 `VpnService.Builder` 執行。Android 的系統 DNS 由 Kotlin 從 `LinkProperties` 讀取後，透過 `MobileHost.setSystemDNS` 注入 core。
+gomobile 使用 `with_gvisor cmfa` build tag。`cmfa` 會停用 core 內建的 `/data/system/packages.xml` 讀取；一般 Android App 沒有權限讀取該檔案，若不停用會讓 TUN 建立失敗。應用程式分流因此由 `VpnService.Builder` 執行。Android 的系統 DNS 由 Kotlin 從 `LinkProperties` 讀取後，透過 `MobileHost.setSystemDNS` 注入 core。讀取發生在建立 TUN 之前，需要 `ACCESS_NETWORK_STATE`，並優先選擇非 VPN 的底層網路；否則重連時可能讀到上一條 VPN 的 `198.19.0.2`，而此時 core 尚未啟動，遠端 MMDB／規則資料庫會解析失敗。
+
+服務在建立 TUN 前，會用 Android 的 HTTP stack 依 profile 的 `geox-url` 預先下載 `geoip.metadb` 與 `GeoSite.dat` 到 App 私有的 `runtime` 目錄；core 的驗證與啟動直接使用這些檔案。若網路環境的 DNS 只回傳 fake IP，core 內部的下載會在 DNS 就緒前失敗，預先下載可避開該問題。Android 版也不使用 `allow-lan`；混合代理只提供本機使用，設定頁不顯示該開關。
 
 ## 應用程式分流
 
@@ -41,7 +44,7 @@ Android 的 `VpnService` 只能以套件為單位決定是否進入 VPN，因此
 - 尚未在本專案的 CI 或開發環境中完成 Android 實機／emulator 的 VPN 連線、DNS、UDP、節點切換與斷線清理驗證。在完成實機驗證前，不應宣稱 Android VPN 已可正式使用。
 - `QUERY_ALL_PACKAGES` 用來列出所有已安裝 App。直接安裝 APK 沒問題；若要上架 Google Play，需依該權限政策提出 VPN／安全用途說明，或改為只列出有啟動圖示的 App。
 - Android 13 以上首次連線會請求通知權限。即使拒絕，VPN 仍可運作，但通知列可能不顯示。
-- CI 產生的 APK 目前使用 Gradle 的 debug 簽章，且每個 runner 的除錯金鑰不同，只能視為測試包；要提供可覆蓋更新的正式 APK，必須另外設定固定的 release keystore。
+- CI 若設定了 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 四個 secrets，會使用固定的 release keystore 簽署，workflow 也會驗證簽章；未設定時退回 Gradle debug 簽章，只能視為測試包。keystore 與密碼必須另行備份，遺失後既有安裝無法覆蓋更新。本機建置若要簽 release，設定 `ASTER_ANDROID_KEYSTORE`、`ASTER_ANDROID_STORE_PASSWORD`、`ASTER_ANDROID_KEY_ALIAS`、`ASTER_ANDROID_KEY_PASSWORD` 後執行同一個建置腳本即可。
 - 桌面版的系統代理、TUN 網路介面選擇與背景服務授權不適用於 Android，已在設定頁隱藏。
 
 ## 建置需求

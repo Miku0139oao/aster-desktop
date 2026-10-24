@@ -162,6 +162,9 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
     }
     final cs = Theme.of(context).colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 1000;
+    // Phones cannot give the fixed desktop sidebar a useful width; use a
+    // drawer instead so the page keeps the whole screen.
+    final narrow = MediaQuery.sizeOf(context).width < 720;
     final destinations = [
       (0, Icons.space_dashboard_outlined, c.tr('首頁', 'Overview')),
       (1, Icons.hub_outlined, c.tr('節點', 'Nodes')),
@@ -186,10 +189,99 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       child: Focus(
         autofocus: true,
         child: Scaffold(
+          drawer: narrow
+              ? Drawer(
+                  child: SafeArea(
+                    child: Builder(
+                      builder: (drawerContext) => NavigationDrawer(
+                        selectedIndex: destinations.indexWhere(
+                          (destination) => destination.$1 == c.page,
+                        ),
+                        onDestinationSelected: (index) {
+                          c.navigate(destinations[index].$1);
+                          Scaffold.of(drawerContext).closeDrawer();
+                        },
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                            child: Row(
+                              children: const [
+                                AsterMark(size: 30),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Aster',
+                                  style: TextStyle(
+                                    fontSize: 23,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          for (final destination in destinations)
+                            NavigationDrawerDestination(
+                              icon: Icon(destination.$2),
+                              label: Text(destination.$3),
+                            ),
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(20, 8, 20, 8),
+                            child: Divider(),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (c.active != null)
+                                  Text(
+                                    c.active!.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                const SizedBox(height: 8),
+                                FilledButton.tonalIcon(
+                                  onPressed:
+                                      !c.ready || c.busy || c.active == null
+                                      ? null
+                                      : c.toggle,
+                                  icon: Icon(
+                                    c.running
+                                        ? Icons.stop_circle_outlined
+                                        : Icons.play_arrow_rounded,
+                                    size: 20,
+                                  ),
+                                  label: Text(
+                                    c.running
+                                        ? c.tr('停止代理', 'Stop proxy')
+                                        : c.tr('啟動代理', 'Start proxy'),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'v${c.desktopVersion}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: cs.outline,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : null,
           body: SafeArea(
             child: Row(
               children: [
-                Container(
+                if (!narrow)
+                  Container(
                   width: compact ? 164 : 208,
                   color: cs.surfaceContainerLow,
                   child: Column(
@@ -376,9 +468,23 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 16, 16, 14),
+                        padding: EdgeInsets.fromLTRB(
+                          narrow ? 8 : 24,
+                          16,
+                          16,
+                          14,
+                        ),
                         child: Row(
                           children: [
+                            if (narrow)
+                              Builder(
+                                builder: (context) => IconButton(
+                                  tooltip: c.tr('選單', 'Menu'),
+                                  onPressed: () =>
+                                      Scaffold.of(context).openDrawer(),
+                                  icon: const Icon(Icons.menu),
+                                ),
+                              ),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,16 +744,16 @@ class ErrorCard extends StatelessWidget {
               'Install the background service in Advanced and approve the system prompt.',
             );
     }
-    if (message.contains('subscription') || message.contains('download')) {
-      return c.tr(
-        '請檢查訂閱網址與網路，再試一次。',
-        'Check the subscription URL and your network, then try again.',
-      );
-    }
     if (message.contains('configuration') || message.contains('validation')) {
       return c.tr(
         '請檢查設定內容，或還原上一份有效設定。',
         'Check the configuration or restore its previous version.',
+      );
+    }
+    if (message.contains('subscription') || message.contains('download')) {
+      return c.tr(
+        '請檢查訂閱網址與網路，再試一次。',
+        'Check the subscription URL and your network, then try again.',
       );
     }
     return c.tr(

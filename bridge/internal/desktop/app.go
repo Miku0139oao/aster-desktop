@@ -68,6 +68,18 @@ func NewApp(dir, binary, gui string) (*App, error) {
 	return a, nil
 }
 
+// ValidateConnect checks the active profile with the current settings without
+// starting the core. Mobile callers use it before creating a TUN descriptor so
+// a bad configuration cannot leave a detached VPN interface behind.
+func (a *App) ValidateConnect(ctx context.Context) error {
+	profile, err := a.Store.Profile(a.Store.State.ActiveID)
+	if err != nil {
+		return errors.New("import a subscription or configuration before connecting")
+	}
+	_, err = a.Core.Validate(ctx, profile.Content, a.Store.State.Settings, false)
+	return err
+}
+
 func NewMobileApp(dir string) (*App, error) {
 	app, err := NewApp(dir, "", "")
 	if err != nil {
@@ -75,10 +87,13 @@ func NewMobileApp(dir string) (*App, error) {
 	}
 	// Older mobile builds could save TUN off while still connecting through
 	// VpnService. Normalize them once so the UI matches what connect does.
+	// Android also has no need to expose the mixed proxy to the LAN.
 	settings := app.Store.State.Settings
-	if runtime.GOOS == "android" && (!settings.Tun || settings.SystemProxy) {
+	if runtime.GOOS == "android" &&
+		(!settings.Tun || settings.SystemProxy || settings.AllowLAN) {
 		settings.Tun = true
 		settings.SystemProxy = false
+		settings.AllowLAN = false
 		if err = settings.Validate(); err != nil {
 			_ = app.Close()
 			return nil, err

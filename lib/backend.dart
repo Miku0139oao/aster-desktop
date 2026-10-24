@@ -498,9 +498,15 @@ class AndroidBackend implements DesktopBackend {
       'method': method,
       'params': params ?? {},
     });
+    final native = switch (method) {
+      'connect' => 'startVpn',
+      // The service owns the foreground notification and TUN teardown.
+      'disconnect' => 'stopVpn',
+      _ => 'call',
+    };
     final encoded = await _channel
-        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
-          if (method != 'connect') 'request': request,
+        .invokeMethod<String>(native, {
+          if (native == 'call') 'request': request,
         })
         .timeout(
           method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -224,6 +225,18 @@ func Runtime(content string, s Settings, controller, secret, dir string, privile
 		if err := checkPrivilegedResources(doc); err != nil {
 			return nil, err
 		}
+	}
+	if runtime.GOOS == "android" {
+		// Transparent proxies on the underlying network commonly use the
+		// 198.18.0.0/16 fake-IP range. Keep the in-app core on 198.19.0.0/16
+		// so an app cannot receive a fake IP that belongs to the other proxy.
+		// The VpnService addresses in AsterVpnService.kt must match.
+		dnsConfig, _ := doc["dns"].(map[string]any)
+		if dnsConfig == nil {
+			dnsConfig = map[string]any{}
+		}
+		dnsConfig["fake-ip-range"] = "198.19.0.1/16"
+		doc["dns"] = dnsConfig
 	}
 	return yaml.Marshal(doc)
 }

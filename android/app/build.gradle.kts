@@ -4,6 +4,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// CI supplies a fixed release key through these variables. Local builds fall
+// back to the debug key so `flutter run --release` keeps working.
+val releaseKeystore = System.getenv("ASTER_ANDROID_KEYSTORE")
+
 android {
     namespace = "app.aster.desktop"
     compileSdk = flutter.compileSdkVersion
@@ -32,11 +36,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("ASTER_ANDROID_STORE_PASSWORD")
+                keyAlias = System.getenv("ASTER_ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ASTER_ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // A fixed key lets users update an installed APK in place.
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

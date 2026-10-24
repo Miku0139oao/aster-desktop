@@ -18,8 +18,11 @@ import (
 	"sync"
 	"time"
 
+	C "github.com/Miku0139oao/aster-core/constant"
+	"github.com/Miku0139oao/aster-core/dns"
 	"github.com/Miku0139oao/aster-core/hub"
 	"github.com/Miku0139oao/aster-core/hub/executor"
+	"github.com/Miku0139oao/aster-core/listener"
 	"github.com/sirupsen/logrus"
 
 	"gopkg.in/yaml.v3"
@@ -90,6 +93,9 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 		if err := os.MkdirAll(c.Dir, 0700); err != nil {
 			return nil, err
 		}
+		// The core otherwise looks for geodata under $HOME/.config/mihomo,
+		// which is not writable (or even present) for an Android app.
+		C.SetHomeDir(c.Dir)
 		b, err := Runtime(content, s, c.Address, c.Secret, c.Dir, privileged)
 		if err != nil {
 			return nil, err
@@ -385,6 +391,7 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 }
 
 func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
+	C.SetHomeDir(c.Dir)
 	if _, err := c.Validate(ctx, content, s, false); err != nil {
 		return err
 	}
@@ -484,6 +491,11 @@ func (c *Core) Stop() error {
 			cancel()
 		}
 		executor.Shutdown()
+		// Shutdown only closes the TUN listener. The mixed proxy and DNS
+		// server are owned by the core's listener/dns packages, so release
+		// them explicitly or a reconnect fails with "proxy port in use".
+		listener.ReCreateMixed(0, nil)
+		dns.ReCreateServer("", nil, nil)
 		if done != nil {
 			close(done)
 		}
@@ -544,6 +556,7 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		return err
 	}
 	if c.InProcess {
+		C.SetHomeDir(c.Dir)
 		if !c.Status().Running {
 			return nil
 		}

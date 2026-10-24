@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -19,6 +20,10 @@ import mobileapi.Mobileapi
 import mobileapi.SocketProtector
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
 class AsterVpnService : VpnService(), SocketProtector {
@@ -30,6 +35,7 @@ class AsterVpnService : VpnService(), SocketProtector {
         private const val PREFS = "aster_android"
         private const val ROUTING_KEY = "app_routing"
         private const val MAX_APPS = 512
+        private const val MAX_GEODATA_BYTES = 64L * 1024 * 1024
         private val packagePattern =
             Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$")
         private val routeModes = setOf("proxy", "direct", "exclude")
@@ -122,7 +128,11 @@ class AsterVpnService : VpnService(), SocketProtector {
     }
 
     /** gomobile maps the Go interface method Protect(int32) to protect(int). */
-    override fun protect(fd: Int): Boolean = super.protect(fd)
+    override fun protect(fd: Int): Boolean {
+        val protected = super.protect(fd)
+        if (!protected) Log.w(TAG, "Android refused to protect socket fd $fd")
+        return protected
+    }
 
     fun call(request: String): String {
         ensureHost()
@@ -135,10 +145,29 @@ class AsterVpnService : VpnService(), SocketProtector {
             val mobileHost = host ?: throw IllegalStateException("Aster engine is not ready")
             mobileHost.setProtector(this)
             applySystemDNS(mobileHost)
+            ensureGeodata(mobileHost)
             val routing = readRouting(this)
             startAsterForeground("Connecting")
+            val tun = try {
+                buildTun(routing)
+            } catch (error: Throwable) {
+                stopAsterForeground()
+                throw error
+            }
+            try {
+                // Validate while the TUN is up so VpnService.protect() can
+                // release the remote-download sockets. Java still owns the
+                // descriptor here, so a failure can close the interface.
+                mobileHost.validateVPN()
+            } catch (error: Throwable) {
+                runCatching { tun.close() }
+                runCatching { mobileHost.stopVPN() }
+                stopAsterForeground()
+                Log.e(TAG, "VPN validation failed", error)
+                throw error
+            }
             // The detached descriptor is owned by the core from here on.
-            val fd = buildTun(routing).detachFd()
+            val fd = tun.detachFd()
             try {
                 val encoded = mobileHost.startVPN(fd, packageOptions(routing).toString())
                 updateNotification("Connected")
@@ -207,12 +236,12 @@ class AsterVpnService : VpnService(), SocketProtector {
         val builder = Builder()
             .setSession("Aster")
             .setMtu(9000)
-            .addAddress("198.18.0.1", 30)
+            .addAddress("198.19.0.1", 30)
             // The IPv6 default route needs an IPv6 address on the interface;
             // otherwise IPv6 sockets have no source address and fail before
             // falling back to IPv4.
             .addAddress("fdfe:dcba:9876::1", 126)
-            .addDnsServer("198.18.0.2")
+            .addDnsServer("198.19.0.2")
             .addDnsServer("fdfe:dcba:9876::2")
             .addRoute("0.0.0.0", 0)
             .addRoute("::", 0)
@@ -259,25 +288,99 @@ class AsterVpnService : VpnService(), SocketProtector {
             if (manager == null) {
                 ""
             } else {
-                val network = manager.activeNetwork
-                if (network == null) {
-                    ""
-                } else {
-                    manager.getLinkProperties(network)?.dnsServers
-                        ?.mapNotNull { it.hostAddress }
-                        ?.joinToString(",")
-                        .orEmpty()
+                val candidates = manager.allNetworks.filter { network ->
+                    val capabilities = manager.getNetworkCapabilities(network)
+                        ?: return@filter false
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                        !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
                 }
+                // The active network may already be the VPN from a previous
+                // session. Its DNS 198.18.0.2 is served by the core, which is
+                // not running yet, so prefer the underlying network instead.
+                val active = manager.activeNetwork
+                val network = candidates.firstOrNull { it == active }
+                    ?: candidates.firstOrNull()
+                network?.let { manager.getLinkProperties(it) }?.dnsServers
+                    ?.mapNotNull { it.hostAddress }
+                    ?.joinToString(",")
+                    .orEmpty()
             }
         } catch (error: Throwable) {
             Log.w(TAG, "Could not read the active DNS servers", error)
             ""
         }
         val value = servers.ifBlank { "1.1.1.1,8.8.8.8" }
+        Log.i(TAG, "System DNS: $value")
         try {
             mobileHost.setSystemDNS(value)
         } catch (error: Throwable) {
             Log.w(TAG, "Core system DNS initialization failed", error)
+        }
+    }
+
+    private fun ensureGeodata(mobileHost: Host) {
+        val runtime = File(filesDir, "runtime")
+        if (!runtime.isDirectory && !runtime.mkdirs()) {
+            Log.w(TAG, "Could not create the core runtime directory")
+            return
+        }
+        val geoip = File(runtime, "geoip.metadb")
+        val geosite = File(runtime, "GeoSite.dat")
+        if (geoip.isFile && geosite.isFile) return
+        val urls = try {
+            JSONObject(mobileHost.geodata())
+        } catch (error: Throwable) {
+            Log.w(TAG, "Could not read the geodata URLs", error)
+            return
+        }
+        if (!geoip.isFile) {
+            urls.optString("mmdb")
+                .takeIf { it.isNotEmpty() }
+                ?.let { downloadGeodata(it, geoip) }
+        }
+        if (!geosite.isFile) {
+            urls.optString("geosite")
+                .takeIf { it.isNotEmpty() }
+                ?.let { downloadGeodata(it, geosite) }
+        }
+    }
+
+    private fun downloadGeodata(url: String, target: File) {
+        val temporary = File(target.parentFile, "${target.name}.part")
+        try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 15000
+            connection.readTimeout = 60000
+            try {
+                if (connection.responseCode !in 200..299) {
+                    throw IOException("HTTP ${connection.responseCode}")
+                }
+                var total = 0L
+                connection.inputStream.use { input ->
+                    temporary.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > MAX_GEODATA_BYTES) {
+                                throw IOException("geodata is too large")
+                            }
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+            if (!temporary.renameTo(target)) {
+                temporary.copyTo(target, overwrite = true)
+                temporary.delete()
+            }
+            Log.i(TAG, "Downloaded ${target.name}")
+        } catch (error: Throwable) {
+            temporary.delete()
+            Log.w(TAG, "Could not download ${target.name}", error)
         }
     }
 

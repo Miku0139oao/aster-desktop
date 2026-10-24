@@ -70,6 +70,10 @@ func (c *Core) tunPackages() ([]string, []string) {
 func applyMobileTunOptions(tun map[string]any, fd int, include, exclude []string) {
 	tun["auto-route"] = false
 	tun["auto-detect-interface"] = false
+	// Android hands over a VpnService descriptor. The system/mixed stack
+	// expects to own the interface and does not answer application SYNs in
+	// that mode; gVisor reads and writes the descriptor directly.
+	tun["stack"] = "gvisor"
 	delete(tun, "file-descriptor")
 	delete(tun, "include-package")
 	delete(tun, "exclude-package")
