@@ -82,7 +82,7 @@ final class AsterIOSHost {
 
     func currentStatus() async -> String {
         guard let manager = try? await tunnelManager() else { return "Unavailable" }
-        switch manager?.connection.status {
+        switch manager.connection.status {
         case .connected:
             return "Connected"
         case .connecting, .reasserting:
