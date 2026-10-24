@@ -198,6 +198,7 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       await refresh();
+      await _consumePendingRoute();
       ready = true;
     } catch (e) {
       error = e.toString();
@@ -423,6 +424,7 @@ class AppController extends ChangeNotifier {
     _polling = true;
     final epoch = _operationEpoch;
     try {
+      await _consumePendingRoute();
       final wasRunning = running;
       await refresh();
       if (busy || epoch != _operationEpoch) return;
@@ -500,6 +502,12 @@ class AppController extends ChangeNotifier {
     } finally {
       _polling = false;
     }
+  }
+
+  Future<void> _consumePendingRoute() async {
+    if (backend is! IOSBackend || _disposed) return;
+    final route = await (backend as IOSBackend).initialRoute();
+    if (!_disposed && route == 'nodes' && page != 1) navigate(1);
   }
 
   void _onEvent(Json event) {
