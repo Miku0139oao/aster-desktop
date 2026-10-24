@@ -136,6 +136,27 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Decode the release signing key
+        id: release_key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aster-release.jks"
+            {
+              echo "ASTER_ANDROID_KEYSTORE=$RUNNER_TEMP/aster-release.jks"
+              echo "ASTER_ANDROID_STORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "ASTER_ANDROID_KEY_ALIAS=$KEY_ALIAS"
+              echo "ASTER_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Release signing secrets are not configured; the APK will use the debug key."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build Android engine and APKs
         run: python3 scripts/build-android.py
       - name: Verify packaged native engines
@@ -144,6 +165,12 @@ jobs:
           cd build/android
           sha256sum -c checksums.txt
           unzip -t app/mobileapi.aar > /dev/null
+      - name: Verify the release signature
+        if: steps.release_key.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk
       - name: Preserve Android packages
         uses: actions/upload-artifact@v4
         with:
