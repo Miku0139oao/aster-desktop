@@ -169,6 +169,14 @@ jobs:
         run: gem install xcodeproj --no-document
       - name: Build Go XCFramework and unsigned iOS app
         run: python3 scripts/build-ios.py
+      - name: Verify iOS app, tunnel, framework, and App Intents
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          test -x "$app/Runner"
+          test -d "$app/Frameworks/Mobileapi.framework"
+          test -x "$app/PlugIns/AsterTunnel.appex/AsterTunnel"
+          test -d "$app/PlugIns/AsterTunnel.appex/Frameworks/Mobileapi.framework"
+          test -d "$app/Metadata.appintents"
       - name: Package the unsigned app for CI inspection
         run: |
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/Aster-iOS-unsigned.zip

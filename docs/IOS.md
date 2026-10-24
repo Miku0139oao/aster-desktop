@@ -56,6 +56,14 @@ python3 scripts/build-ios.py
 2. 執行 `scripts/configure-ios.rb`，加入 `AsterTunnel` extension、App Group entitlement、framework 與 embed phase。
 3. 執行 Flutter unsigned iOS release build。
 
+CI 另會確認產物內含：
+
+- `Runner.app`
+- `Frameworks/Mobileapi.framework`
+- `PlugIns/AsterTunnel.appex`
+- extension 內的 `Mobileapi.framework`
+- `Metadata.appintents`
+
 ## 目前限制
 
 - 尚未在 iPhone 實機驗證。
