@@ -88,7 +88,7 @@ def embed_framework(target, reference)
   phase = target.copy_files_build_phases.find { |item| item.name == "Embed Frameworks" }
   unless phase
     phase = target.new_copy_files_build_phase("Embed Frameworks")
-    phase.dst_subfolder_spec = :frameworks
+    phase.dst_subfolder_spec = "10"
   end
   phase.files_references.compact.each do |existing|
     return if existing == reference
@@ -114,7 +114,7 @@ end
 embed_extensions = runner.copy_files_build_phases.find { |phase| phase.name == "Embed App Extensions" }
 unless embed_extensions
   embed_extensions = runner.new_copy_files_build_phase("Embed App Extensions")
-  embed_extensions.dst_subfolder_spec = :plug_ins
+  embed_extensions.dst_subfolder_spec = "13"
 end
 unless embed_extensions.files_references.include?(extension.product_reference)
   build_file = embed_extensions.add_file_reference(extension.product_reference, true)
