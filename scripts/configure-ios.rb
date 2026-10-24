@@ -19,7 +19,7 @@ runner.build_configurations.each do |configuration|
   settings["PRODUCT_BUNDLE_IDENTIFIER"] = "app.aster.desktop"
   settings["IPHONEOS_DEPLOYMENT_TARGET"] = "16.0"
   settings["CODE_SIGN_ENTITLEMENTS"] = "Runner/Runner.entitlements"
-  settings["OTHER_LDFLAGS"] = [settings["OTHER_LDFLAGS"], "-ObjC"].compact.join(" ")
+  settings["OTHER_LDFLAGS"] = [settings["OTHER_LDFLAGS"], "-ObjC -lresolv"].compact.join(" ")
 end
 
 runner_group = project.main_group.find_subpath("Runner", false)
@@ -70,6 +70,7 @@ extension.build_configurations.each do |configuration|
     "@executable_path/Frameworks",
     "@executable_path/../../Frameworks",
   ]
+  settings["OTHER_LDFLAGS"] = [settings["OTHER_LDFLAGS"], "-lresolv"].compact.join(" ")
 end
 
 framework_ref = project.frameworks_group.files.find { |file| file.path == "mobileapi.xcframework" }
