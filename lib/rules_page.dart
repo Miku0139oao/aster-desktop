@@ -287,6 +287,97 @@ class _RulesPageState extends State<RulesPage> {
                 final rule = entries[i];
                 final index = enabled.indexOf(rule);
                 final off = disabled.contains(rule);
+                final controls = <Widget>[
+                  IconButton(
+                    tooltip: c.tr('向上移動', 'Move up'),
+                    onPressed: c.busy || index <= 0
+                        ? null
+                        : () {
+                            final order = [...enabled];
+                            order[index] = order[index - 1];
+                            order[index - 1] = rule;
+                            action(rule, 'order', order: order);
+                          },
+                    icon: const Icon(Icons.arrow_upward, size: 18),
+                  ),
+                  IconButton(
+                    tooltip: c.tr('向下移動', 'Move down'),
+                    onPressed: c.busy || index < 0 || index == enabled.length - 1
+                        ? null
+                        : () {
+                            final order = [...enabled];
+                            order[index] = order[index + 1];
+                            order[index + 1] = rule;
+                            action(rule, 'order', order: order);
+                          },
+                    icon: const Icon(Icons.arrow_downward, size: 18),
+                  ),
+                  Switch(
+                    value: !off,
+                    onChanged: c.busy
+                        ? null
+                        : (_) => action(rule, off ? 'enable' : 'disable'),
+                  ),
+                  IconButton(
+                    tooltip: c.tr('刪除規則', 'Delete rule'),
+                    onPressed: c.busy || off
+                        ? null
+                        : () async {
+                            if (await confirm(
+                              context,
+                              c,
+                              c.tr('刪除這條規則？', 'Delete this rule?'),
+                            )) {
+                              await c.perform(() async {
+                                await c.backend.call('patchProfile', {
+                                  'id': c.activeId,
+                                  'removeRule': rule,
+                                });
+                              });
+                              if (mounted) setState(() {});
+                            }
+                          },
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                  ),
+                ];
+                if (MediaQuery.sizeOf(context).width < 600) {
+                  // Four trailing actions leave no room for the rule text on
+                  // a phone; put the controls on their own line instead.
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 28,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(off ? '—' : '${index + 1}'),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Tooltip(
+                                  message: rule,
+                                  child: Text(
+                                    rule,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              Row(children: controls),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
                 return ListTile(
                   leading: Text(off ? '—' : '${index + 1}'),
                   title: Tooltip(
@@ -299,60 +390,7 @@ class _RulesPageState extends State<RulesPage> {
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: c.tr('向上移動', 'Move up'),
-                        onPressed: c.busy || index <= 0
-                            ? null
-                            : () {
-                                final order = [...enabled];
-                                order[index] = order[index - 1];
-                                order[index - 1] = rule;
-                                action(rule, 'order', order: order);
-                              },
-                        icon: const Icon(Icons.arrow_upward, size: 18),
-                      ),
-                      IconButton(
-                        tooltip: c.tr('向下移動', 'Move down'),
-                        onPressed:
-                            c.busy || index < 0 || index == enabled.length - 1
-                            ? null
-                            : () {
-                                final order = [...enabled];
-                                order[index] = order[index + 1];
-                                order[index + 1] = rule;
-                                action(rule, 'order', order: order);
-                              },
-                        icon: const Icon(Icons.arrow_downward, size: 18),
-                      ),
-                      Switch(
-                        value: !off,
-                        onChanged: c.busy
-                            ? null
-                            : (_) => action(rule, off ? 'enable' : 'disable'),
-                      ),
-                      IconButton(
-                        tooltip: c.tr('刪除規則', 'Delete rule'),
-                        onPressed: c.busy || off
-                            ? null
-                            : () async {
-                                if (await confirm(
-                                  context,
-                                  c,
-                                  c.tr('刪除這條規則？', 'Delete this rule?'),
-                                )) {
-                                  await c.perform(() async {
-                                    await c.backend.call('patchProfile', {
-                                      'id': c.activeId,
-                                      'removeRule': rule,
-                                    });
-                                  });
-                                  if (mounted) setState(() {});
-                                }
-                              },
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                      ),
-                    ],
+                    children: controls,
                   ),
                 );
               },
