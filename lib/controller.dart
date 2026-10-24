@@ -7,6 +7,8 @@ import 'package:yaml/yaml.dart';
 
 import 'backend.dart';
 
+bool get isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+
 class AppSettings {
   const AppSettings({
     this.language = 'zh_TW',
