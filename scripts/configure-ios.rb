@@ -78,7 +78,7 @@ framework_ref.source_tree = "<group>"
 framework_ref.path = mobile_framework
 
 def link_framework(target, reference)
-  target.frameworks_build_phase.files_references.each do |existing|
+  target.frameworks_build_phase.files_references.compact.each do |existing|
     return if existing == reference
   end
   target.frameworks_build_phase.add_file_reference(reference, true)
@@ -90,7 +90,7 @@ def embed_framework(target, reference)
     phase = target.new_copy_files_build_phase("Embed Frameworks")
     phase.dst_subfolder_spec = :frameworks
   end
-  phase.files_references.each do |existing|
+  phase.files_references.compact.each do |existing|
     return if existing == reference
   end
   build_file = phase.add_file_reference(reference, true)
@@ -100,7 +100,7 @@ def embed_framework(target, reference)
 end
 
 [runner, extension].each do |target|
-  target.add_system_framework("NetworkExtension") unless target.frameworks_build_phase.files_references.any? {
+  target.add_system_framework("NetworkExtension") unless target.frameworks_build_phase.files_references.compact.any? {
     |file| file.path == "NetworkExtension.framework"
   }
   link_framework(target, framework_ref)
