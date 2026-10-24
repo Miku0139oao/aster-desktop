@@ -124,5 +124,12 @@ unless embed_extensions.files_references.include?(extension.product_reference)
   }
 end
 
+thin_binary = runner.build_phases.find { |phase| phase.display_name == "Thin Binary" }
+if thin_binary
+  runner.build_phases.delete(embed_extensions)
+  thin_index = runner.build_phases.index(thin_binary)
+  runner.build_phases.insert(thin_index, embed_extensions)
+end
+
 project.save
 puts "Configured Runner and AsterTunnel targets"
