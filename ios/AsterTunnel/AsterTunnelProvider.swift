@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import Mobileapi
 import NetworkExtension
 
 final class AsterTunnelProvider: NEPacketTunnelProvider {
@@ -46,7 +45,7 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
             }
             do {
                 let request = String(decoding: messageData, as: UTF8.self)
-                let response = try MobileapiCallHost(request)
+                let response = try AsterIOSRuntime.callHost(request)
                 completionHandler?(Data(response.utf8))
             } catch {
                 let response = AsterIOSRuntime.errorResponse(
@@ -66,12 +65,12 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
 
     private func startMobileCore() throws {
         let directory = try AsterIOSRuntime.containerURL()
-        try MobileapiOpenHost(directory.path)
+        try AsterIOSRuntime.openHost(directory.path)
         hostOpen = true
         guard let fd = tunnelFileDescriptor() else {
             throw AsterIOSError.tunnelFileDescriptor
         }
-        let response = try MobileapiStartHostVPN(fd, options: "")
+        let response = try AsterIOSRuntime.startHostVPN(fd: fd)
         if response.contains(#""error""#) {
             throw AsterIOSError.mobileEngine(response)
         }
@@ -79,8 +78,8 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
 
     private func closeMobileCore() {
         if hostOpen {
-            _ = try? MobileapiStopHostVPN()
-            try? MobileapiCloseHost()
+            _ = try? AsterIOSRuntime.stopHostVPN()
+            try? AsterIOSRuntime.closeHost()
             hostOpen = false
         }
     }

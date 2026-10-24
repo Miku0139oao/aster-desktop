@@ -1,4 +1,5 @@
 import Foundation
+import Mobileapi
 
 enum AsterIOSRuntime {
     static let appGroup = "group.app.aster.desktop"
@@ -43,6 +44,41 @@ enum AsterIOSRuntime {
             "error": ["code": "operation", "message": message],
         ])) ?? Data(#"{"id":0,"error":{"message":"operation failed"}}"#.utf8)
         return String(decoding: data, as: UTF8.self)
+    }
+
+    static func openHost(_ path: String) throws {
+        var error: NSError?
+        if !MobileapiOpenHost(path, &error) {
+            throw error ?? AsterIOSError.mobileEngine("Could not open the mobile engine.")
+        }
+    }
+
+    static func closeHost() throws {
+        var error: NSError?
+        if !MobileapiCloseHost(&error) {
+            throw error ?? AsterIOSError.mobileEngine("Could not close the mobile engine.")
+        }
+    }
+
+    static func callHost(_ request: String) throws -> String {
+        var error: NSError?
+        let response = MobileapiCallHost(request, &error)
+        if let error { throw error }
+        return response
+    }
+
+    static func startHostVPN(fd: Int32, options: String = "") throws -> String {
+        var error: NSError?
+        let response = MobileapiStartHostVPN(fd, options, &error)
+        if let error { throw error }
+        return response
+    }
+
+    static func stopHostVPN() throws -> String {
+        var error: NSError?
+        let response = MobileapiStopHostVPN(&error)
+        if let error { throw error }
+        return response
     }
 }
 

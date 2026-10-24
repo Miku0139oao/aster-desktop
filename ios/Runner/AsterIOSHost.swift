@@ -1,6 +1,5 @@
 import Flutter
 import Foundation
-import Mobileapi
 import NetworkExtension
 
 final class AsterIOSHost {
@@ -115,7 +114,7 @@ final class AsterIOSHost {
 
         try openHostIfNeeded()
         do {
-            return try MobileapiCallHost(request)
+            return try AsterIOSRuntime.callHost(request)
         } catch {
             throw AsterIOSError.mobileEngine(error.localizedDescription)
         }
@@ -126,7 +125,7 @@ final class AsterIOSHost {
         do {
             try openHostIfNeeded()
             let stateRequest = try AsterIOSRuntime.jsonRequest(method: "state")
-            _ = try MobileapiCallHost(stateRequest)
+            _ = try AsterIOSRuntime.callHost(stateRequest)
             try closeHost()
 
             let manager = try await preparedTunnelManager()
@@ -169,7 +168,7 @@ final class AsterIOSHost {
         if hostOpen { return }
         let directory = try AsterIOSRuntime.containerURL()
         do {
-            try MobileapiOpenHost(directory.path)
+            try AsterIOSRuntime.openHost(directory.path)
             hostOpen = true
         } catch {
             throw AsterIOSError.mobileEngine(error.localizedDescription)
@@ -179,7 +178,7 @@ final class AsterIOSHost {
     private func closeHost() throws {
         guard hostOpen else { return }
         do {
-            try MobileapiCloseHost()
+            try AsterIOSRuntime.closeHost()
             hostOpen = false
         } catch {
             throw AsterIOSError.mobileEngine(error.localizedDescription)
