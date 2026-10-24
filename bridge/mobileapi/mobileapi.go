@@ -1,6 +1,6 @@
-// Package mobileapi exposes the Aster management layer to the Android VPN
-// service. The core runs in the service process so its TUN descriptor and
-// protected outbound sockets remain owned by Android's VpnService.
+// Package mobileapi exposes the Aster management layer to Android VpnService
+// and the iOS NetworkExtension. The core runs in the mobile service process so
+// its TUN descriptor remains owned by the mobile VPN implementation.
 package mobileapi
 
 import (
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"syscall"
 
 	"github.com/Miku0139oao/aster-core/component/dialer"
@@ -26,6 +27,11 @@ type Host struct {
 	ctx context.Context
 }
 
+var processHost struct {
+	sync.Mutex
+	host *Host
+}
+
 func NewHost(dataDir string) (*Host, error) {
 	if dataDir == "" {
 		return nil, errors.New("data directory is required")
@@ -35,6 +41,80 @@ func NewHost(dataDir string) (*Host, error) {
 		return nil, err
 	}
 	return &Host{app: app, ctx: context.Background()}, nil
+}
+
+func OpenHost(dataDir string) error {
+	processHost.Lock()
+	defer processHost.Unlock()
+	if processHost.host != nil {
+		return errors.New("mobile host is already open")
+	}
+	host, err := NewHost(dataDir)
+	if err != nil {
+		return err
+	}
+	processHost.host = host
+	return nil
+}
+
+func CloseHost() error {
+	processHost.Lock()
+	host := processHost.host
+	processHost.host = nil
+	processHost.Unlock()
+	if host == nil {
+		return nil
+	}
+	return host.Close()
+}
+
+func currentHost() (*Host, error) {
+	processHost.Lock()
+	defer processHost.Unlock()
+	if processHost.host == nil {
+		return nil, errors.New("mobile host is not open")
+	}
+	return processHost.host, nil
+}
+
+func CallHost(request string) (string, error) {
+	host, err := currentHost()
+	if err != nil {
+		return "", err
+	}
+	return host.Call(request)
+}
+
+func StartHostVPN(fd int32, options string) (string, error) {
+	host, err := currentHost()
+	if err != nil {
+		return "", err
+	}
+	return host.StartVPN(fd, options)
+}
+
+func StopHostVPN() (string, error) {
+	host, err := currentHost()
+	if err != nil {
+		return "", err
+	}
+	return host.StopVPN()
+}
+
+func SetHostProtector(protector SocketProtector) error {
+	host, err := currentHost()
+	if err != nil {
+		return err
+	}
+	return host.SetProtector(protector)
+}
+
+func SetHostSystemDNS(servers string) error {
+	host, err := currentHost()
+	if err != nil {
+		return err
+	}
+	return host.SetSystemDNS(servers)
 }
 
 func (h *Host) SetProtector(protector SocketProtector) error {
@@ -85,7 +165,7 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 		return "", errors.New("mobile host is not ready")
 	}
 	if fd <= 0 {
-		return "", errors.New("Android VPN descriptor is not available")
+		return "", errors.New("VPN TUN descriptor is not available")
 	}
 	var tunOptions struct {
 		IncludePackages []string `json:"includePackages"`
@@ -93,7 +173,7 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 	}
 	if options != "" {
 		if err := json.Unmarshal([]byte(options), &tunOptions); err != nil {
-			return "", errors.New("invalid Android package routing options")
+			return "", errors.New("invalid mobile package routing options")
 		}
 	}
 	h.app.Core.SetTunPackages(tunOptions.IncludePackages, tunOptions.ExcludePackages)

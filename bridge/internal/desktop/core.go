@@ -361,7 +361,7 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 		return errors.New("mobile core is not enabled")
 	}
 	if fd <= 0 {
-		return errors.New("Android VPN descriptor is not available")
+		return errors.New("VPN TUN descriptor is not available")
 	}
 	c.mu.Lock()
 	c.fd = fd

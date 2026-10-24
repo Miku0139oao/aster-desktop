@@ -151,3 +151,32 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/app-release.apk
             build/android/checksums.txt
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache-dependency-path: bridge/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Install Xcode project helper
+        run: gem install xcodeproj --no-document
+      - name: Build Go XCFramework and unsigned iOS app
+        run: python3 scripts/build-ios.py
+      - name: Package the unsigned app for CI inspection
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/Aster-iOS-unsigned.zip
+          shasum -a 256 ios/mobileapi.xcframework.sha256 build/Aster-iOS-unsigned.zip > build/ios-checksums.txt
+      - name: Preserve iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: aster-ios-unsigned
+          path: |
+            build/Aster-iOS-unsigned.zip
+            build/ios-checksums.txt

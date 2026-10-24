@@ -126,6 +126,9 @@ Future<void> runMobileApp(List<String> args) async {
     final controller = AppController(backend);
     runApp(AsterApp(controller: controller, desktopLifecycle: false));
     await controller.initialize();
+    if (backend is IOSBackend && await backend.initialRoute() == 'nodes') {
+      controller.navigate(1);
+    }
     if (args.contains('--autostart') && controller.profiles.isNotEmpty) {
       await controller.toggle();
     }
