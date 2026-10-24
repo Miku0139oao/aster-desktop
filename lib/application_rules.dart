@@ -19,6 +19,27 @@ Future<void> showApplicationRouting(
     c.navigate(6);
     return;
   }
+  if (Platform.isIOS) {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(c.tr('iOS 應用程式分流', 'iOS application routing')),
+        content: Text(
+          c.tr(
+            '一般 iPhone／iPad App 無法像 Android 一樣任意指定個別 App。請使用網域、IP 或規則模式管理出口。',
+            'Regular iPhone and iPad apps cannot choose arbitrary per-app routes like Android. Use domain, IP, or rule-based routing.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(c.tr('關閉', 'Close')),
+          ),
+        ],
+      ),
+    );
+    return;
+  }
   await showDialog<void>(
     context: context,
     builder: (_) => _ApplicationRouting(c: c),
@@ -100,6 +121,36 @@ class ApplicationsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (Platform.isAndroid) return AndroidApplicationsPage(c: c);
+    if (Platform.isIOS) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.phonelink_lock_outlined, size: 52),
+              const SizedBox(height: 16),
+              Text(
+                c.tr(
+                  'iOS 不支援一般 App 分流',
+                  'Per-app routing is unavailable on iOS',
+                ),
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                c.tr(
+                  '請在進階設定使用網域、IP 或規則分流。',
+                  'Use domain, IP, or rule routing in Advanced settings.',
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return c.active == null
         ? Center(
             child: Text(

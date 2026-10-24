@@ -369,7 +369,7 @@ class OverviewPage extends StatelessWidget {
               SectionTitle(
                 c.tr('哪些應用程式使用代理？', 'Which applications use the proxy?'),
               ),
-              if (Platform.isAndroid)
+              if (isMobilePlatform)
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -380,8 +380,12 @@ class OverviewPage extends StatelessWidget {
                   ),
                   subtitle: Text(
                     c.tr(
-                      'Android 版固定使用 VpnService；連線時會要求一次系統授權。',
-                      'Android always uses VpnService and asks for system approval once when connecting.',
+                      Platform.isAndroid
+                          ? 'Android 固定使用 VpnService；連線時會要求一次系統授權。'
+                          : 'iOS 固定使用 NetworkExtension；連線時會要求系統授權。',
+                      Platform.isAndroid
+                          ? 'Android always uses VpnService and asks for system approval once.'
+                          : 'iOS always uses NetworkExtension and asks for system approval.',
                     ),
                   ),
                   value: true,
@@ -416,6 +420,18 @@ class OverviewPage extends StatelessWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => c.navigate(6),
                 )
+              else if (Platform.isIOS)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.rule),
+                  title: Text(c.tr('使用規則分流', 'Use rule-based routing')),
+                  subtitle: Text(
+                    c.tr(
+                      'iOS 不支援一般 App 的任意個別 VPN 分流。',
+                      'iOS does not expose arbitrary per-app VPN routing.',
+                    ),
+                  ),
+                )
               else
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
@@ -431,9 +447,9 @@ class OverviewPage extends StatelessWidget {
                       ? null
                       : (v) => c.saveSettings({'tun': v}),
                 ),
-              if (!Platform.isAndroid && c.settings.tun)
+              if (!isMobilePlatform && c.settings.tun)
                 TunNetworkSelector(controller: c),
-              if (!Platform.isAndroid &&
+              if (!isMobilePlatform &&
                   c.settings.tun &&
                   (c.service['installed'] != true ||
                       c.service['approved'] == false))
@@ -1372,12 +1388,10 @@ class AdvancedPage extends StatelessWidget {
               onChanged: c.busy ? null : (v) => c.saveSettings({'theme': v}),
             ),
             const SizedBox(height: 12),
-            if (!Platform.isAndroid)
+            if (!isMobilePlatform)
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
-                title: Text(
-                  c.tr('登入後自動啟動並連線', 'Start and connect at login'),
-                ),
+                title: Text(c.tr('登入後自動啟動並連線', 'Start and connect at login')),
                 subtitle: Text(
                   c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
                 ),
@@ -1413,7 +1427,7 @@ class AdvancedPage extends StatelessWidget {
           ],
         ),
       ),
-      if (!Platform.isAndroid)
+      if (!isMobilePlatform)
         Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1566,18 +1580,18 @@ class AdvancedPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SectionTitle(c.tr('版本與更新', 'Versions and updates')),
-            Text(
-              Platform.isAndroid
-                  ? 'Aster Android ${c.desktopVersion}'
-                  : 'Aster Desktop ${c.desktopVersion}',
-            ),
+            Text(switch (Platform.operatingSystem) {
+              'android' => 'Aster Android ${c.desktopVersion}',
+              'ios' => 'Aster iOS ${c.desktopVersion}',
+              _ => 'Aster Desktop ${c.desktopVersion}',
+            }),
             if (c.coreVersion.isNotEmpty) Text('Aster Core ${c.coreVersion}'),
             const SizedBox(height: 8),
             Text(
-              Platform.isAndroid
+              isMobilePlatform
                   ? c.tr(
-                      '核心已內建於 APK，會隨 App 版本更新。',
-                      'The core is bundled in the APK and updates with the app.',
+                      '核心已內建於 App，會隨 App 版本更新。',
+                      'The core is bundled with the app and updates with the app.',
                     )
                   : c.tr(
                       '核心使用官方 main 測試版，更新只會在你點擊時執行。',
@@ -1589,7 +1603,7 @@ class AdvancedPage extends StatelessWidget {
               spacing: 12,
               runSpacing: 8,
               children: [
-                if (!Platform.isAndroid)
+                if (!isMobilePlatform)
                   OutlinedButton.icon(
                     onPressed: c.busy
                         ? null

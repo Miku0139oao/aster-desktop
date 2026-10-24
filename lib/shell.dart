@@ -619,9 +619,24 @@ class ErrorCard extends StatelessWidget {
       );
     }
     if (message.contains('tun adapter')) {
+      if (isMobilePlatform) {
+        return c.tr(
+          'VPN 未能就緒。請確認沒有其他 VPN 正在使用，並允許 Aster 的系統 VPN 權限。',
+          'The VPN could not become ready. Check for another active VPN and allow Aster VPN permission.',
+        );
+      }
       return c.tr(
         '全應用程式代理未能就緒；可先改用系統代理。請展開詳細原因檢查 TUN 設定及其他 VPN。',
         'TUN could not become ready. Try system proxy and expand the details to check TUN settings and other VPNs.',
+      );
+    }
+    if (Platform.isIOS &&
+        (message.contains('networkextension') ||
+            message.contains('tunnel') ||
+            message.contains('vpn permission'))) {
+      return c.tr(
+        '請到系統設定確認 Aster 的 VPN 權限，然後回到 App 重試。',
+        'Check Aster VPN permission in Settings, then return to the app and retry.',
       );
     }
     if (message.contains('service') ||
