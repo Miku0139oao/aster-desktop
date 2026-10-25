@@ -79,6 +79,7 @@ def main():
         raise RuntimeError("pubspec.yaml has no build version")
     release_version = version_match.group(1)
     published_apk_name = f"Aster-Desktop-{release_version}-android.apk"
+    run([sys.executable, project / "scripts/check-android-icons.py"])
     bridge = project / "bridge"
     output = project / options.out
     libraries = output / "app"
