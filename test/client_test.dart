@@ -19,6 +19,7 @@ import 'package:aster_desktop/network_settings.dart';
 import 'package:aster_desktop/connections_page.dart';
 import 'package:aster_desktop/inspection.dart';
 import 'package:aster_desktop/log_entry.dart';
+import 'package:aster_desktop/localization.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -313,6 +314,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'page $page overflowed');
     }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('system language follows a Simplified Chinese locale', (
+    tester,
+  ) async {
+    tester.platformDispatcher.localeTestValue = const Locale('zh', 'CN');
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
+    await tester.runAsync(SimplifiedChinese.initialize);
+    final backend = FakeBackend()
+      ..settings = const AppSettings(
+        language: AppLanguage.system,
+        theme: 'light',
+      ).toJson();
+    final c = await setup(tester, backend, size: const Size(390, 844));
+    expect(c.effectiveLanguage, AppLanguage.simplifiedChinese);
+    expect(find.text('首页'), findsWidgets);
+    expect(find.text('从一份订阅开始'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

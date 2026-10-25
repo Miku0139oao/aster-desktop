@@ -1352,9 +1352,14 @@ class AdvancedPage extends StatelessWidget {
               isExpanded: true,
               initialValue: c.settings.language,
               decoration: InputDecoration(labelText: c.tr('介面語言', 'Language')),
-              items: const [
-                DropdownMenuItem(value: 'zh_TW', child: Text('繁體中文')),
-                DropdownMenuItem(value: 'en', child: Text('English')),
+              items: [
+                DropdownMenuItem(
+                  value: 'system',
+                  child: Text(c.tr('跟隨系統', 'Follow system')),
+                ),
+                const DropdownMenuItem(value: 'zh_TW', child: Text('繁體中文')),
+                const DropdownMenuItem(value: 'zh_CN', child: Text('简体中文')),
+                const DropdownMenuItem(value: 'en', child: Text('English')),
               ],
               onChanged: c.busy ? null : (v) => c.saveSettings({'language': v}),
             ),

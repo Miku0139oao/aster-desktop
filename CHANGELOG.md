@@ -1,5 +1,12 @@
 # 更新紀錄
 
+## 0.3.3 — 2026-10-26
+
+- 新安裝與尚未設定語言的裝置會跟隨系統語言，支援繁體中文、简体中文與 English。
+- Android、Windows、macOS 與 Linux 共用同一套語言判斷；繁體中文系統顯示繁體中文，其他中文系統顯示简体中文，其他語言顯示 English。
+- 「進階設定 → 介面語言」可選擇跟隨系統、繁體中文、简体中文或 English，切換後立即生效。
+- 简体中文採內建 OpenCC 字典轉換既有繁體中文介面，並補上 OpenCC 的 Apache-2.0 授權聲明。
+
 ## 0.3.2 — 2026-10-26
 
 - 修正 Android 匯入含 `GEOIP`／`GEOSITE` 規則的設定檔時，in-process core 未設定 runtime home，導致 MMDB 路徑為空並拒絕匯入。

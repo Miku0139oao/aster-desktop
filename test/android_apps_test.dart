@@ -60,6 +60,8 @@ void main() {
   });
 
   Future<AppController> pumpPage(WidgetTester tester) async {
+    tester.platformDispatcher.localeTestValue = const Locale('zh', 'TW');
+    addTearDown(tester.platformDispatcher.clearLocaleTestValue);
     final controller = AppController(AndroidBackend());
     addTearDown(controller.dispose);
     await tester.pumpWidget(
