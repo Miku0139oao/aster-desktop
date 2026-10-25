@@ -36,7 +36,7 @@ func DefaultSettings() Settings {
 	// Android has no user-level global system proxy; its VPNService is the only
 	// way to route other applications, so a fresh install starts with TUN on.
 	android := runtime.GOOS == "android"
-	return Settings{Language: "zh_TW", Theme: "system", SystemProxy: !android, Tun: android, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
+	return Settings{Language: "system", Theme: "system", SystemProxy: !android, Tun: android, MixedPort: 7890, Mode: "rule", SubscriptionHours: 24}
 }
 func (s Settings) Validate() error {
 	if utf8.RuneCountInString(s.TunInterface) > 256 || stringsContainControl(s.TunInterface) {
@@ -48,7 +48,7 @@ func (s Settings) Validate() error {
 	if s.Mode != "rule" && s.Mode != "global" && s.Mode != "direct" {
 		return errors.New("invalid proxy mode")
 	}
-	if s.Language != "zh_TW" && s.Language != "en" {
+	if s.Language != "system" && s.Language != "zh_TW" && s.Language != "zh_CN" && s.Language != "en" {
 		return errors.New("invalid language")
 	}
 	if s.Theme != "system" && s.Theme != "light" && s.Theme != "dark" {

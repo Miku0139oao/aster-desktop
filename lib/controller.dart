@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:yaml/yaml.dart';
 
 import 'backend.dart';
+import 'localization.dart';
 
 class AppSettings {
   const AppSettings({
-    this.language = 'zh_TW',
+    this.language = AppLanguage.system,
     this.theme = 'system',
     this.systemProxy = true,
     this.tun = false,
@@ -24,7 +25,12 @@ class AppSettings {
   final bool systemProxy, tun, allowLan, autoStart;
   final int mixedPort, subscriptionHours;
   factory AppSettings.fromJson(Json j) => AppSettings(
-    language: j['language'] as String,
+    language: switch (j['language']) {
+      AppLanguage.traditionalChinese => AppLanguage.traditionalChinese,
+      AppLanguage.simplifiedChinese => AppLanguage.simplifiedChinese,
+      AppLanguage.english => AppLanguage.english,
+      _ => AppLanguage.system,
+    },
     theme: j['theme'] as String,
     mode: j['mode'] as String,
     systemProxy: j['systemProxy'] == true,
@@ -187,7 +193,14 @@ class AppController extends ChangeNotifier {
     await api('PUT', '/proxies/GLOBAL', {'name': target});
   }
 
-  String tr(String zh, String en) => settings.language == 'en' ? en : zh;
+  String get effectiveLanguage => AppLanguage.resolve(settings.language, [
+    WidgetsBinding.instance.platformDispatcher.locale,
+  ]);
+  String tr(String zh, String en) => switch (effectiveLanguage) {
+    AppLanguage.english => en,
+    AppLanguage.simplifiedChinese => SimplifiedChinese.convert(zh),
+    _ => zh,
+  };
   ThemeMode get themeMode => switch (settings.theme) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,
