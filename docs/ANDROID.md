@@ -4,6 +4,8 @@ Aster 目前先在同一個 Flutter 專案中加入 Android 平台。介面、�
 
 Android 版從 `0.3.0` 起獨立發佈；`0.3.1` 重整手機版導覽與窄螢幕排版。桌面版仍可在 `0.2.3`，兩個版本與核心來源會在各 release 中分別標示。
 
+`0.3.2` 修正含 `GEOIP`／`GEOSITE` 規則的設定檔匯入。In-process core 現在會把 App 私有 runtime 目錄設為 core home，GeoIP MMDB、GeoSite 與 cache 都寫入該目錄，不再嘗試開啟空路徑。
+
 ## 目前架構
 
 Android APK 會打包 `mobileapi.aar`。這是 gomobile binding，內含現有的設定、訂閱、RPC、核心管理工作，以及固定版本的 Aster Core。
