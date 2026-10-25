@@ -178,17 +178,16 @@ class AsterVpnService : VpnService(), SocketProtector {
         }
     }
 
-    fun stopVpn(): String {
-        val mobileHost = synchronized(this) { host }
+    fun stopVpn(): String = synchronized(this) {
+        val mobileHost = host
         setConnectionDesired(false)
-        val response = try {
+        try {
             mobileHost?.stopVPN() ?: "{\"result\":true}"
         } finally {
             vpnActive = false
             stopAsterForeground()
         }
         Log.i(TAG, "VPN disconnected")
-        return response
     }
 
     override fun onRevoke() {
