@@ -2,7 +2,7 @@
 
 Aster 目前先在同一個 Flutter 專案中加入 Android 平台。介面、訂閱匯入、節點管理、連線狀態、日誌與診斷會與桌面版共用；桌面用的視窗、托盤與單例機制不會在 Android 啟用。
 
-Android 版仍在 `feature/android-client` 開發分支，不是 v0.2.3 正式桌面版的一部分。
+Android 版從 `0.3.0` 起獨立發佈。桌面版仍可在 `0.2.3`，兩個版本與核心來源會在各 release 中分別標示。
 
 ## 目前架構
 
@@ -38,10 +38,10 @@ Android 的 `VpnService` 只能以套件為單位決定是否進入 VPN，因此
 
 ## 已知限制
 
-- 尚未在本專案的 CI 或開發環境中完成 Android 實機／emulator 的 VPN 連線、DNS、UDP、節點切換與斷線清理驗證。在完成實機驗證前，不應宣稱 Android VPN 已可正式使用。
+- 不同 OEM 對 VPN、背景執行與省電策略的處理仍可能不同；回報問題時請附 Android 版本、裝置型號與 `adb logcat -s AsterVpnService` 輸出。
 - `QUERY_ALL_PACKAGES` 用來列出所有已安裝 App。直接安裝 APK 沒問題；若要上架 Google Play，需依該權限政策提出 VPN／安全用途說明，或改為只列出有啟動圖示的 App。
 - Android 13 以上首次連線會請求通知權限。即使拒絕，VPN 仍可運作，但通知列可能不顯示。
-- CI 產生的 APK 目前使用 Gradle 的 debug 簽章，且每個 runner 的除錯金鑰不同，只能視為測試包；要提供可覆蓋更新的正式 APK，必須另外設定固定的 release keystore。
+- 正式 APK 由 GitHub Actions 使用固定的 `ANDROID_KEYSTORE_*` secrets 簽章；CI 會以 `apksigner` 驗證憑證，不使用 runner 的臨時 debug key。
 - 桌面版的系統代理、TUN 網路介面選擇與背景服務授權不適用於 Android，已在設定頁隱藏。
 
 ## 建置需求

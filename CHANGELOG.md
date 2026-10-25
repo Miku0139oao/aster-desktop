@@ -1,5 +1,16 @@
 # 更新紀錄
 
+## 0.3.0 — 2026-10-25
+
+[Android 版下載](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.0)。
+
+- 推出首個 Android 代理客戶端，內建 Aster Core，不需要自行安裝核心或設定 Controller。
+- 支援訂閱／Clash YAML／分享連結匯入、節點測速與切換、連線、流量、日誌與診斷。
+- Android 使用 VpnService 提供全裝置 VPN；對外 core sockets 透過 `protect()` 避免回圈。
+- 應用程式頁面可從已安裝清單選擇代理、直連或排除的 App，設定不會因訂閱更新消失。
+- Android 版本使用固定 release keystore，後續 APK 可直接覆蓋升級。
+- APK 提供 arm64-v8a 與 x86_64，不包含沒有對應 Go core 的 32-bit ABI。
+
 ## 0.2.3 — 2026-10-19
 
 [正式版下載](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3)。此版將已驗證的 0.2.3 beta 1 提升為正式版，沿用相同二進位檔與來源包，補齊使用手冊、FAQ 與離線文件。
