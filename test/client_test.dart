@@ -1275,6 +1275,22 @@ void main() {
     },
   );
 
+  test('clean native stop clears stale notification state', () async {
+    final backend = FakeBackend()..running = true;
+    final c = AppController(backend);
+    addTearDown(c.dispose);
+    addTearDown(backend.close);
+    await c.refresh();
+    c.ready = true;
+    c.error = 'stale notification state';
+    backend.running = false;
+
+    await c.poll();
+
+    expect(c.running, isFalse);
+    expect(c.error, isNull);
+  });
+
   test('an old poll cannot overwrite a completed connection', () async {
     final backend = FakeBackend();
     final c = AppController(backend);

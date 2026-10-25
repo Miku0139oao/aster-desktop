@@ -258,7 +258,14 @@ class AppController extends ChangeNotifier {
       _connectionCounters.clear();
       connectionRates.clear();
     }
-    if (core['error'] != null) error = core['error'] as String;
+    final coreError = core['error'] as String?;
+    if (coreError != null) {
+      error = coreError;
+    } else if (previousRunning && !running) {
+      // A notification-bar or native-service stop is intentional. Leave the
+      // stopped UI clean instead of presenting it as an unexpected failure.
+      error = null;
+    }
     notifyListeners();
   }
 
@@ -438,10 +445,6 @@ class AppController extends ChangeNotifier {
       await refresh();
       if (busy || epoch != _operationEpoch) return;
       if (wasRunning && !running) {
-        error ??= tr(
-          '代理已停止，請重新連線。',
-          'The proxy stopped. Reconnect to try again.',
-        );
         upload = 0;
         download = 0;
       }

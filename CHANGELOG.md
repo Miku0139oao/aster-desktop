@@ -2,7 +2,7 @@
 
 ## 0.3.5 — 2026-10-26
 
-- 修正 Android in-process core 停止時只改狀態、沒有完整釋放 mixed proxy、UDP、Controller、DNS 與 TUN 的問題；通知列 Disconnect 後不會再繼續代理或留下 7890 listener。
+- 修正 Android in-process core 停止時只改狀態、沒有完整釋放 mixed proxy、UDP、Controller、DNS 與 TUN 的問題；通知列 Disconnect 後不會再繼續代理或留下 7890 listener，也不會把正常停止誤顯示成操作失敗。
 - 停止與重連現在會等待 listener 釋放；同一個 mixed port 可立即重新使用，不再誤報「7890 已被佔用」。
 - Android VPN 前景服務改為 sticky recovery：關閉 App 工作畫面後保持連線；程序被系統意外終止時會依已保存的連線意圖嘗試恢復一次。明確按停止或通知列 Disconnect 會清除恢復意圖。
 - 手機規則頁改為可讀的規則卡片、狀態與出口標籤；排序、開關、複製、刪除移入操作選單，點卡片可查看完整規則，修復控制項把規則文字擠到看不見的問題。
