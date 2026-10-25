@@ -56,6 +56,32 @@ type CoreStatus struct {
 	PID     int    `json:"pid,omitempty"`
 }
 
+// Embedded mode has no process exit to release global core listeners. Applying
+// a disabled configuration tears down the mixed proxy, controller, DNS and TUN
+// before the final executor cleanup.
+const inProcessStopConfig = `
+port: 0
+socks-port: 0
+mixed-port: 0
+redir-port: 0
+tproxy-port: 0
+allow-lan: false
+bind-address: 127.0.0.1
+external-controller: ""
+external-controller-tls: ""
+external-controller-unix: ""
+external-controller-pipe: ""
+proxies: []
+proxy-providers: {}
+tunnels: []
+rules:
+  - MATCH,DIRECT
+tun:
+  enable: false
+dns:
+  enable: false
+`
+
 func NewCore(binary, dir string) *Core {
 	return &Core{Binary: binary, BundledBinary: binary, Dir: dir, Secret: RandomID() + RandomID(), client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{Proxy: nil}}, logs: []string{}}
 }
@@ -446,6 +472,13 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 		<-runCtx.Done()
 		_ = c.Stop()
 	}()
+	if err = waitForInProcessListeners(address, s.MixedPort, 15*time.Second); err != nil {
+		cleanupErr := c.Stop()
+		return errors.Join(
+			fmt.Errorf("embedded core listeners did not become ready: %w", err),
+			cleanupErr,
+		)
+	}
 	return nil
 }
 
@@ -482,16 +515,20 @@ func (c *Core) Stop() error {
 		done := c.done
 		cancel := c.runCancel
 		c.runCancel = nil
+		port := c.activeSettings.MixedPort
+		controller := c.Address
 		c.fd = 0
 		c.mu.Unlock()
 		if cancel != nil {
 			cancel()
 		}
+		applyErr := hub.Parse([]byte(inProcessStopConfig))
 		executor.Shutdown()
+		portErr := waitForPortRelease(port, controller, 5*time.Second)
 		if done != nil {
 			close(done)
 		}
-		return nil
+		return errors.Join(applyErr, portErr)
 	}
 	cmd, done := c.cmd, c.done
 	if cmd != nil {
@@ -514,6 +551,84 @@ func (c *Core) Stop() error {
 		err = pe
 	}
 	return err
+}
+
+func waitForPortRelease(port int, controller string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		proxyErr := checkPortAvailable(port)
+		controllerErr := checkControllerClosed(controller)
+		if proxyErr == nil && controllerErr == nil {
+			return nil
+		}
+		lastErr = errors.Join(proxyErr, controllerErr)
+		if time.Now().After(deadline) {
+			return fmt.Errorf("embedded core cleanup did not release its listeners: %w", lastErr)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func waitForInProcessListeners(controller string, port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		controllerConnection, controllerErr := net.DialTimeout(
+			"tcp",
+			controller,
+			75*time.Millisecond,
+		)
+		if controllerErr == nil {
+			_ = controllerConnection.Close()
+		}
+		proxyAddress := net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
+		proxyConnection, proxyErr := net.DialTimeout(
+			"tcp",
+			proxyAddress,
+			75*time.Millisecond,
+		)
+		if proxyErr == nil {
+			_ = proxyConnection.Close()
+		}
+		if controllerErr == nil && proxyErr == nil {
+			return nil
+		}
+		lastErr = errors.Join(controllerErr, proxyErr)
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func checkPortAvailable(port int) error {
+	if port == 0 {
+		return nil
+	}
+	address := net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
+	packet, packetErr := net.ListenPacket("udp", address)
+	_ = listener.Close()
+	if packet != nil {
+		_ = packet.Close()
+	}
+	return packetErr
+}
+
+func checkControllerClosed(address string) error {
+	if address == "" {
+		return nil
+	}
+	connection, err := net.DialTimeout("tcp", address, 75*time.Millisecond)
+	if err != nil {
+		return nil
+	}
+	_ = connection.Close()
+	return fmt.Errorf("controller %s is still listening", address)
 }
 
 func coreLogWriter(c *Core) io.Writer { return &coreWriter{core: c} }

@@ -20,6 +20,7 @@ import 'package:aster_desktop/connections_page.dart';
 import 'package:aster_desktop/inspection.dart';
 import 'package:aster_desktop/log_entry.dart';
 import 'package:aster_desktop/localization.dart';
+import 'package:aster_desktop/rules_page.dart';
 
 String goldenPath(String name) {
   final platform = Platform.isWindows
@@ -332,6 +333,42 @@ void main() {
     expect(c.effectiveLanguage, AppLanguage.simplifiedChinese);
     expect(find.text('首页'), findsWidgets);
     expect(find.text('从一份订阅开始'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile rules remain readable and actions stay usable', (
+    tester,
+  ) async {
+    final backend = FakeBackend();
+    backend.profiles.add({
+      'id': 'rules',
+      'name': 'Routing',
+      'content':
+          'proxies: [{name: Node, type: direct}]\n'
+          'proxy-groups: [{name: Proxy, type: select, proxies: [Node]}]\n'
+          'rules: ["DOMAIN-SUFFIX,api.example.com,Proxy", "IP-CIDR,192.0.2.0/24,DIRECT", "MATCH,Proxy"]\n',
+    });
+    final c = await setup(tester, backend, size: const Size(390, 844));
+    c.navigate(9);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RulesPage), findsOneWidget);
+    expect(find.text('api.example.com'), findsOneWidget);
+    expect(find.text('Route · Proxy'), findsWidgets);
+    expect(find.text('3 enabled · 0 disabled · 3 shown'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(const ValueKey('rule-menu-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('Disable rule'), findsOneWidget);
+    await tester.tap(find.text('Disable rule'));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('manageRules'));
+
+    await tester.tap(find.byKey(const ValueKey('rule-row-0')));
+    await tester.pumpAndSettle();
+    expect(find.text('Rule details'), findsOneWidget);
+    expect(find.text('DOMAIN-SUFFIX,api.example.com,Proxy'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
