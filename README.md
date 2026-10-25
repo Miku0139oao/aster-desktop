@@ -23,6 +23,17 @@ Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的
 
 </details>
 
+Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手機內容。
+
+![Aster Android 深色首頁](docs/screenshots/android-home-dark.png)
+
+<details>
+<summary>查看 Android 匯入流程</summary>
+
+![Aster Android 匯入訂閱或設定](docs/screenshots/android-import-dark.png)
+
+</details>
+
 ## 可以用它做什麼？
 
 | 你想做的事 | 在哪裡操作 |
