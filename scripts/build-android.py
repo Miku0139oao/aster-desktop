@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -24,11 +25,19 @@ def run(command, *, cwd=None, env=None, capture=False):
     )
 
 
-def write_checksum(root):
+def file_digest(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_checksum(root, extra=()):
     lines = []
-    for path in sorted(root.rglob("*.aar")):
+    for path in [*sorted(root.rglob("*.aar")), *extra]:
         if path.is_file():
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = file_digest(path)
             lines.append(f"{digest}  {path.relative_to(root).as_posix()}")
     (root / "checksums.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -61,6 +70,15 @@ def main():
     options = parser.parse_args()
 
     project = Path(__file__).resolve().parents[1]
+    version_match = re.search(
+        r"^version:\s*([^+\s]+)\+\d+",
+        (project / "pubspec.yaml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if not version_match:
+        raise RuntimeError("pubspec.yaml has no build version")
+    release_version = version_match.group(1)
+    published_apk_name = f"Aster-Desktop-{release_version}-android.apk"
     bridge = project / "bridge"
     output = project / options.out
     libraries = output / "app"
@@ -110,9 +128,6 @@ def main():
             if required not in names:
                 raise RuntimeError(f"mobile AAR is missing {required}")
 
-    # CI verifies the AAR from build/android, so the manifest must live at that
-    # root and reference app/mobileapi.aar rather than being scoped to app/.
-    write_checksum(output)
     if not options.skip_apk:
         run(
             [
@@ -127,10 +142,19 @@ def main():
             ],
             cwd=project,
         )
-        verify_apk(project / "build/app/outputs/flutter-apk/app-release.apk")
+        built_apk = project / "build/app/outputs/flutter-apk/app-release.apk"
+        verify_apk(built_apk)
+        published_apk = output / published_apk_name
+        shutil.copy2(built_apk, published_apk)
+    write_checksum(
+        output,
+        extra=[output / published_apk_name]
+        if not options.skip_apk
+        else [],
+    )
     print(f"Android engine binding: {app_libraries / 'mobileapi.aar'}")
     if not options.skip_apk:
-        print(f"APK output: {project / 'build/app/outputs/flutter-apk/app-release.apk'}")
+        print(f"APK output: {output / published_apk_name}")
 
 
 if __name__ == "__main__":

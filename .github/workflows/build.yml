@@ -136,7 +136,23 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Prepare Android release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aster-release.jks"
+          test -s "$RUNNER_TEMP/aster-release.jks"
+          keytool -list -keystore "$RUNNER_TEMP/aster-release.jks" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
       - name: Build Android engine and APKs
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/aster-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: python3 scripts/build-android.py
       - name: Verify packaged native engines
         run: |
@@ -144,10 +160,13 @@ jobs:
           cd build/android
           sha256sum -c checksums.txt
           unzip -t app/mobileapi.aar > /dev/null
+          APKSIGNER="$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs Aster-Desktop-*-android.apk | tee apk-signing.txt
       - name: Preserve Android packages
         uses: actions/upload-artifact@v4
         with:
           name: aster-android
           path: |
-            build/app/outputs/flutter-apk/app-release.apk
+            build/android/Aster-Desktop-*-android.apk
             build/android/checksums.txt
+            build/android/apk-signing.txt
