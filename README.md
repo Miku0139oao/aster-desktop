@@ -41,14 +41,14 @@ Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的
 
 | 系統 | 建議下載 | 安裝方式 |
 | --- | --- | --- |
-| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.0/Aster-Desktop-0.3.0-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
+| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.1/Aster-Desktop-0.3.1-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
 | Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
 | macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
 | macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
 | Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.deb) | 使用系統套件安裝程式開啟 |
 | Arch Linux x64，GNOME／KDE | [Arch 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.pkg.tar.zst) | 使用套件管理員安裝 |
 
-[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.0) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.0/SHA256SUMS)
+[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.1) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.1/SHA256SUMS)
 
 Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。桌面套件仍為 0.2.3，後續版本會分開標示。
 

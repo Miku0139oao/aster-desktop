@@ -114,11 +114,20 @@ class ProxyBrowserControls extends StatelessWidget {
             children: [
               const Icon(Icons.sort, size: 20),
               const SizedBox(width: 6),
-              Text(switch (sort) {
-                ProxySort.configuration => c.tr('設定順序', 'Configuration order'),
-                ProxySort.latency => c.tr('延遲排序', 'Latency order'),
-                ProxySort.name => c.tr('名稱排序', 'Name order'),
-              }),
+              Flexible(
+                child: Text(
+                  switch (sort) {
+                    ProxySort.configuration => c.tr(
+                      '設定順序',
+                      'Configuration order',
+                    ),
+                    ProxySort.latency => c.tr('延遲排序', 'Latency order'),
+                    ProxySort.name => c.tr('名稱排序', 'Name order'),
+                  },
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               const Icon(Icons.arrow_drop_down),
             ],
           ),

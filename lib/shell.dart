@@ -174,6 +174,8 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       (4, Icons.receipt_long_outlined, c.tr('日誌', 'Logs')),
       (5, Icons.tune, c.tr('進階設定', 'Advanced')),
     ];
+    final mobile = MediaQuery.sizeOf(context).width < 700;
+    if (mobile) return _buildMobileShell(context, destinations);
     return CallbackShortcuts(
       bindings: {
         SingleActivator(
@@ -433,23 +435,7 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
                           padding: const EdgeInsets.fromLTRB(32, 0, 32, 16),
                           child: ErrorCard(c: c),
                         ),
-                      Expanded(
-                        child: !c.ready
-                            ? const Center(child: CircularProgressIndicator())
-                            : IndexedStack(
-                                index: c.page,
-                                children: [
-                                  for (var index = 0; index < 10; index++)
-                                    if (!_pageViews.containsKey(index))
-                                      const SizedBox.shrink()
-                                    else
-                                      TickerMode(
-                                        enabled: c.page == index,
-                                        child: _pageViews[index]!,
-                                      ),
-                                ],
-                              ),
-                      ),
+                      Expanded(child: _pageStack()),
                     ],
                   ),
                 ),
@@ -460,6 +446,162 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       ),
     );
   }
+
+  Widget _pageStack() => !c.ready
+      ? const Center(child: CircularProgressIndicator())
+      : IndexedStack(
+          index: c.page,
+          children: [
+            for (var index = 0; index < 10; index++)
+              if (!_pageViews.containsKey(index))
+                const SizedBox.shrink()
+              else
+                TickerMode(enabled: c.page == index, child: _pageViews[index]!),
+          ],
+        );
+
+  Widget _buildMobileShell(
+    BuildContext context,
+    List<(int, IconData, String)> destinations,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    final current = destinations.firstWhere((d) => d.$1 == c.page);
+    final primaryPages = [0, 1, 2, 3];
+    final selected = primaryPages.indexOf(c.page);
+    final mobileDestinations = [
+      (0, Icons.home_outlined, Icons.home, c.tr('首頁', 'Home')),
+      (1, Icons.hub_outlined, Icons.hub, c.tr('節點', 'Nodes')),
+      (
+        2,
+        Icons.folder_copy_outlined,
+        Icons.folder_copy,
+        c.tr('訂閱', 'Profiles'),
+      ),
+      (3, Icons.swap_calls_outlined, Icons.swap_calls, c.tr('連線', 'Traffic')),
+      (10, Icons.more_horiz, Icons.more_horiz, c.tr('更多', 'More')),
+    ];
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          current.$3,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          if (c.active != null)
+            IconButton(
+              key: const Key('mobile-connect'),
+              tooltip: c.running
+                  ? c.tr('停止代理', 'Stop proxy')
+                  : c.tr('啟動代理', 'Start proxy'),
+              onPressed: c.busy ? null : c.toggle,
+              icon: Icon(
+                c.running
+                    ? Icons.stop_circle_outlined
+                    : Icons.play_circle_outline,
+              ),
+            ),
+          PopupMenuButton<String>(
+            tooltip: c.tr('外觀', 'Appearance'),
+            initialValue: c.settings.theme,
+            onSelected: (theme) => c.saveSettings({'theme': theme}),
+            itemBuilder: (_) => [
+              for (final theme in [
+                ('system', c.tr('跟隨系統', 'System')),
+                ('light', c.tr('淺色', 'Light')),
+                ('dark', c.tr('深色', 'Dark')),
+              ])
+                CheckedPopupMenuItem(
+                  value: theme.$1,
+                  checked: c.settings.theme == theme.$1,
+                  enabled: !c.busy,
+                  child: Text(theme.$2),
+                ),
+            ],
+            icon: Icon(
+              c.settings.theme == 'dark'
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (c.busy) const LinearProgressIndicator(minHeight: 2),
+          if (c.error != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: ErrorCard(c: c),
+            ),
+          Expanded(child: _pageStack()),
+        ],
+      ),
+      bottomNavigationBar: keyboardVisible
+          ? null
+          : NavigationBar(
+              backgroundColor: cs.surfaceContainer,
+              selectedIndex: selected < 0 ? 4 : selected,
+              onDestinationSelected: (index) {
+                if (index == 4) {
+                  _showMobilePages(destinations);
+                } else {
+                  c.navigate(mobileDestinations[index].$1);
+                }
+              },
+              destinations: [
+                for (var i = 0; i < 5; i++)
+                  NavigationDestination(
+                    key: ValueKey('mobile-nav:${mobileDestinations[i].$1}'),
+                    icon: Icon(mobileDestinations[i].$2),
+                    selectedIcon: Icon(mobileDestinations[i].$3),
+                    label: mobileDestinations[i].$4,
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _showMobilePages(List<(int, IconData, String)> destinations) =>
+      showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (context) => SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * .78,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 12),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                  child: Text(
+                    c.tr('所有頁面', 'All pages'),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                for (final destination in destinations)
+                  ListTile(
+                    key: ValueKey('mobile-page:${destination.$1}'),
+                    leading: Icon(destination.$2),
+                    title: Text(destination.$3),
+                    selected: c.page == destination.$1,
+                    onTap: () {
+                      Navigator.pop(context);
+                      c.navigate(destination.$1);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
 
   Future<void> _jumpTo(List<(int, IconData, String)> destinations) async {
     final selected = await showDialog<int>(
