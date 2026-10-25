@@ -263,6 +263,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('phone layout uses bottom navigation without desktop sidebar', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.25;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final font = FontLoader('NotoSansTC');
+    font.addFont(rootBundle.load('assets/NotoSansTC.ttf'));
+    await font.load();
+    final icons = FontLoader('MaterialIcons');
+    icons.addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await icons.load();
+    final backend = FakeBackend();
+    backend.profiles.add({
+      'id': 'phone',
+      'name': 'Phone subscription',
+      'content': 'proxies: [{name: Tokyo, type: direct}]\nproxy-groups: [{name: Proxy, type: select, proxies: [Tokyo]}]\nrules: ["MATCH,Proxy"]\n',
+    });
+    final c = await setup(tester, backend, size: const Size(390, 844));
+
+    expect(find.byKey(const Key('sidebar-connect')), findsNothing);
+    expect(find.byKey(const Key('mobile-nav:0')), findsOneWidget);
+    expect(find.text('Overview').hitTestable(), findsOneWidget);
+    if (const bool.fromEnvironment('ASTER_CAPTURE_ANDROID_PREVIEW')) {
+      await expectLater(
+        find.byType(AsterApp),
+        matchesGoldenFile('../.build/android-phone-overview.png'),
+      );
+    }
+
+    await tester.tap(find.byKey(const Key('mobile-nav:1')));
+    await tester.pumpAndSettle();
+    expect(c.page, 1);
+
+    await tester.tap(find.byKey(const Key('mobile-connect')));
+    await tester.pumpAndSettle();
+    expect(backend.calls, contains('connect'));
+    expect(c.running, isTrue);
+
+    await tester.tap(find.byKey(const Key('mobile-nav:10')));
+    await tester.pumpAndSettle();
+    expect(find.text('All pages'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-page:4')));
+    await tester.pumpAndSettle();
+    expect(c.page, 4);
+
+    for (final page in [2, 3, 6, 7, 8, 9, 5]) {
+      c.navigate(page);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'page $page overflowed');
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'keyboard navigation opens from any page at enlarged text scale',
     (tester) async {

@@ -109,6 +109,7 @@ class OverviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final hasProfile = c.active != null;
+    final compactStats = MediaQuery.sizeOf(context).width < 520;
     return PageBody(
       children: [
         Container(
@@ -324,7 +325,7 @@ class OverviewPage extends StatelessWidget {
               child: _stat(
                 context,
                 Icons.arrow_downward,
-                c.tr('下載速度', 'Download'),
+                compactStats ? c.tr('下載', 'Down') : c.tr('下載速度', 'Download'),
                 c.running ? '${bytes(c.download)}/s' : '—',
                 caption: c.running && c.connections['downloadTotal'] is num
                     ? '${c.tr('累計下載', 'Total download')} ${bytes(c.connections['downloadTotal'] as num)}'
@@ -336,7 +337,7 @@ class OverviewPage extends StatelessWidget {
               child: _stat(
                 context,
                 Icons.arrow_upward,
-                c.tr('上傳速度', 'Upload'),
+                compactStats ? c.tr('上傳', 'Up') : c.tr('上傳速度', 'Upload'),
                 c.running ? '${bytes(c.upload)}/s' : '—',
                 caption: c.running && c.connections['uploadTotal'] is num
                     ? '${c.tr('累計上傳', 'Total upload')} ${bytes(c.connections['uploadTotal'] as num)}'
@@ -348,7 +349,9 @@ class OverviewPage extends StatelessWidget {
               child: _stat(
                 context,
                 Icons.swap_calls,
-                c.tr('活動連線', 'Connections'),
+                compactStats
+                    ? c.tr('連線', 'Links')
+                    : c.tr('活動連線', 'Connections'),
                 c.running
                     ? '${(c.connections['connections'] as List? ?? []).length}'
                     : '—',
@@ -573,11 +576,16 @@ class OverviewPage extends StatelessWidget {
             Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -1053,7 +1061,7 @@ class _NodesPageState extends State<NodesPage> {
               ],
             ),
           ),
-          if (!c.running)
+          if (!c.running && MediaQuery.sizeOf(context).width >= 700)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
@@ -1375,9 +1383,7 @@ class AdvancedPage extends StatelessWidget {
             if (!Platform.isAndroid)
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
-                title: Text(
-                  c.tr('登入後自動啟動並連線', 'Start and connect at login'),
-                ),
+                title: Text(c.tr('登入後自動啟動並連線', 'Start and connect at login')),
                 subtitle: Text(
                   c.tr('使用目前選擇的設定。', 'Uses the selected configuration.'),
                 ),
