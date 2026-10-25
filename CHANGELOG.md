@@ -1,5 +1,11 @@
 # 更新紀錄
 
+## 0.3.2 — 2026-10-26
+
+- 修正 Android 匯入含 `GEOIP`／`GEOSITE` 規則的設定檔時，in-process core 未設定 runtime home，導致 MMDB 路徑為空並拒絕匯入。
+- 補上 in-process core home 與 geodata 路徑的 Go 回歸測試。
+- 已在 MuMu Android 15 重新匯入同一份含 `GEOIP` 規則的 YAML，確認 `geoip.metadb`／`GeoSite.dat` 正確下載到 App runtime 目錄。
+
 ## 0.3.1 — 2026-10-26
 
 - Android 手機改用頂部頁面標題、底部五項導覽與「更多」頁面選單，不再把桌面側欄塞進手機寬度。

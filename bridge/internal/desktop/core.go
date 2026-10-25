@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	C "github.com/Miku0139oao/aster-core/constant"
 	"github.com/Miku0139oao/aster-core/hub"
 	"github.com/Miku0139oao/aster-core/hub/executor"
 	"github.com/sirupsen/logrus"
@@ -87,7 +88,7 @@ func (c *Core) Logs() []string {
 }
 func (c *Core) Validate(ctx context.Context, content string, s Settings, privileged bool) ([]byte, error) {
 	if c.InProcess {
-		if err := os.MkdirAll(c.Dir, 0700); err != nil {
+		if err := c.prepareInProcessEnvironment(); err != nil {
 			return nil, err
 		}
 		b, err := Runtime(content, s, c.Address, c.Secret, c.Dir, privileged)
@@ -385,6 +386,9 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 }
 
 func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
+	if err := c.prepareInProcessEnvironment(); err != nil {
+		return err
+	}
 	if _, err := c.Validate(ctx, content, s, false); err != nil {
 		return err
 	}
@@ -544,6 +548,9 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		return err
 	}
 	if c.InProcess {
+		if err := c.prepareInProcessEnvironment(); err != nil {
+			return err
+		}
 		if !c.Status().Running {
 			return nil
 		}
@@ -606,6 +613,14 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 	c.mu.Lock()
 	c.activeContent, c.activeSettings = content, s
 	c.mu.Unlock()
+	return nil
+}
+
+func (c *Core) prepareInProcessEnvironment() error {
+	if err := os.MkdirAll(c.Dir, 0700); err != nil {
+		return err
+	}
+	C.SetHomeDir(c.Dir)
 	return nil
 }
 func (c *Core) Request(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
