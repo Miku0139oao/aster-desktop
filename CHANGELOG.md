@@ -1,5 +1,11 @@
 # 更新紀錄
 
+## 0.3.4 — 2026-10-26
+
+- 修正 Android APK 仍使用 Flutter 範本圖標；桌面圖示、圓形圖示及 Android 8+ 自適應圖示現在統一使用 Aster 軌道 A 圖標。
+- Android 13+ 主題圖標加入 monochrome 資源。
+- 圖示產生腳本現在會輸出所有 Android 密度，Android release 建置在圖標仍是 Flutter 範本或尺寸錯誤時直接失敗。
+
 ## 0.3.3 — 2026-10-26
 
 - 新安裝與尚未設定語言的裝置會跟隨系統語言，支援繁體中文、简体中文與 English。

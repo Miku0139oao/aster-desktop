@@ -4,7 +4,7 @@
 
 Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS、Linux 與 Android；介面預設跟隨系統語言，提供繁體中文、简体中文與 English。不用自行安裝核心或設定 Controller 位址與密碼，但需要準備自己的訂閱、節點連結或 Clash YAML。
 
-**[下載 0.3.3 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.3)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
+**[下載 0.3.4 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.4)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
 
 ## 看看介面
 
@@ -56,14 +56,14 @@ Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手
 
 | 系統 | 建議下載 | 安裝方式 |
 | --- | --- | --- |
-| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.3/Aster-Desktop-0.3.3-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
+| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.4/Aster-Desktop-0.3.4-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
 | Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
 | macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
 | macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
 | Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.deb) | 使用系統套件安裝程式開啟 |
 | Arch Linux x64，GNOME／KDE | [Arch 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.pkg.tar.zst) | 使用套件管理員安裝 |
 
-[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.3) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.3/SHA256SUMS)
+[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.4) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.4/SHA256SUMS)
 
 Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。桌面套件仍為 0.2.3，後續版本會分開標示。
 

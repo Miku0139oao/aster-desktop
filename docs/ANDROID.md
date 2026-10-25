@@ -2,11 +2,13 @@
 
 Aster 目前先在同一個 Flutter 專案中加入 Android 平台。介面、訂閱匯入、節點管理、連線狀態、日誌與診斷會與桌面版共用；桌面用的視窗、托盤與單例機制不會在 Android 啟用。
 
-Android 版從 `0.3.0` 起獨立發佈；`0.3.1` 重整手機版導覽與窄螢幕排版，`0.3.3` 新增跟隨系統語言的繁體中文、简体中文與 English 介面。桌面版仍可在 `0.2.3`，兩個版本與核心來源會在各 release 中分別標示。
+Android 版從 `0.3.0` 起獨立發佈；`0.3.1` 重整手機版導覽與窄螢幕排版，`0.3.3` 新增跟隨系統語言的繁體中文、简体中文與 English 介面，`0.3.4` 修正 launcher icon 並加入 adaptive／monochrome 圖示。桌面版仍可在 `0.2.3`，兩個版本與核心來源會在各 release 中分別標示。
 
 `0.3.2` 修正含 `GEOIP`／`GEOSITE` 規則的設定檔匯入。In-process core 現在會把 App 私有 runtime 目錄設為 core home，GeoIP MMDB、GeoSite 與 cache 都寫入該目錄，不再嘗試開啟空路徑。
 
 `0.3.3` 將語言選項放在「更多 → 進階設定」。首次安裝預設跟隨系統；繁體中文系統對應繁體中文，其他中文系統對應简体中文，其他系統語言對應 English。使用者仍可固定選擇任一語言。
+
+`0.3.4` 將 `mipmap-mdpi` 至 `mipmap-xxxhdpi` 的桌面／圓形圖示改為 Aster 軌道 A，並提供 Android 8+ adaptive icon、Android 13+ monochrome 圖示。`scripts/build-android.py` 會在打包前驗證圖示尺寸與內容，避免再次發佈 Flutter 範本圖標。
 
 ## 目前架構
 
