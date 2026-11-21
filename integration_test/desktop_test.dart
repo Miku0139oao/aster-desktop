@@ -115,6 +115,7 @@ void main() {
     await backend.call(
       'settings',
       const AppSettings(
+        language: 'zh_TW',
         systemProxy: false,
         mixedPort: 17891,
         theme: 'light',
@@ -276,9 +277,7 @@ void main() {
       ),
       isTrue,
     );
-    await tapWhenReady(
-      find.byKey(const ValueKey('application-route-0')),
-    );
+    await tapWhenReady(find.byKey(const ValueKey('application-route-0')));
     await waitUntilHittable(find.byKey(const Key('route-search')));
     await tester.enterText(find.byKey(const Key('route-search')), 'DIRECT');
     await tester.pumpAndSettle();

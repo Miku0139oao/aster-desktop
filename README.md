@@ -2,9 +2,9 @@
 
 **用桌面視窗管理代理，匯入訂閱 → 選擇節點 → 按下連線。**
 
-Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS 與 Linux，預設繁體中文；不用自行安裝核心或設定 Controller 位址與密碼。你需要準備自己的訂閱、節點連結或 Clash YAML。
+Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS、Linux 與 Android；介面預設跟隨系統語言，提供繁體中文、简体中文與 English。不用自行安裝核心或設定 Controller 位址與密碼，但需要準備自己的訂閱、節點連結或 Clash YAML。
 
-**[下載 0.2.3 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
+**[下載 0.3.5 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.5)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
 
 ## 看看介面
 
@@ -22,6 +22,21 @@ Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的
 ![Aster Desktop 深色介面](docs/screenshots/overview-dark.png)
 
 </details>
+
+Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手機內容。
+
+![Aster Android 深色首頁](docs/screenshots/android-home-dark.png)
+
+<details>
+<summary>查看 Android 匯入流程</summary>
+
+![Aster Android 匯入訂閱或設定](docs/screenshots/android-import-dark.png)
+
+</details>
+
+含 GeoIP／GeoSite 規則的設定檔匯入後會使用 App 私有 runtime 目錄保存地理資料。
+
+![Aster Android 設定檔匯入完成](docs/screenshots/android-imported-dark.png)
 
 ## 可以用它做什麼？
 
@@ -41,13 +56,16 @@ Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的
 
 | 系統 | 建議下載 | 安裝方式 |
 | --- | --- | --- |
+| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.5/Aster-Desktop-0.3.5-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
 | Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
 | macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
 | macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
 | Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.deb) | 使用系統套件安裝程式開啟 |
 | Arch Linux x64，GNOME／KDE | [Arch 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.pkg.tar.zst) | 使用套件管理員安裝 |
 
-[所有檔案、可攜版、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/SHA256SUMS)
+[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.5) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.5/SHA256SUMS)
+
+Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。桌面套件仍為 0.2.3，後續版本會分開標示。
 
 Mac 套件使用本機簽署，尚未取得 Apple Developer ID 簽章／公證；首次開啟可能需要到「系統設定 → 隱私權與安全性」允許開啟。[安裝與授權說明](docs/USER_GUIDE.md#安裝與升級)列出詳細步驟與平台限制。
 
@@ -66,6 +84,7 @@ Mac 套件使用本機簽署，尚未取得 Apple Developer ID 簽章／公證�
 - **連線與日誌**：搜尋、篩選、暫停、明細、中止連線、從連線建立規則；日誌支援多層級、來源、欄位搜尋及篩選匯出。
 - **流量與診斷**：即時速度、核心本次累計、本機每日歷史與 CSV 匯出；依核心、背景服務、出口網路、DNS、系統路由及本機代理分開診斷。
 - **桌面操作**：跨平台防止多開、托盤、Ctrl+K／⌘K 頁面搜尋、可選的登入自啟並連線。
+- **介面語言**：預設跟隨系統，可在進階設定選擇繁體中文、简体中文或 English；Material 元件的日期、選單與無障礙文字同步切換。
 
 系統代理／TUN 決定哪些流量進入核心，「依規則／全部代理／全部直連」決定進入核心後使用哪個出口。應用程式分流建議使用 **TUN + 依規則**。實作細節與操作範例見[使用手冊](docs/USER_GUIDE.md)。
 
@@ -79,6 +98,7 @@ Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝�
 
 - [完整使用手冊](docs/USER_GUIDE.md)：安裝、首次使用、分流、流量、更新、備份與退出。
 - [常見問題與故障排除](docs/FAQ.md)：無法連線、TUN、授權、安裝、日誌與回報方式。
+- [Android 版](docs/ANDROID.md)：VpnService、應用程式分流、權限、簽章與建置。
 - [應用程式分流](docs/APPLICATION_ROUTING.md) · [日誌與連線查閱](docs/INSPECTION.md)。
 - [開發與建置](docs/BUILDING.md) · [架構與介面](docs/ARCHITECTURE.md) · [測試紀錄](docs/TESTING.md) · [更新紀錄](CHANGELOG.md)。
 

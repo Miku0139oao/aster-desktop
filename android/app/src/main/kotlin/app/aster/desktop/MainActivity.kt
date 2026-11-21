@@ -172,6 +172,7 @@ class MainActivity : FlutterActivity() {
             bound = false
         }
         synchronized(serviceLock) { service = null }
+        executor.shutdown()
         super.onDestroy()
     }
 }

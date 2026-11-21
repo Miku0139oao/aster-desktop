@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:yaml/yaml.dart';
 
 import 'backend.dart';
+import 'localization.dart';
 
 bool get isMobilePlatform => Platform.isAndroid || Platform.isIOS;
 
 class AppSettings {
   const AppSettings({
-    this.language = 'zh_TW',
+    this.language = AppLanguage.system,
     this.theme = 'system',
     this.systemProxy = true,
     this.tun = false,
@@ -26,7 +27,12 @@ class AppSettings {
   final bool systemProxy, tun, allowLan, autoStart;
   final int mixedPort, subscriptionHours;
   factory AppSettings.fromJson(Json j) => AppSettings(
-    language: j['language'] as String,
+    language: switch (j['language']) {
+      AppLanguage.traditionalChinese => AppLanguage.traditionalChinese,
+      AppLanguage.simplifiedChinese => AppLanguage.simplifiedChinese,
+      AppLanguage.english => AppLanguage.english,
+      _ => AppLanguage.system,
+    },
     theme: j['theme'] as String,
     mode: j['mode'] as String,
     systemProxy: j['systemProxy'] == true,
@@ -189,7 +195,14 @@ class AppController extends ChangeNotifier {
     await api('PUT', '/proxies/GLOBAL', {'name': target});
   }
 
-  String tr(String zh, String en) => settings.language == 'en' ? en : zh;
+  String get effectiveLanguage => AppLanguage.resolve(settings.language, [
+    WidgetsBinding.instance.platformDispatcher.locale,
+  ]);
+  String tr(String zh, String en) => switch (effectiveLanguage) {
+    AppLanguage.english => en,
+    AppLanguage.simplifiedChinese => SimplifiedChinese.convert(zh),
+    _ => zh,
+  };
   ThemeMode get themeMode => switch (settings.theme) {
     'light' => ThemeMode.light,
     'dark' => ThemeMode.dark,
@@ -248,7 +261,14 @@ class AppController extends ChangeNotifier {
       _connectionCounters.clear();
       connectionRates.clear();
     }
-    if (core['error'] != null) error = core['error'] as String;
+    final coreError = core['error'] as String?;
+    if (coreError != null) {
+      error = coreError;
+    } else if (previousRunning && !running) {
+      // A notification-bar or native-service stop is intentional. Leave the
+      // stopped UI clean instead of presenting it as an unexpected failure.
+      error = null;
+    }
     notifyListeners();
   }
 
@@ -429,10 +449,6 @@ class AppController extends ChangeNotifier {
       await refresh();
       if (busy || epoch != _operationEpoch) return;
       if (wasRunning && !running) {
-        error ??= tr(
-          '代理已停止，請重新連線。',
-          'The proxy stopped. Reconnect to try again.',
-        );
         upload = 0;
         download = 0;
       }

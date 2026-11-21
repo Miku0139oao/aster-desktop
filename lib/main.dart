@@ -8,12 +8,18 @@ import 'package:path_provider/path_provider.dart';
 
 import 'backend.dart';
 import 'controller.dart';
+import 'localization.dart';
 import 'shell.dart';
 import 'single_instance.dart';
 import 'window_activation.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await SimplifiedChinese.initialize();
+  } catch (_) {
+    // The application still starts if an optional conversion dictionary is lost.
+  }
   if (Platform.isAndroid || Platform.isIOS) {
     await runMobileApp(args);
     return;
@@ -264,10 +270,12 @@ class _AsterAppState extends State<AsterApp> {
     theme: asterTheme(Brightness.light),
     darkTheme: asterTheme(Brightness.dark),
     themeMode: controller.themeMode,
-    locale: controller.settings.language == 'en'
-        ? const Locale('en')
-        : const Locale('zh', 'TW'),
-    supportedLocales: const [Locale('en'), Locale('zh', 'TW')],
+    locale: AppLanguage.materialLocale(controller.settings.language),
+    supportedLocales: const [
+      Locale('en'),
+      Locale('zh', 'TW'),
+      Locale('zh', 'CN'),
+    ],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     home: ListenableBuilder(
       listenable: controller,

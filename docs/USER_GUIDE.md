@@ -1,6 +1,6 @@
 # Aster Desktop 0.2.3 使用手冊
 
-適用於 Windows 10／11 x64、macOS 13+ Intel／Apple Silicon，以及 Ubuntu 24.04／Arch Linux x64。介面預設繁體中文，可在進階設定切換英文。Aster Desktop 是客戶端，請先準備你已有的訂閱網址、節點分享連結或 Clash YAML 設定。
+適用於 Windows 10／11 x64、macOS 13+ Intel／Apple Silicon，以及 Ubuntu 24.04／Arch Linux x64。介面預設跟隨系統語言，提供繁體中文、简体中文與 English，也可在進階設定固定選擇任一語言。Aster Desktop 是客戶端，請先準備你已有的訂閱網址、節點分享連結或 Clash YAML 設定。
 
 [回首頁](../README.md) · [常見問題](FAQ.md) · [下載正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3)
 
@@ -86,6 +86,8 @@ Ubuntu 24.04 請下載 `.deb`，使用系統套件安裝程式開啟。Arch 請�
 | 進階設定 | 語言／外觀／自啟、背景服務、DNS／連接埠、完整 YAML、更新 |
 
 左下角常駐啟停代理。首頁的「目前節點 · 點擊更換」可前往選點；設定檔按鈕可前往管理訂閱。右上角搜尋或 **Ctrl+K（Mac：⌘K）** 可搜尋頁面名稱，Enter 開啟符合的頁面。外觀圖示可切換淺色、深色或跟隨系統。
+
+介面語言位於「進階設定 → 介面語言」。選擇「跟隨系統」時，`zh-TW`／`zh-HK`／`zh-MO` 或 `zh-Hant` 使用繁體中文，其他中文使用简体中文，其他系統語言使用 English；切換後立即套用。
 
 ## 系統代理與 TUN
 

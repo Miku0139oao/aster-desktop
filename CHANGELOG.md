@@ -1,5 +1,49 @@
 # 更新紀錄
 
+## 0.3.5 — 2026-10-26
+
+- 修正 Android in-process core 停止時只改狀態、沒有完整釋放 mixed proxy、UDP、Controller、DNS 與 TUN 的問題；通知列 Disconnect 後不會再繼續代理或留下 7890 listener，也不會把正常停止誤顯示成操作失敗。
+- 停止與重連現在會等待 listener 釋放；同一個 mixed port 可立即重新使用，不再誤報「7890 已被佔用」。
+- Android VPN 前景服務改為 sticky recovery：關閉 App 工作畫面後保持連線；程序被系統意外終止時會依已保存的連線意圖嘗試恢復一次。明確按停止或通知列 Disconnect 會清除恢復意圖。
+- 手機規則頁改為可讀的規則卡片、狀態與出口標籤；排序、開關、複製、刪除移入操作選單，點卡片可查看完整規則，修復控制項把規則文字擠到看不見的問題。
+- 新增 in-process core 停止、同 port 重連及手機規則頁回歸測試。
+
+## 0.3.4 — 2026-10-26
+
+- 修正 Android APK 仍使用 Flutter 範本圖標；桌面圖示、圓形圖示及 Android 8+ 自適應圖示現在統一使用 Aster 軌道 A 圖標。
+- Android 13+ 主題圖標加入 monochrome 資源。
+- 圖示產生腳本現在會輸出所有 Android 密度，Android release 建置在圖標仍是 Flutter 範本或尺寸錯誤時直接失敗。
+
+## 0.3.3 — 2026-10-26
+
+- 新安裝與尚未設定語言的裝置會跟隨系統語言，支援繁體中文、简体中文與 English。
+- Android、Windows、macOS 與 Linux 共用同一套語言判斷；繁體中文系統顯示繁體中文，其他中文系統顯示简体中文，其他語言顯示 English。
+- 「進階設定 → 介面語言」可選擇跟隨系統、繁體中文、简体中文或 English，切換後立即生效。
+- 简体中文採內建 OpenCC 字典轉換既有繁體中文介面，並補上 OpenCC 的 Apache-2.0 授權聲明。
+
+## 0.3.2 — 2026-10-26
+
+- 修正 Android 匯入含 `GEOIP`／`GEOSITE` 規則的設定檔時，in-process core 未設定 runtime home，導致 MMDB 路徑為空並拒絕匯入。
+- 補上 in-process core home 與 geodata 路徑的 Go 回歸測試。
+- 已在 MuMu Android 15 重新匯入同一份含 `GEOIP` 規則的 YAML，確認 `geoip.metadb`／`GeoSite.dat` 正確下載到 App runtime 目錄。
+
+## 0.3.1 — 2026-10-26
+
+- Android 手機改用頂部頁面標題、底部五項導覽與「更多」頁面選單，不再把桌面側欄塞進手機寬度。
+- 節點工具列、節點頁與手機流量卡片修正窄螢幕及放大字級溢位。
+- 新增 390×844 手機尺寸、1.25 字級的完整頁面回歸測試。
+
+## 0.3.0 — 2026-10-25
+
+[Android 版下載](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.0)。
+
+- 推出首個 Android 代理客戶端，內建 Aster Core，不需要自行安裝核心或設定 Controller。
+- 支援訂閱／Clash YAML／分享連結匯入、節點測速與切換、連線、流量、日誌與診斷。
+- Android 使用 VpnService 提供全裝置 VPN；對外 core sockets 透過 `protect()` 避免回圈。
+- 應用程式頁面可從已安裝清單選擇代理、直連或排除的 App，設定不會因訂閱更新消失。
+- Android 版本使用固定 release keystore，後續 APK 可直接覆蓋升級。
+- APK 提供 arm64-v8a 與 x86_64，不包含沒有對應 Go core 的 32-bit ABI。
+
 ## 0.2.3 — 2026-10-19
 
 [正式版下載](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.2.3)。此版將已驗證的 0.2.3 beta 1 提升為正式版，沿用相同二進位檔與來源包，補齊使用手冊、FAQ 與離線文件。

@@ -29,6 +29,7 @@ class AsterVpnService : VpnService(), SocketProtector {
         const val ACTION_DISCONNECT = "app.aster.desktop.action.DISCONNECT"
         private const val PREFS = "aster_android"
         private const val ROUTING_KEY = "app_routing"
+        private const val CONNECTION_DESIRED_KEY = "connection_desired"
         private const val MAX_APPS = 512
         private val packagePattern =
             Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)*$")
@@ -97,6 +98,7 @@ class AsterVpnService : VpnService(), SocketProtector {
     private val executor = Executors.newSingleThreadExecutor()
     private val binder = LocalBinder()
     private var host: Host? = null
+    private var vpnActive = false
 
     inner class LocalBinder : Binder() {
         fun service(): AsterVpnService = this@AsterVpnService
@@ -111,14 +113,27 @@ class AsterVpnService : VpnService(), SocketProtector {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
+            setConnectionDesired(false)
             executor.execute {
                 runCatching { stopVpn() }
                     .onFailure { Log.e(TAG, "Disconnect from notification failed", it) }
             }
             return START_NOT_STICKY
         }
+        if (intent == null) {
+            if (!connectionDesired()) {
+                stopAsterForeground()
+                return START_NOT_STICKY
+            }
+            startAsterForeground("Restoring connection")
+            executor.execute {
+                runCatching { startVpn() }
+                    .onFailure { Log.e(TAG, "Automatic VPN recovery failed", it) }
+            }
+            return START_STICKY
+        }
         startAsterForeground("Preparing connection")
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     /** gomobile maps the Go interface method Protect(int32) to protect(int). */
@@ -133,14 +148,19 @@ class AsterVpnService : VpnService(), SocketProtector {
         ensureHost()
         synchronized(this) {
             val mobileHost = host ?: throw IllegalStateException("Aster engine is not ready")
+            if (vpnActive) {
+                return mobileHost.call("""{"method":"state"}""")
+            }
             mobileHost.setProtector(this)
             applySystemDNS(mobileHost)
             val routing = readRouting(this)
+            setConnectionDesired(true)
             startAsterForeground("Connecting")
             // The detached descriptor is owned by the core from here on.
             val fd = buildTun(routing).detachFd()
             try {
                 val encoded = mobileHost.startVPN(fd, packageOptions(routing).toString())
+                vpnActive = true
                 updateNotification("Connected")
                 Log.i(TAG, "VPN connected")
                 return encoded
@@ -149,6 +169,8 @@ class AsterVpnService : VpnService(), SocketProtector {
                 // close the same descriptor here, or a recycled descriptor
                 // could be closed while the core still owns it.
                 runCatching { mobileHost.stopVPN() }
+                vpnActive = false
+                setConnectionDesired(false)
                 stopAsterForeground()
                 Log.e(TAG, "VPN start failed", error)
                 throw error
@@ -156,33 +178,43 @@ class AsterVpnService : VpnService(), SocketProtector {
         }
     }
 
-    fun stopVpn(): String {
-        val mobileHost = synchronized(this) { host }
+    fun stopVpn(): String = synchronized(this) {
+        val mobileHost = host
+        setConnectionDesired(false)
         val response = try {
             mobileHost?.stopVPN() ?: "{\"result\":true}"
         } finally {
+            vpnActive = false
             stopAsterForeground()
         }
         Log.i(TAG, "VPN disconnected")
-        return response
+        response
     }
 
     override fun onRevoke() {
+        setConnectionDesired(false)
         executor.execute {
             try {
                 host?.stopVPN()
             } catch (error: Throwable) {
                 Log.e(TAG, "Stopping the core after VPN revoke failed", error)
             } finally {
+                vpnActive = false
                 stopAsterForeground()
             }
         }
         super.onRevoke()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "Task removed; active VPN service remains running")
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         val mobileHost = host
         host = null
+        vpnActive = false
         executor.execute {
             try {
                 mobileHost?.close()
@@ -190,6 +222,7 @@ class AsterVpnService : VpnService(), SocketProtector {
                 Log.e(TAG, "Closing the Aster core failed", error)
             }
         }
+        executor.shutdown()
         super.onDestroy()
     }
 
@@ -201,6 +234,17 @@ class AsterVpnService : VpnService(), SocketProtector {
                 }
             }
         }
+    }
+
+    private fun connectionDesired(): Boolean =
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(CONNECTION_DESIRED_KEY, false)
+
+    private fun setConnectionDesired(value: Boolean) {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(CONNECTION_DESIRED_KEY, value)
+            .apply()
     }
 
     private fun buildTun(routing: JSONObject): ParcelFileDescriptor {

@@ -8,7 +8,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	C "github.com/Miku0139oao/aster-core/constant"
 )
+
+func TestInProcessValidationUsesRuntimeHome(t *testing.T) {
+	originalHome := C.Path.HomeDir()
+	t.Cleanup(func() { C.SetHomeDir(originalHome) })
+	core := NewCore("", filepath.Join(t.TempDir(), "runtime"))
+	core.InProcess = true
+	content := "proxies: [{name: Direct, type: direct}]\nrules: ['MATCH,Direct']\n"
+	if _, err := core.Validate(context.Background(), content, DefaultSettings(), false); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := C.Path.HomeDir(), core.Dir; got != want {
+		t.Fatalf("core home = %q, want %q", got, want)
+	}
+}
 
 func TestNodeOnlyYAMLGeneratesUsableProfile(t *testing.T) {
 	cases := []struct {

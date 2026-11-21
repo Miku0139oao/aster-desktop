@@ -127,10 +127,7 @@ class _AndroidApplicationsPageState extends State<AndroidApplicationsPage> {
   int count(String mode) =>
       applications.where((app) => modeFor(app) == mode).length;
 
-  Future<void> _save(
-    Map<String, dynamic> changes, {
-    String? mode,
-  }) async {
+  Future<void> _save(Map<String, dynamic> changes, {String? mode}) async {
     setState(() {
       saving = true;
       error = null;
