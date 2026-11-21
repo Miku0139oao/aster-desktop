@@ -100,6 +100,7 @@ class AppController extends ChangeNotifier {
   final _testingNodes = <(String?, String)>{};
   int _latencyEpoch = 0;
   bool _disposed = false;
+  bool _foreground = true;
 
   bool isTestingNode(String name, {String? provider}) =>
       _testingNodes.contains((provider, name));
@@ -440,11 +441,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> poll() async {
-    if (_polling || busy || !ready) return;
+    if (!_foreground || _polling || busy || !ready) return;
     _polling = true;
     final epoch = _operationEpoch;
     try {
-      await _consumePendingRoute();
       final wasRunning = running;
       await refresh();
       if (busy || epoch != _operationEpoch) return;
@@ -526,6 +526,25 @@ class AppController extends ChangeNotifier {
     if (!_disposed && route == 'nodes' && page != 1) navigate(1);
   }
 
+  /// Shortcuts and Siri can hand over a route while the app is already open.
+  /// Reading it on resume avoids a channel round trip on every poll.
+  void checkPendingRoute() {
+    if (isMobilePlatform) unawaited(_consumePendingRoute());
+  }
+
+  /// The iOS NetworkExtension needs the App Group engine lock while the app is
+  /// suspended, so release the in-app host when the app leaves the foreground.
+  void releaseHost() {
+    _foreground = false;
+    if (backend is IOSBackend) {
+      unawaited((backend as IOSBackend).releaseHost());
+    }
+  }
+
+  void resumeForeground() {
+    _foreground = true;
+  }
+
   void _onEvent(Json event) {
     switch (event['event']) {
       case 'traffic':
@@ -540,10 +559,15 @@ class AppController extends ChangeNotifier {
         updateProgress = event['data'] as String;
       case 'engineStopped':
         running = false;
-        error = tr(
-          '背景程序已停止，請重新開啟 Aster Desktop。',
-          'The desktop engine stopped. Reopen Aster Desktop.',
-        );
+        error = isMobilePlatform
+            ? tr(
+                '連線已停止。請重新連線。',
+                'The connection stopped. Connect again.',
+              )
+            : tr(
+                '背景程序已停止，請重新開啟 Aster Desktop。',
+                'The desktop engine stopped. Reopen Aster Desktop.',
+              );
       default:
         return;
     }

@@ -8,8 +8,12 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 - `AsterTunnelProvider` 在獨立 NetworkExtension process 內啟動 core。
 - `mobileapi.xcframework` 由 gomobile 產生，包含管理層與固定版本的 Aster Core。
 - App 與 extension 透過 `group.app.aster.desktop` App Group 共用狀態。
+- 兩邊的 core host 會對 App Group 內的 engine 取得互斥鎖；同一時間只會有一個 process 持有 core，避免兩份狀態互相覆寫。
 - Tunnel 啟動前，App 關閉自己的 core host；連線期間所有狀態與 controller 請求經 `NETunnelProviderSession` 交給 extension。
-- 斷線後，App 重新取得 host，恢復一般管理操作。
+- 斷線後，App 會等 tunnel 真正進入 `disconnected` 並釋放鎖，才重新取得 host；短暫的鎖殘留會重試，不會再誤報「已在執行」。
+- App 進入背景時會釋放 in-app host，讓使用者從「設定」、控制中心或捷徑啟動的 tunnel 能取得鎖；回到前景後再按需重開。
+- Flutter 每兩秒輪詢一次狀態，所有通道請求、Siri／捷徑與狀態變更都經過序列化，避免輪詢和連線／斷線交錯。
+- Tunnel 只把實際的 utun descriptor 交給 core；iOS 不支援 Android 的套件層級分流，啟動時會清空套件選取條件。
 
 ## App Intents
 
@@ -20,7 +24,7 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 - Check Aster status
 - Open Aster nodes
 
-前三個可在 Siri／捷徑中執行；節點選擇會開啟 App 並切換到節點頁。
+前三個可在 Siri／捷徑中執行；節點選擇會開啟 App 並切換到節點頁。Connect 失敗時會回報失敗原因，不再一律顯示已連線。
 
 ## 簽章與測試
 
@@ -63,10 +67,13 @@ CI 另會確認產物內含：
 - `PlugIns/AsterTunnel.appex`
 - extension 內的 `Mobileapi.framework`
 - `Metadata.appintents`
+- Packet Tunnel extension point 與 `app.aster.desktop.tunnel` bundle id
+- App 與 extension 的 App Group 及 `packet-tunnel-provider` entitlement 設定，以及兩者都連結 `Mobileapi.framework`
 
 ## 目前限制
 
-- 尚未在 iPhone 實機驗證。
+- 尚未在 iPhone 實機驗證；背景／前景切換與從系統設定啟動 tunnel 需在真機確認。
 - Tunnel fd 取得依賴 iOS utun descriptor，需在支援的 iOS 版本與真機確認。
 - App 分流在 iOS 受 Apple NetworkExtension 限制，不能照搬 Android 的 package VPN。
+- iOS 不像 Android 會把當前網路的 DNS 注入 core；目前由 core 使用設定檔中的 `dns` 設定。
 - XCFramework 與未簽章 build 不會提交到 Git。

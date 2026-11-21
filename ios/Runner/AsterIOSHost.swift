@@ -6,6 +6,9 @@ final class AsterIOSHost {
     static let shared = AsterIOSHost()
 
     private var hostOpen = false
+    // Flutter polls state every two seconds. Without serialization, a poll can
+    // reach the in-app host while connect is closing it for the tunnel.
+    private let gate = AsterSerialGate()
 
     private init() {}
 
@@ -25,7 +28,7 @@ final class AsterIOSHost {
                 }
                 Task {
                     do {
-                        result(try await self.handleRequest(value))
+                        result(try await self.gate.run { try await self.handleRequest(value) })
                     } catch {
                         result(FlutterError(code: "operation", message: error.localizedDescription, details: nil))
                     }
@@ -38,7 +41,7 @@ final class AsterIOSHost {
                 }
                 Task {
                     do {
-                        result(try await self.startTunnel(request: value))
+                        result(try await self.gate.run { try await self.startTunnel(request: value) })
                     } catch {
                         result(FlutterError(code: "operation", message: error.localizedDescription, details: nil))
                     }
@@ -46,7 +49,7 @@ final class AsterIOSHost {
             case "stopVpn":
                 Task {
                     do {
-                        result(try await self.stopTunnel())
+                        result(try await self.gate.run { try await self.stopTunnel() })
                     } catch {
                         result(FlutterError(code: "operation", message: error.localizedDescription, details: nil))
                     }
@@ -54,12 +57,19 @@ final class AsterIOSHost {
             case "status":
                 Task {
                     do {
-                        let manager = try await self.tunnelManager()
-                        let running = manager?.connection.status == .connected
+                        let running = try await self.gate.run { try await self.isTunnelRunning() }
                         result(AsterIOSRuntime.response(id: 0, result: ["running": running]))
                     } catch {
                         result(FlutterError(code: "operation", message: error.localizedDescription, details: nil))
                     }
+                }
+            case "releaseHost":
+                // iOS may suspend the app while the tunnel keeps running. The
+                // extension needs the App Group engine lock, so the in-app host
+                // is released when the app leaves the foreground.
+                Task {
+                    try? await self.gate.run { try self.closeHost() }
+                    result(nil)
                 }
             case "initialRoute":
                 let route = UserDefaults.standard.string(forKey: "AsterPendingRoute")
@@ -69,19 +79,36 @@ final class AsterIOSHost {
                 result(FlutterMethodNotImplemented)
             }
         }
+        NotificationCenter.default.addObserver(
+            forName: .NEVPNStatusDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let connection = notification.object as? NEVPNConnection,
+                  self.isActive(connection) else { return }
+            // A tunnel started outside the app (Settings, Control Center, a
+            // Shortcut) owns the core from now on.
+            Task { try? await self.gate.run { try self.closeHost() } }
+        }
     }
 
     func connectFromIntent() async throws {
         let request = try AsterIOSRuntime.jsonRequest(method: "connect")
-        _ = try await startTunnel(request: request)
+        let response = try await gate.run { try await self.startTunnel(request: request) }
+        if let message = AsterIOSRuntime.responseError(response) {
+            throw AsterIOSError.mobileEngine(message)
+        }
     }
 
     func disconnectFromIntent() async throws {
-        _ = try await stopTunnel()
+        _ = try await gate.run { try await self.stopTunnel() }
     }
 
     func currentStatus() async -> String {
-        guard let manager = try? await tunnelManager() else { return "Unavailable" }
+        guard let manager = try? await gate.run({ try await self.tunnelManager() }) else {
+            return "Unavailable"
+        }
         switch manager.connection.status {
         case .connected:
             return "Connected"
@@ -94,25 +121,31 @@ final class AsterIOSHost {
         }
     }
 
+    private func isTunnelRunning() async throws -> Bool {
+        guard let manager = try await tunnelManager() else { return false }
+        return isActive(manager.connection)
+    }
+
     private func handleRequest(_ request: String) async throws -> String {
         let object = try requestObject(request)
         let id = object.id
         let method = object.method
         let manager = try await tunnelManager()
-        let running = manager?.connection.status == .connected ||
-            manager?.connection.status == .connecting ||
-            manager?.connection.status == .reasserting
+        let running = manager.map { isActive($0.connection) } ?? false
 
         if method == "disconnect" {
             _ = try await stopTunnel()
             return AsterIOSRuntime.response(id: id, result: true)
         }
-        if running {
-            let data = try await sendProviderMessage(Data(request.utf8))
+        if running, let manager {
+            let data = try await sendProviderMessageWhenReady(
+                manager: manager,
+                request: request
+            )
             return String(decoding: data, as: UTF8.self)
         }
 
-        try openHostIfNeeded()
+        try await openHostIfNeeded()
         do {
             return try AsterIOSRuntime.callHost(request)
         } catch {
@@ -123,7 +156,14 @@ final class AsterIOSHost {
     private func startTunnel(request: String) async throws -> String {
         let object = try requestObject(request)
         do {
-            try openHostIfNeeded()
+            if let manager = try await tunnelManager(), isActive(manager.connection) {
+                let data = try await sendProviderMessageWhenReady(
+                    manager: manager,
+                    request: request
+                )
+                return String(decoding: data, as: UTF8.self)
+            }
+            try await openHostIfNeeded()
             let stateRequest = try AsterIOSRuntime.jsonRequest(method: "state")
             _ = try AsterIOSRuntime.callHost(stateRequest)
             try closeHost()
@@ -135,22 +175,24 @@ final class AsterIOSHost {
             let data = try await sendProviderMessage(Data(request.utf8))
             return String(decoding: data, as: UTF8.self)
         } catch {
-            try? openHostIfNeeded()
+            try? await openHostIfNeeded()
             return AsterIOSRuntime.errorResponse(id: object.id, message: error.localizedDescription)
         }
     }
 
     private func stopTunnel() async throws -> String {
         if let manager = try await tunnelManager() {
-            if manager.connection.status == .connected ||
-                manager.connection.status == .connecting ||
-                manager.connection.status == .reasserting {
+            if isActive(manager.connection) {
                 let request = try AsterIOSRuntime.jsonRequest(method: "disconnect")
                 _ = try? await sendProviderMessage(Data(request.utf8))
                 manager.connection.stopVPNTunnel()
             }
+            // The provider holds the App Group instance lock until its core is
+            // fully stopped. Reopening the in-app host too early fails with the
+            // desktop "already running" error.
+            await waitForTunnelToStop(manager: manager)
         }
-        try? openHostIfNeeded()
+        try await openHostIfNeeded()
         return #"{"result":true}"#
     }
 
@@ -164,15 +206,25 @@ final class AsterIOSHost {
         return (id, method)
     }
 
-    private func openHostIfNeeded() throws {
+    private func openHostIfNeeded() async throws {
         if hostOpen { return }
         let directory = try AsterIOSRuntime.containerURL()
-        do {
-            try AsterIOSRuntime.openHost(directory.path)
-            hostOpen = true
-        } catch {
-            throw AsterIOSError.mobileEngine(error.localizedDescription)
+        var lastError: Error?
+        for attempt in 0..<100 {
+            do {
+                try AsterIOSRuntime.openHost(directory.path)
+                hostOpen = true
+                return
+            } catch {
+                lastError = error
+                if attempt < 99 {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+            }
         }
+        throw AsterIOSError.mobileEngine(
+            lastError?.localizedDescription ?? "Could not open the mobile engine."
+        )
     }
 
     private func closeHost() throws {
@@ -210,12 +262,57 @@ final class AsterIOSHost {
     }
 
     private func waitForConnected(manager: NETunnelProviderManager) async throws {
+        // Right after startVPNTunnel the status can still be .disconnected for a
+        // moment. Waiting the full timeout makes a denied or failed start look
+        // like a hang, so only allow a short grace period before failing.
+        var disconnectedFor = 0
         for _ in 0..<120 {
-            if manager.connection.status == .connected { return }
-            if manager.connection.status == .invalid { break }
+            switch manager.connection.status {
+            case .connected:
+                return
+            case .invalid, .disconnecting:
+                throw AsterIOSError.tunnelStartFailed
+            case .disconnected:
+                disconnectedFor += 1
+                if disconnectedFor >= 12 {
+                    throw AsterIOSError.tunnelStartFailed
+                }
+            default:
+                disconnectedFor = 0
+            }
             try await Task.sleep(nanoseconds: 250_000_000)
         }
         throw AsterIOSError.tunnelStartTimeout
+    }
+
+    private func isActive(_ connection: NEVPNConnection) -> Bool {
+        switch connection.status {
+        case .connected, .connecting, .reasserting:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func waitForTunnelToStop(manager: NETunnelProviderManager) async {
+        for _ in 0..<100 {
+            switch manager.connection.status {
+            case .disconnected, .invalid:
+                return
+            default:
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+    }
+
+    private func sendProviderMessageWhenReady(
+        manager: NETunnelProviderManager,
+        request: String
+    ) async throws -> Data {
+        if manager.connection.status != .connected {
+            try await waitForConnected(manager: manager)
+        }
+        return try await sendProviderMessage(Data(request.utf8))
     }
 
     private func sendProviderMessage(_ data: Data) async throws -> Data {
@@ -272,5 +369,24 @@ final class AsterIOSHost {
                 }
             }
         }
+    }
+}
+
+/// Runs host operations one at a time. The Flutter channel, App Intents and
+/// polling all reach the same in-process engine and tunnel session.
+final class AsterSerialGate {
+    private let lock = NSLock()
+    private var tail: Task<Void, Never> = Task {}
+
+    func run<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+        lock.lock()
+        let previous = tail
+        let work = Task<T, Error> {
+            await previous.value
+            return try await operation()
+        }
+        tail = Task { _ = try? await work.value }
+        lock.unlock()
+        return try await work.value
     }
 }

@@ -569,6 +569,16 @@ class IOSBackend implements DesktopBackend {
   Future<String?> initialRoute() =>
       _channel.invokeMethod<String>('initialRoute');
 
+  /// Releases the in-app engine so the NetworkExtension can take the App Group
+  /// lock while the app is in the background.
+  Future<void> releaseHost() async {
+    try {
+      await _channel.invokeMethod<void>('releaseHost');
+    } catch (_) {
+      // The next request reopens the host, so a failed release is not fatal.
+    }
+  }
+
   @override
   Future<dynamic> call(String method, [Json? params]) async {
     final request = jsonEncode({

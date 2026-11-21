@@ -27,7 +27,8 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
+class _AppShellState extends State<AppShell>
+    with WindowListener, TrayListener, WidgetsBindingObserver {
   AppController get c => widget.controller;
   bool _trayReady = false;
   AppLifecycleListener? _applicationLifecycle;
@@ -37,8 +38,7 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
   void initState() {
     super.initState();
     if (widget.desktopLifecycle) {
-      if (Platform.isMacOS) {
-        _applicationLifecycle = AppLifecycleListener(
+      if (Platform.isMacOS) {        _applicationLifecycle = AppLifecycleListener(
           onExitRequested: () async {
             // macOS Cmd+Q / Dock Quit is distinct from closing to the tray.
             // Windows/Linux window closes are handled by window_manager;
@@ -52,6 +52,19 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
       windowManager.addListener(this);
       trayManager.addListener(this);
       unawaited(_setupTray());
+    } else {
+      WidgetsBinding.instance.addObserver(this);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      c.resumeForeground();
+      c.checkPendingRoute();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      c.releaseHost();
     }
   }
 
@@ -138,6 +151,8 @@ class _AppShellState extends State<AppShell> with WindowListener, TrayListener {
     if (widget.desktopLifecycle) {
       windowManager.removeListener(this);
       trayManager.removeListener(this);
+    } else {
+      WidgetsBinding.instance.removeObserver(this);
     }
     super.dispose();
   }
@@ -736,6 +751,12 @@ class ErrorCard extends StatelessWidget {
   String _hint() {
     final message = (c.error ?? '').toLowerCase();
     if (message.contains('already running')) {
+      if (isMobilePlatform) {
+        return c.tr(
+          'VPN 正在切換，請稍候再試一次。',
+          'The VPN is switching. Wait a moment and try again.',
+        );
+      }
       return c.tr(
         '程式已在執行，請從系統托盤開啟。',
         'The app is already running. Open it from the tray.',
@@ -774,8 +795,10 @@ class ErrorCard extends StatelessWidget {
     }
     if (Platform.isIOS &&
         (message.contains('networkextension') ||
+            message.contains('network extension') ||
             message.contains('tunnel') ||
-            message.contains('vpn permission'))) {
+            message.contains('app group') ||
+            message.contains('vpn'))) {
       return c.tr(
         '請到系統設定確認 Aster 的 VPN 權限，然後回到 App 重試。',
         'Check Aster VPN permission in Settings, then return to the app and retry.',

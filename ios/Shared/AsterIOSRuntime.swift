@@ -46,6 +46,15 @@ enum AsterIOSRuntime {
         return String(decoding: data, as: UTF8.self)
     }
 
+    static func responseError(_ response: String) -> String? {
+        guard let data = response.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any] else {
+            return nil
+        }
+        return error["message"] as? String ?? "The mobile engine rejected the request."
+    }
+
     static func openHost(_ path: String) throws {
         var error: NSError?
         if !MobileapiOpenHost(path, &error) {
@@ -87,6 +96,7 @@ enum AsterIOSError: LocalizedError {
     case mobileEngine(String)
     case tunnelUnavailable
     case tunnelStartTimeout
+    case tunnelStartFailed
     case tunnelFileDescriptor
     case invalidProviderReply
 
@@ -99,7 +109,9 @@ enum AsterIOSError: LocalizedError {
         case .tunnelUnavailable:
             return "Aster NetworkExtension is unavailable."
         case .tunnelStartTimeout:
-            return "Aster VPN did not become ready."
+            return "Aster VPN did not become ready in time."
+        case .tunnelStartFailed:
+            return "Aster VPN failed to start. Check that no other VPN is active and that Aster is allowed to use VPN."
         case .tunnelFileDescriptor:
             return "iOS did not expose the tunnel packet descriptor."
         case .invalidProviderReply:

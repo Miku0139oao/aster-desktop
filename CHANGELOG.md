@@ -1,5 +1,13 @@
 # 更新紀錄
 
+## 未發佈 — iOS 客戶端基礎
+
+- 同步 Android 0.3.1–0.3.5 的手機版導覽、多語系、圖示與核心生命週期修正。
+- iOS 新增 NetworkExtension Packet Tunnel、App Group 共用狀態與 Siri／捷徑入口；iOS 不支援 Android 的套件層級分流，介面會說明並改用網域／IP／規則。
+- 修正 iOS 斷線後過早重開 in-app host 造成 App Group 鎖衝突、Flutter 輪詢與連線／斷線交錯、tunnel 啟動失敗長時間無回應、從系統設定或捷徑啟動 tunnel 時被 App 內的 core 擋住，以及 App Intent 連線失敗仍顯示成功。
+- App 進入背景時釋放 in-app host；Connect 失敗會回報原因，tunnel 錯誤訊息改為可操作的在地化提示。
+- CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
+
 ## 0.3.5 — 2026-10-26
 
 - 修正 Android in-process core 停止時只改狀態、沒有完整釋放 mixed proxy、UDP、Controller、DNS 與 TUN 的問題；通知列 Disconnect 後不會再繼續代理或留下 7890 listener，也不會把正常停止誤顯示成操作失敗。

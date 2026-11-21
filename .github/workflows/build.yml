@@ -199,6 +199,17 @@ jobs:
           test -x "$app/PlugIns/AsterTunnel.appex/AsterTunnel"
           test -d "$app/PlugIns/AsterTunnel.appex/Frameworks/Mobileapi.framework"
           test -d "$app/Metadata.appintents"
+          # An unsigned CI build cannot carry entitlements, so check the
+          # configuration that a signed build would embed.
+          plutil -extract NSExtension.NSExtensionPointIdentifier raw \
+            "$app/PlugIns/AsterTunnel.appex/Info.plist" | grep -qx com.apple.networkextension.packet-tunnel
+          plutil -extract CFBundleIdentifier raw "$app/PlugIns/AsterTunnel.appex/Info.plist" | grep -qx app.aster.desktop.tunnel
+          grep -q group.app.aster.desktop ios/Runner/Runner.entitlements
+          grep -q group.app.aster.desktop ios/AsterTunnel/AsterTunnel.entitlements
+          grep -q packet-tunnel-provider ios/AsterTunnel/AsterTunnel.entitlements
+          # The extension must load the same engine as the app.
+          otool -L "$app/PlugIns/AsterTunnel.appex/AsterTunnel" | grep -q Mobileapi.framework
+          otool -L "$app/Runner" | grep -q Mobileapi.framework
       - name: Package the unsigned app for CI inspection
         run: |
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/Aster-iOS-unsigned.zip
