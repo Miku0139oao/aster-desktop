@@ -499,16 +499,26 @@ class AndroidBackend implements DesktopBackend {
       'method': method,
       'params': params ?? {},
     });
-    final encoded = await _channel
-        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
-          if (method != 'connect') 'request': request,
-        })
-        .timeout(
-          method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
-          onTimeout: () => throw const BackendException(
-            'The operation timed out. Check your connection and try again.',
-          ),
-        );
+    final String? encoded;
+    try {
+      encoded = await _channel
+          .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+            if (method != 'connect') 'request': request,
+          })
+          .timeout(
+            method == 'updateCore'
+                ? Duration(minutes: 20)
+                : Duration(minutes: 3),
+            onTimeout: () => throw const BackendException(
+              'The operation timed out. Check your connection and try again.',
+            ),
+          );
+    } on PlatformException catch (e) {
+      // Native failures arrive as PlatformException(operation, message, ...).
+      // The message is what the hint mapper matches on, so surface it directly
+      // instead of the platform wrapper.
+      throw BackendException(e.message ?? 'The VPN operation failed.');
+    }
     return _decode(encoded);
   }
 
@@ -586,16 +596,26 @@ class IOSBackend implements DesktopBackend {
       'method': method,
       'params': params ?? {},
     });
-    final encoded = await _channel
-        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
-          'request': request,
-        })
-        .timeout(
-          method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
-          onTimeout: () => throw const BackendException(
-            'The operation timed out. Check your connection and try again.',
-          ),
-        );
+    final String? encoded;
+    try {
+      encoded = await _channel
+          .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+            'request': request,
+          })
+          .timeout(
+            method == 'updateCore'
+                ? Duration(minutes: 20)
+                : Duration(minutes: 3),
+            onTimeout: () => throw const BackendException(
+              'The operation timed out. Check your connection and try again.',
+            ),
+          );
+    } on PlatformException catch (e) {
+      // Native failures arrive as PlatformException(operation, message, ...).
+      // The message is what the hint mapper matches on, so surface it directly
+      // instead of the platform wrapper.
+      throw BackendException(e.message ?? 'The VPN operation failed.');
+    }
     if (encoded == null || encoded.isEmpty) return null;
     final value = jsonDecode(encoded);
     if (value is! Json) {

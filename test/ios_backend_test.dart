@@ -55,6 +55,29 @@ void main() {
     },
   );
 
+  test('a native channel failure keeps the native message', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'stopVpn') return '{"result":true}';
+      throw PlatformException(
+        code: 'operation',
+        message: 'Aster VPN failed to start. Check that no other VPN is active.',
+      );
+    });
+
+    final backend = IOSBackend();
+    await expectLater(
+      backend.call('connect'),
+      throwsA(
+        isA<BackendException>().having(
+          (e) => e.message,
+          'message',
+          startsWith('Aster VPN failed to start'),
+        ),
+      ),
+    );
+    await backend.close();
+  });
+
   test('a tunnel error reply becomes a backend error', () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'stopVpn') return '{"result":true}';
