@@ -347,10 +347,12 @@ final class AsterIOSHost {
                 reply.fail(error)
                 return
             }
-            // A stalled extension must not block the serial gate forever.
-            // Starting the core can wait on HTTP providers, so allow well over
-            // that; the Dart side gives up after three minutes.
-            DispatchQueue.global().asyncAfter(deadline: .now() + 300) {
+            // A stalled extension must not block the serial gate forever. The
+            // Dart side abandons the channel call after 180 seconds, so expiring
+            // just before that reports a real cause to the user and frees the
+            // gate in time for the next poll instead of holding it two minutes
+            // longer than anyone is still waiting.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 170) {
                 reply.fail(AsterIOSError.tunnelReplyTimeout)
             }
         }
