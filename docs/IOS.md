@@ -58,7 +58,7 @@ python3 scripts/build-ios.py
 
 `scripts/build-ios.py` 會：
 
-1. 用 gomobile 產生 `ios/mobileapi.xcframework`。
+1. 用固定版本的 gomobile 產生 `ios/mobileapi.xcframework`；`gomobile init` 會把 gobind 換成 latest，腳本會再裝回固定版本。
 2. 執行 `scripts/configure-ios.rb`，加入 `AsterTunnel` extension、App Group entitlement 與 framework 連結（靜態 framework 不嵌入）。
 3. 執行 Flutter unsigned iOS release build。
 
