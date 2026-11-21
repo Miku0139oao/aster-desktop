@@ -193,23 +193,35 @@ jobs:
         run: python3 scripts/build-ios.py
       - name: Verify iOS app, tunnel, framework, and App Intents
         run: |
+          set -euo pipefail
           app=build/ios/iphoneos/Runner.app
-          test -x "$app/Runner"
-          test -d "$app/Frameworks/Mobileapi.framework"
-          test -x "$app/PlugIns/AsterTunnel.appex/AsterTunnel"
-          test -d "$app/PlugIns/AsterTunnel.appex/Frameworks/Mobileapi.framework"
-          test -d "$app/Metadata.appintents"
+          fail() { echo "iOS verification failed: $1" >&2; exit 1; }
+          test -x "$app/Runner" || fail "Runner executable is missing"
+          test -d "$app/Frameworks/Mobileapi.framework" || fail "app does not embed Mobileapi.framework"
+          test -x "$app/PlugIns/AsterTunnel.appex/AsterTunnel" || fail "AsterTunnel extension executable is missing"
+          test -d "$app/PlugIns/AsterTunnel.appex/Frameworks/Mobileapi.framework" || fail "extension does not embed Mobileapi.framework"
+          test -d "$app/Metadata.appintents" || fail "App Intents metadata is missing"
           # An unsigned CI build cannot carry entitlements, so check the
           # configuration that a signed build would embed.
           plutil -extract NSExtension.NSExtensionPointIdentifier raw \
-            "$app/PlugIns/AsterTunnel.appex/Info.plist" | grep -qx com.apple.networkextension.packet-tunnel
-          plutil -extract CFBundleIdentifier raw "$app/PlugIns/AsterTunnel.appex/Info.plist" | grep -qx app.aster.desktop.tunnel
-          grep -q group.app.aster.desktop ios/Runner/Runner.entitlements
-          grep -q group.app.aster.desktop ios/AsterTunnel/AsterTunnel.entitlements
-          grep -q packet-tunnel-provider ios/AsterTunnel/AsterTunnel.entitlements
-          # The extension must load the same engine as the app.
-          otool -L "$app/PlugIns/AsterTunnel.appex/AsterTunnel" | grep -q Mobileapi.framework
-          otool -L "$app/Runner" | grep -q Mobileapi.framework
+            "$app/PlugIns/AsterTunnel.appex/Info.plist" \
+            | grep -qx com.apple.networkextension.packet-tunnel || fail "extension point is not packet-tunnel"
+          plutil -extract CFBundleIdentifier raw "$app/PlugIns/AsterTunnel.appex/Info.plist" \
+            | grep -qx app.aster.desktop.tunnel || fail "extension bundle id is not app.aster.desktop.tunnel"
+          grep -q group.app.aster.desktop ios/Runner/Runner.entitlements || fail "app App Group entitlement is missing"
+          grep -q group.app.aster.desktop ios/AsterTunnel/AsterTunnel.entitlements || fail "extension App Group entitlement is missing"
+          grep -q packet-tunnel-provider ios/AsterTunnel/AsterTunnel.entitlements || fail "extension packet-tunnel entitlement is missing"
+          # gomobile produces a static framework, so the engine is linked into
+          # both binaries rather than recorded in otool -L as a dylib. Check the
+          # exported symbol, falling back to the string table if the release
+          # binary has been stripped.
+          has_engine() {
+            nm -gU "$1" 2>/dev/null | grep -q "MobileapiOpenHost" \
+              || strings -a "$1" | grep -q "MobileapiOpenHost"
+          }
+          has_engine "$app/Runner" || fail "app does not link the mobile engine"
+          has_engine "$app/PlugIns/AsterTunnel.appex/AsterTunnel" \
+            || fail "extension does not link the mobile engine"
       - name: Package the unsigned app for CI inspection
         run: |
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/Aster-iOS-unsigned.zip

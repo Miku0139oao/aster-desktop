@@ -9,6 +9,10 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
     // is starting on the settings callback. Both touch the same Go engine, so
     // every access is serialized here.
     private let engineQueue = DispatchQueue(label: "app.aster.desktop.tunnel.engine")
+    // Set when the system asks the tunnel to stop. The settings callback can
+    // still arrive afterwards; starting the engine then would leave a core
+    // running inside a tunnel that is already tearing down.
+    private var stopRequested = false
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -26,6 +30,10 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
                 return
             }
             self.engineQueue.async {
+                guard !self.stopRequested else {
+                    completionHandler(AsterIOSError.tunnelStopped)
+                    return
+                }
                 do {
                     try self.startMobileCore(resolvers: resolvers)
                     completionHandler(nil)
@@ -63,6 +71,7 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         completionHandler: @escaping () -> Void
     ) {
         engineQueue.async {
+            self.stopRequested = true
             self.closeMobileCore()
             completionHandler()
         }
@@ -132,6 +141,13 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         guard let fd = tunnelFileDescriptor() else {
             throw AsterIOSError.tunnelFileDescriptor
         }
+        // The core takes ownership of the descriptor and closes it when it
+        // stops. The scanned fd belongs to the provider's packet flow, so hand
+        // the core a duplicate instead of letting teardown close it.
+        let coreFD = fcntl(fd, F_DUPFD_CLOEXEC, 0)
+        guard coreFD >= 0 else {
+            throw AsterIOSError.tunnelFileDescriptor
+        }
         // iOS tunnels have no Android package selectors. Pass empty routing so
         // the core does not inherit selectors saved by another platform.
         var options: [String: Any] = [
@@ -142,10 +158,16 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
             options["systemDNS"] = resolvers
         }
         let encoded = try JSONSerialization.data(withJSONObject: options)
-        let response = try AsterIOSRuntime.startHostVPN(
-            fd: fd,
-            options: String(decoding: encoded, as: UTF8.self)
-        )
+        let response: String
+        do {
+            response = try AsterIOSRuntime.startHostVPN(
+                fd: coreFD,
+                options: String(decoding: encoded, as: UTF8.self)
+            )
+        } catch {
+            close(coreFD)
+            throw error
+        }
         if let error = AsterIOSRuntime.responseError(response) {
             throw AsterIOSError.mobileEngine(error)
         }

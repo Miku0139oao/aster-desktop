@@ -97,6 +97,7 @@ enum AsterIOSError: LocalizedError {
     case tunnelUnavailable
     case tunnelStartTimeout
     case tunnelStartFailed
+    case tunnelStopped
     case tunnelFileDescriptor
     case invalidProviderReply
 
@@ -112,6 +113,8 @@ enum AsterIOSError: LocalizedError {
             return "Aster VPN did not become ready in time."
         case .tunnelStartFailed:
             return "Aster VPN failed to start. Check that no other VPN is active and that Aster is allowed to use VPN."
+        case .tunnelStopped:
+            return "Aster VPN was stopped before it finished starting."
         case .tunnelFileDescriptor:
             return "iOS did not expose the tunnel packet descriptor."
         case .invalidProviderReply:

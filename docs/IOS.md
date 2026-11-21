@@ -6,6 +6,7 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 
 - `AsterIOSHost` 管理 App 內的訂閱、設定與一般 RPC。
 - `AsterTunnelProvider` 在獨立 NetworkExtension process 內啟動 core。
+- extension 收到停止要求後不會再啟動 core，避免 tunnel 已在拆除時留下仍在執行的 engine 或重複回報完成。
 - `mobileapi.xcframework` 由 gomobile 產生，包含管理層與固定版本的 Aster Core。
 - App 與 extension 透過 `group.app.aster.desktop` App Group 共用狀態。
 - 兩邊的 core host 會對 App Group 內的 engine 取得互斥鎖；同一時間只會有一個 process 持有 core，避免兩份狀態互相覆寫。
@@ -13,7 +14,7 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 - 斷線後，App 會等 tunnel 真正進入 `disconnected` 並釋放鎖，才重新取得 host；短暫的鎖殘留會重試，不會再誤報「已在執行」。
 - App 進入背景時會釋放 in-app host，讓使用者從「設定」、控制中心或捷徑啟動的 tunnel 能取得鎖；回到前景後再按需重開。
 - Flutter 每兩秒輪詢一次狀態，所有通道請求、Siri／捷徑與狀態變更都經過序列化，避免輪詢和連線／斷線交錯。
-- Tunnel 只把實際的 utun descriptor 交給 core；iOS 不支援 Android 的套件層級分流，啟動時會清空套件選取條件。
+- Tunnel 找出自己的 utun descriptor 後，複製一份交給 core，core 停止時關閉的是副本，不會影響 NetworkExtension 的封包流程；iOS 不支援 Android 的套件層級分流，啟動時會清空套件選取條件。
 - Tunnel 生效前會先讀取裝置當下的 DNS 解析器，並在設定檔仍使用預設 `system` 時注入 core；tunnel 生效後 `/etc/resolv.conf` 可能指向 Aster 自己的位址，不能再用來解析節點網域。設定檔若已指定 `dns.nameserver`，則維持原設定。
 
 ## App Intents
@@ -69,7 +70,8 @@ CI 另會確認產物內含：
 - extension 內的 `Mobileapi.framework`
 - `Metadata.appintents`
 - Packet Tunnel extension point 與 `app.aster.desktop.tunnel` bundle id
-- App 與 extension 的 App Group 及 `packet-tunnel-provider` entitlement 設定，以及兩者都連結 `Mobileapi.framework`
+- App 與 extension 的 App Group 及 `packet-tunnel-provider` entitlement 設定
+- App 與 extension 都靜態連結 `Mobileapi`（gomobile 產生的 framework 是靜態的，不會出現在 `otool -L`）
 
 ## 目前限制
 

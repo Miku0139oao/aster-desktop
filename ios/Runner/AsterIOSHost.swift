@@ -106,18 +106,23 @@ final class AsterIOSHost {
     }
 
     func currentStatus() async -> String {
-        guard let manager = try? await gate.run({ try await self.tunnelManager() }) else {
+        do {
+            let manager = try await gate.run { try await self.tunnelManager() }
+            // A fresh install has no saved configuration yet; that is not an
+            // error, the user simply has not connected.
+            guard let manager else { return "Disconnected" }
+            switch manager.connection.status {
+            case .connected:
+                return "Connected"
+            case .connecting, .reasserting:
+                return "Connecting"
+            case .disconnecting:
+                return "Disconnecting"
+            default:
+                return "Disconnected"
+            }
+        } catch {
             return "Unavailable"
-        }
-        switch manager.connection.status {
-        case .connected:
-            return "Connected"
-        case .connecting, .reasserting:
-            return "Connecting"
-        case .disconnecting:
-            return "Disconnecting"
-        default:
-            return "Disconnected"
         }
     }
 
