@@ -489,9 +489,11 @@ class AppController extends ChangeNotifier {
         await loadLogs();
       }
       // A Shortcut can set the route while the app stays in the foreground, so
-      // the resume callback alone is not enough. Skipped on the nodes page to
-      // avoid a pointless channel call every poll.
-      if (isMobilePlatform && page != 1 && !busy) {
+      // the resume callback alone is not enough. Consume it on every page: a
+      // skipped read leaves the key behind, and the next page change would
+      // then jump back to the node selector unexpectedly. Reading it is one
+      // UserDefaults lookup in the app process, not a host call.
+      if (isMobilePlatform && !busy) {
         await _consumePendingRoute();
       }
       // macOS schedules refreshes in Flutter because TUN changes must pass
