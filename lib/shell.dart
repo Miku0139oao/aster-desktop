@@ -793,6 +793,19 @@ class ErrorCard extends StatelessWidget {
         'TUN could not become ready. Try system proxy and expand the details to check TUN settings and other VPNs.',
       );
     }
+    if (message.contains('did not reply in time') ||
+        message.contains('reply timeout')) {
+      return c.tr(
+        'VPN 沒有回應。請先中斷連線，再重新連線。',
+        'The VPN did not respond. Disconnect and connect again.',
+      );
+    }
+    if (message.contains('tun settings changed')) {
+      return c.tr(
+        'TUN 設定已變更。請中斷連線後重新連線，新設定才會生效。',
+        'TUN settings changed. Disconnect and connect again to apply them.',
+      );
+    }
     if (Platform.isIOS &&
         (message.contains('networkextension') ||
             message.contains('network extension') ||
