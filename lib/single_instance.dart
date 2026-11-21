@@ -142,14 +142,29 @@ class SingleInstance {
           .transform(const LineSplitter())
           .first;
       if (request == 'activate $_token' && !_closed) {
-        await _activate().timeout(const Duration(seconds: 5));
-        socket.write('ok\n');
+        // Always answer an accepted request: closing without a reply makes
+        // the second launch wait for its own timeout instead of retrying now.
+        var reply = 'error';
+        try {
+          await _activate().timeout(const Duration(seconds: 5));
+          reply = 'ok';
+        } on Object catch (error) {
+          // Kept off stdout: the cross-process lifecycle test parses it.
+          stderr.writeln('Could not reveal the running window: $error');
+        }
+        socket.write('$reply\n');
         await socket.flush();
       }
     } on Object {
       // A malformed/local unauthenticated client cannot affect the owner.
     } finally {
-      socket.destroy();
+      // Close gracefully: destroy() discards a reply that flush() only handed
+      // to the socket, so the client could miss an activation that succeeded.
+      try {
+        await socket.close();
+      } on Object {
+        socket.destroy();
+      }
     }
   }
 

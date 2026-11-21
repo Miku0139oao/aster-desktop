@@ -13,6 +13,7 @@
 - 手機版的原生錯誤改顯示實際原因（不再出現 `PlatformException` 包裝），逾時與 TUN 設定變更會提示先中斷再重新連線。
 - Android 匯出改存到檔案管理員可瀏覽的 `Android/data/app.aster.desktop/files`，不再誤稱存到「檔案」App；iOS 維持 App 文件夾。
 - 修正快取的 `GeoSite.dat` 缺少規則清單（例如 `geolocation-!cn`）時設定驗證永久失敗：現在會把舊檔移到 `.stale` 並重新下載目前版本後重試。
+- 修正重複啟動時偶爾收不到「喚回視窗」確認而誤判逾時：啟動請求現在一定會收到成功或失敗回應，失敗會記錄原因並立即重試。
 - CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
 
 ## 0.3.5 — 2026-10-26
