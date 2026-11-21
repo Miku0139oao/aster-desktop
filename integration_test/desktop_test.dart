@@ -39,31 +39,45 @@ void main() {
     );
     expect(instance, isNotNull);
     addTearDown(instance!.close);
+    // A real second launch retries until the running owner acknowledges the
+    // activation (SingleInstance.acquire). Do the same here: a CI runner whose
+    // platform thread is busy with the resize/hide transition can miss the
+    // first round trip without the activation itself having failed.
     Future<void> activate() async {
-      final endpoint = jsonDecode(
-        await File('${directory.path}/desktop.instance.json').readAsString(),
-      ) as Map;
-      final socket = await Socket.connect(
-        InternetAddress.loopbackIPv4,
-        endpoint['port'] as int,
-      );
-      try {
-        socket.write('activate ${endpoint['token']}\n');
-        await socket.flush();
-        final reply = await socket
-            .cast<List<int>>()
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())
-            .first
-            .timeout(
-              // Slow CI runners can take several seconds to service the
-              // activation socket while the platform thread is busy resizing.
-              const Duration(seconds: 20),
-            );
-        expect(reply, 'ok');
-      } finally {
-        socket.destroy();
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      Object? failure;
+      while (DateTime.now().isBefore(deadline)) {
+        try {
+          final endpoint = jsonDecode(
+            await File('${directory.path}/desktop.instance.json')
+                .readAsString(),
+          ) as Map;
+          final socket = await Socket.connect(
+            InternetAddress.loopbackIPv4,
+            endpoint['port'] as int,
+          );
+          try {
+            socket.write('activate ${endpoint['token']}\n');
+            await socket.flush();
+            final reply = await socket
+                .cast<List<int>>()
+                .transform(utf8.decoder)
+                .transform(const LineSplitter())
+                .first
+                .timeout(const Duration(seconds: 10));
+            if (reply == 'ok') return;
+            failure = StateError('activation reply: $reply');
+          } finally {
+            socket.destroy();
+          }
+        } on Object catch (error) {
+          failure = error;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 100));
       }
+      throw StateError(
+        'The running instance never acknowledged activation: $failure',
+      );
     }
 
     // Window state changes are dispatched asynchronously on the platform
