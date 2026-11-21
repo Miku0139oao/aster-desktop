@@ -126,3 +126,21 @@ func TestNormalizeDNSAddresses(t *testing.T) {
 		t.Fatalf("addresses = %#v, want %#v", got, want)
 	}
 }
+
+func TestMobileTunChangedOnlyBlocksStructuralEdits(t *testing.T) {
+	core := NewCore("", t.TempDir())
+	tun := map[string]any{"enable": true, "mtu": 9000}
+	if changed, err := core.mobileTunChanged(tun); err != nil || changed {
+		t.Fatalf("changed = %v, err = %v; nothing is running yet", changed, err)
+	}
+	core.mu.Lock()
+	core.activeTun = "enable: true\nmtu: 9000\n"
+	core.mu.Unlock()
+	if changed, err := core.mobileTunChanged(tun); err != nil || changed {
+		t.Fatalf("changed = %v, err = %v; identical TUN must not force a rebuild", changed, err)
+	}
+	tun["mtu"] = 1500
+	if changed, err := core.mobileTunChanged(tun); err != nil || !changed {
+		t.Fatalf("changed = %v, err = %v; a different TUN must require a reconnect", changed, err)
+	}
+}

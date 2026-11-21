@@ -36,19 +36,24 @@ type Core struct {
 	includePackages              []string
 	excludePackages              []string
 	systemDNS                    []string
-	cmd                          *exec.Cmd
-	done                         chan struct{}
-	runCancel                    context.CancelFunc
-	lastError                    string
-	stopping                     bool
-	coreVersion                  string
-	activeContent                string
-	activeSettings               Settings
-	logMu                        sync.Mutex
-	logs                         []string
-	proxy                        *ProxySnapshot
-	proxyMu                      sync.Mutex
-	client                       *http.Client
+	// activeTun is the marshaled TUN section of the running mobile config. The
+	// core's listener owns the only copy of the TUN descriptor and closes it
+	// when it re-creates the TUN, so applying a different TUN section would
+	// rebuild it from a closed descriptor.
+	activeTun      string
+	cmd            *exec.Cmd
+	done           chan struct{}
+	runCancel      context.CancelFunc
+	lastError      string
+	stopping       bool
+	coreVersion    string
+	activeContent  string
+	activeSettings Settings
+	logMu          sync.Mutex
+	logs           []string
+	proxy          *ProxySnapshot
+	proxyMu        sync.Mutex
+	client         *http.Client
 }
 type CoreStatus struct {
 	Running bool   `json:"running"`
@@ -384,7 +389,9 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	}
 }
 
-func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd int) error {
+// StartWithFD runs the in-process core against a VPN-provided TUN descriptor.
+// The core takes ownership of fd and closes it when the listener stops.
+func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd int) (result error) {
 	if !c.InProcess {
 		return errors.New("mobile core is not enabled")
 	}
@@ -396,20 +403,25 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 	c.mu.Unlock()
 	failed := true
 	defer func() {
-		if err := recover(); err != nil {
-			c.recordError(fmt.Errorf("mobile core failed: %v", err))
+		if r := recover(); r != nil {
+			// This is the only failure handler for a panicking core, so it must
+			// report the panic; returning nil would be read as a working tunnel.
+			result = fmt.Errorf("mobile core failed: %v", r)
+			c.recordError(result)
 		}
 		if failed {
 			c.mu.Lock()
 			c.fd = 0
+			c.activeTun = ""
 			c.mu.Unlock()
 		}
 	}()
-	err := c.start(ctx, content, s, false)
-	if err == nil {
-		failed = false
+	if err := c.start(ctx, content, s, false); err != nil {
+		result = err
+		return result
 	}
-	return err
+	failed = false
+	return nil
 }
 
 func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
@@ -452,6 +464,10 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	applyMobileTunOptions(tun, fd, include, exclude)
 	withSystemDNS(doc, systemDNS)
 	doc["tun"] = tun
+	activeTun, err := yaml.Marshal(tun)
+	if err != nil {
+		return err
+	}
 	final, err := yaml.Marshal(doc)
 	if err != nil {
 		return err
@@ -468,6 +484,7 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	c.coreVersion = "mobile-" + CoreCommit[:7]
 	c.lastError = ""
 	c.activeContent, c.activeSettings = content, s
+	c.activeTun = string(activeTun)
 	c.done = make(chan struct{})
 	c.runCancel = cancel
 	c.mu.Unlock()
@@ -483,6 +500,20 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 		)
 	}
 	return nil
+}
+
+// mobileTunChanged reports whether applying tun would make the core rebuild
+// its TUN listener. The running mobile listener owns the only TUN descriptor,
+// so a rebuild would attach it to a descriptor that is already closed.
+func (c *Core) mobileTunChanged(tun map[string]any) (bool, error) {
+	newTun, err := yaml.Marshal(tun)
+	if err != nil {
+		return false, err
+	}
+	c.mu.Lock()
+	activeTun := c.activeTun
+	c.mu.Unlock()
+	return activeTun != "" && string(newTun) != activeTun, nil
 }
 
 func startupTimeout(content []byte) time.Duration {
@@ -521,6 +552,7 @@ func (c *Core) Stop() error {
 		port := c.activeSettings.MixedPort
 		controller := c.Address
 		c.fd = 0
+		c.activeTun = ""
 		c.mu.Unlock()
 		if cancel != nil {
 			cancel()
@@ -694,6 +726,20 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		applyMobileTunOptions(tun, fd, include, exclude)
 		withSystemDNS(doc, systemDNS)
 		doc["tun"] = tun
+		if fd > 0 {
+			changed, err := c.mobileTunChanged(tun)
+			if err != nil {
+				return err
+			}
+			if changed {
+				// The listener owns the TUN descriptor and closes it when it
+				// re-creates the TUN. Applying a changed TUN section would
+				// rebuild it from a closed descriptor, leaving the core running
+				// but unable to pass traffic while the OS still reports the
+				// VPN connected.
+				return errors.New("TUN settings changed; disconnect and reconnect to apply them")
+			}
+		}
 		final, err := yaml.Marshal(doc)
 		if err != nil {
 			return err
