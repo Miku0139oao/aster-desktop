@@ -98,7 +98,7 @@ ASTER_FLUTTER=/path/to/flutter ASTER_GO=/path/to/go python3 scripts/build-ios.py
 
 這一步不需要簽章，成功後再進 Xcode 設定簽章即可。
 
-### A4. 在 Apple Developer 建立 App ID、App Group 與描述檔
+### A4. 在 Apple Developer 建立 App ID 與 App Group
 
 到 [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources)：
 
@@ -108,10 +108,7 @@ ASTER_FLUTTER=/path/to/flutter ASTER_GO=/path/to/go python3 scripts/build-ios.py
    - 儲存。
 2. 再建立一個 App ID，填入 extension 的 bundle id（例如 `com.yourname.aster.tunnel`），同樣啟用 **App Groups** 與 **Network Extensions（Packet Tunnel）**。
 3. **Identifiers → App Groups → +** 建立 `group.com.yourname.aster`（或預設的 `group.app.aster.desktop`），回到兩個 App ID 的 Configure 頁面把它指派給兩者。
-4. **Profiles → +**
-   - 開發測試選 **iOS App Development**；要在自己的裝置長期使用也可選 **Ad Hoc**（需先註冊裝置 UDID）。
-   - 分別為兩個 bundle id 建立描述檔，選擇你的簽章憑證與裝置，下載 `.mobileprovision`。
-   - 描述檔必須包含 Network Extension 與 App Group entitlement；建立後才開啟 capability 的話，請重新產生描述檔。
+4. 描述檔交給 Xcode 的自動簽章建立即可（見 A5）。若你偏好手動簽章，才需要到 **Profiles → +** 為兩個 bundle id 各建立 **iOS App Development** 描述檔，選擇憑證與已註冊的裝置後下載。
 
 Xcode 的自動簽章也能代為建立描述檔，但前提是 App ID 已啟用上述 capability；先完成入口網站設定可避免 Xcode 產生缺少 entitlement 的描述檔。
 
@@ -242,7 +239,7 @@ xcrun devicectl device install app --device <裝置識別碼> Runner.app
 
 - 或把 `Runner.app` 拖進 Apple Configurator 的裝置視窗。
 
-安裝後若 App 閃退或 tunnel 啟動失敗，先確認描述檔的 App Group 與 Network Extension 是否齊全，以及裝置是否已登錄在描述檔中。
+安裝後若 App 閃退或 tunnel 啟動失敗，先確認描述檔的 App Group 與 Network Extension 是否齊全，以及裝置是否已登錄在描述檔中。使用 development 描述檔時，手機也要開啟開發者模式並信任這台 Mac。
 
 ---
 
