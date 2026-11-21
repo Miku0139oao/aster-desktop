@@ -10,6 +10,7 @@
 - iOS 修正本機設定檔匯入（`file_selector_ios` 需要 UTI）與匯出（iOS 沒有儲存對話框，改存到 App 文件夾並在「檔案」App 顯示）。
 - iOS 會自動更新訂閱（原本只有 macOS 會排程），且連線中不會因套用新設定而重建 TUN、讓流量中斷。
 - Tunnel 回覆逾時不再永久卡住後續請求；核心回復 panic 時會回報失敗，不再誤顯示已連線。
+- 手機版的原生錯誤改顯示實際原因（不再出現 `PlatformException` 包裝），逾時與 TUN 設定變更會提示先中斷再重新連線。
 - CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
 
 ## 0.3.5 — 2026-10-26
