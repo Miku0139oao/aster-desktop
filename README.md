@@ -67,7 +67,7 @@ Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手
 
 Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。自 0.4.0 起桌面、Android 與 iOS 由同一個 tag 的 CI 一起建置與發佈。
 
-iOS 產物沒有簽章，只供編譯與結構檢查；TestFlight、Ad Hoc IPA、NetworkExtension 實機授權與 App Store 發佈需要付費 Apple Developer Program 簽章設定，見 [iOS 版說明](docs/IOS.md)。
+iOS 產物沒有簽章，只供編譯與結構檢查；TestFlight、Ad Hoc IPA、NetworkExtension 實機授權與 App Store 發佈需要付費 Apple Developer Program 簽章設定，見 [iOS 版說明](docs/IOS.md)。要安裝到自己的實機，請依 [iOS 自簽安裝教學](docs/IOS_SELF_SIGN.md)操作。
 
 本版由 CI 在 Ubuntu 24.04 建置 Linux 套件，未包含 Arch 原生套件；需要 Arch 套件者請依[開發與建置](docs/BUILDING.md)在 Arch 上自行建置。可攜版另有 `linux-ubuntu-24.04-x64-portable.tar.gz` 與 `windows-x64-portable.zip`。
 
@@ -104,6 +104,7 @@ Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝�
 - [常見問題與故障排除](docs/FAQ.md)：無法連線、TUN、授權、安裝、日誌與回報方式。
 - [Android 版](docs/ANDROID.md)：VpnService、應用程式分流、權限、簽章與建置。
 - [iOS 版](docs/IOS.md)：NetworkExtension、App Group、Siri／捷徑、簽章限制與建置。
+- [iOS 自簽安裝教學](docs/IOS_SELF_SIGN.md)：付費帳號需求、從原始碼簽章、重新簽章官方 unsigned zip 與常見錯誤。
 - [應用程式分流](docs/APPLICATION_ROUTING.md) · [日誌與連線查閱](docs/INSPECTION.md)。
 - [開發與建置](docs/BUILDING.md) · [架構與介面](docs/ARCHITECTURE.md) · [測試紀錄](docs/TESTING.md) · [更新紀錄](CHANGELOG.md)。
 
