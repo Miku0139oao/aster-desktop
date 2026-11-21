@@ -78,5 +78,7 @@ CI 另會確認產物內含：
 - 尚未在 iPhone 實機驗證；背景／前景切換與從系統設定啟動 tunnel 需在真機確認。
 - Tunnel fd 取得依賴 iOS utun descriptor，需在支援的 iOS 版本與真機確認。
 - App 分流在 iOS 受 Apple NetworkExtension 限制，不能照搬 Android 的 package VPN。
-- iOS 沒有 Android 的 `VpnService.protect()`；provider 自己的對外連線需靠 NetworkExtension 的預設排除行為，若實機發現回流，需改以綁定實體介面處理。
+- iOS 沒有 Android 的 `VpnService.protect()`；NetworkExtension 不會把 tunnel process 自己的連線送回同一個 utun，因此 core 直接對外連線即可。
+- 連線中若修改會影響 TUN 的設定（例如 MTU），需重新連線才會生效，避免 core 用已關閉的 descriptor 重建 TUN。
+- 匯出檔案會存到 App 文件夾並顯示在「檔案」App；iOS 不提供桌面版的自訂儲存位置對話框。
 - XCFramework 與未簽章 build 不會提交到 Git。

@@ -7,6 +7,9 @@
 - 修正 iOS 斷線後過早重開 in-app host 造成 App Group 鎖衝突、Flutter 輪詢與連線／斷線交錯、tunnel 啟動失敗長時間無回應、從系統設定或捷徑啟動 tunnel 時被 App 內的 core 擋住，以及 App Intent 連線失敗仍顯示成功。
 - App 進入背景時釋放 in-app host；Connect 失敗會回報原因，tunnel 錯誤訊息改為可操作的在地化提示。
 - iOS tunnel 在生效前擷取裝置當下的 DNS 解析器並注入 core，避免 tunnel 接管路由後無法解析節點網域；設定檔已自訂 `dns.nameserver` 時維持原設定。
+- iOS 修正本機設定檔匯入（`file_selector_ios` 需要 UTI）與匯出（iOS 沒有儲存對話框，改存到 App 文件夾並在「檔案」App 顯示）。
+- iOS 會自動更新訂閱（原本只有 macOS 會排程），且連線中不會因套用新設定而重建 TUN、讓流量中斷。
+- Tunnel 回覆逾時不再永久卡住後續請求；核心回復 panic 時會回報失敗，不再誤顯示已連線。
 - CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
 
 ## 0.3.5 — 2026-10-26
