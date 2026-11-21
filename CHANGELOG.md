@@ -1,7 +1,8 @@
 # 更新紀錄
 
-## 未發佈 — iOS 客戶端基礎
+## 0.4.0 — 2026-11-22 — iOS 客戶端基礎
 
+- 首次在同一個版本同時提供 Windows、macOS（Intel／Apple Silicon）、Linux、Android 與 iOS 產物；iOS 為未簽章 CI 建置，安裝仍需 Apple Developer Program 簽章。
 - 同步 Android 0.3.1–0.3.5 的手機版導覽、多語系、圖示與核心生命週期修正。
 - iOS 新增 NetworkExtension Packet Tunnel、App Group 共用狀態與 Siri／捷徑入口；iOS 不支援 Android 的套件層級分流，介面會說明並改用網域／IP／規則。
 - 修正 iOS 斷線後過早重開 in-app host 造成 App Group 鎖衝突、Flutter 輪詢與連線／斷線交錯、tunnel 啟動失敗長時間無回應、從系統設定或捷徑啟動 tunnel 時被 App 內的 core 擋住，以及 App Intent 連線失敗仍顯示成功。

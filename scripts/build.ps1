@@ -3,6 +3,10 @@ $ErrorActionPreference='Stop'
 $asterRoot=Split-Path -Parent $PSScriptRoot
 $asterBuild=Join-Path $asterRoot '.build'
 $asterLock=Get-Content (Join-Path $asterRoot 'toolchain.json') -Raw | ConvertFrom-Json
+$asterManifest=Get-Content -Raw (Join-Path $asterRoot 'pubspec.yaml')
+$asterReleaseMatch=[regex]::Match($asterManifest,'(?m)^version:\s*([^+\s]+)\+\d+')
+if(!$asterReleaseMatch.Success){throw 'Could not read version from pubspec.yaml'}
+$asterReleaseVersion=$asterReleaseMatch.Groups[1].Value
 $env:GOTOOLCHAIN="go$($asterLock.go)"
 New-Item -ItemType Directory -Path $asterBuild -Force | Out-Null
 Push-Location (Join-Path $asterRoot 'bridge')
@@ -10,7 +14,7 @@ try {
   $env:CGO_ENABLED='0'
   $asterDependency=go mod download -json "$($asterLock.coreModule)@$($asterLock.coreVersion)" | ConvertFrom-Json
   if($LASTEXITCODE -ne 0){throw 'Could not obtain the pinned core source'}
-  go build -trimpath -o (Join-Path $asterBuild 'aster-bridge.exe') ./cmd/aster-bridge
+  go build -trimpath -ldflags "-X github.com/Miku0139oao/aster-desktop/bridge/internal/desktop.Version=$asterReleaseVersion" -o (Join-Path $asterBuild 'aster-bridge.exe') ./cmd/aster-bridge
   if($LASTEXITCODE -ne 0){throw 'Desktop engine build failed'}
   Push-Location $asterDependency.Dir
   try {
@@ -48,7 +52,7 @@ try {
   Copy-Item -LiteralPath (Join-Path $asterRoot 'docs') -Destination $asterRelease -Recurse -Force
   Copy-Item -LiteralPath (Join-Path $asterRoot 'assets\OFL-NotoSansTC.txt') -Destination $asterRelease
   New-Item -ItemType Directory -Path (Join-Path $asterRoot 'dist') -Force | Out-Null
-  Compress-Archive -Path "$asterRelease\*" -DestinationPath (Join-Path $asterRoot 'dist\Aster-Desktop-0.2.3-windows-x64-portable.zip') -Force
+  Compress-Archive -Path "$asterRelease\*" -DestinationPath (Join-Path $asterRoot "dist\Aster-Desktop-$asterReleaseVersion-windows-x64-portable.zip") -Force
   if($Installer){& (Join-Path $PSScriptRoot 'package-windows.ps1') -ReleasePath $asterRelease}
   & (Join-Path $PSScriptRoot 'package-source.ps1') -CoreSource $asterDependency.Dir
   & (Join-Path $PSScriptRoot 'checksums.ps1')

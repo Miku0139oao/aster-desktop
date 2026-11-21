@@ -16,7 +16,12 @@ import (
 )
 
 const CoreCommit = "a9a33503b39a03681bc52d9758907316a22df199"
-const Version = "0.2.3"
+
+// Version is what the UI, the update check and the User-Agent report. Release
+// builds override it through -ldflags with the pubspec version; the default
+// below must stay equal to pubspec.yaml (version_test.go enforces it) because
+// gomobile builds for Android and iOS cannot take the same flag.
+var Version = "0.4.0"
 const MaxConfig = 16 << 20
 
 type Settings struct {

@@ -2,6 +2,10 @@
 
 Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並以 NetworkExtension Packet Tunnel Provider 執行 Aster Core。
 
+## 取得方式
+
+自 `0.4.0` 起，發佈頁會同步提供 `Aster-Desktop-<版本>-ios-unsigned.zip` 與對應的建置校驗檔。這是未簽章的 `Runner.app`，用於檢視 CI 產物、學術或自行簽章測試，**不能直接安裝在一般 iPhone，也不能上傳 TestFlight**；重新簽章需要付費 Apple Developer Program 的 NetworkExtension capability 與 provisioning profile，見下方[簽章與測試](#簽章與測試)。
+
 ## 架構
 
 - `AsterIOSHost` 管理 App 內的訂閱、設定與一般 RPC。

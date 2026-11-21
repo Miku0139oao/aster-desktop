@@ -59,6 +59,11 @@ jobs:
       - run: flutter analyze
       - name: Cross-process single instance lifecycle
         run: dart run scripts/test_single_instance.dart
+      - name: Release tooling tests
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m py_compile scripts/assemble-release.py scripts/package-docs.py
+          python3 scripts/test-assemble-release.py
       - name: Widget and visual tests
         run: flutter test ${{ inputs.refresh_visual_baselines && '--update-goldens' || '' }}
       - name: Preserve rendered platform baselines
@@ -270,3 +275,78 @@ jobs:
           path: |
             build/Aster-iOS-unsigned.zip
             build/ios-checksums.txt
+  release:
+    # A tag is the public act: every platform must have built from the same
+    # commit before the release is published. Publishes nothing on branches.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android, ios]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read and confirm the tagged version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(python3 - <<'PY'
+          import pathlib, re
+          match = re.search(
+              r'(?m)^version:\s*([^+\s]+)\+\d+\s*$',
+              pathlib.Path('pubspec.yaml').read_text(encoding='utf-8'),
+          )
+          if not match:
+              raise SystemExit('pubspec.yaml has no version')
+          print(match.group(1))
+          PY
+          )
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match pubspec version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Build the offline manual
+        run: |
+          set -euo pipefail
+          # Ubuntu 24.04 python is externally managed; the system pip would
+          # refuse to install. A throwaway venv keeps the runner unchanged.
+          python3 -m venv "$RUNNER_TEMP/docs-venv"
+          "$RUNNER_TEMP/docs-venv/bin/pip" install --disable-pip-version-check -r scripts/docs-requirements.txt
+          "$RUNNER_TEMP/docs-venv/bin/python" scripts/package-docs.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --output release
+      - name: Assemble assets, checksums and notes
+        run: |
+          python3 scripts/assemble-release.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --artifacts release-assets \
+            --output release \
+            --meta release-meta
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$(cat release-meta/release-title.txt)" \
+            --notes-file release-meta/release-notes.md \
+            --verify-tag \
+            release/*
+      - name: Record the published release
+        if: always()
+        run: |
+          {
+            echo "### Aster Desktop ${{ steps.version.outputs.version }}"
+            echo
+            echo "Tag: \`$GITHUB_REF_NAME\`"
+            echo
+            echo "Assets:"
+            for file in release/*; do
+              echo "- \`$(basename "$file")\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"

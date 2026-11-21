@@ -1,7 +1,7 @@
 """Build an offline HTML/Markdown manual; never changes release binaries.
 
 python -m pip install -r scripts/docs-requirements.txt
-python scripts/package-docs.py --version 0.2.3 --output .build/public-0.2.3
+python scripts/package-docs.py --output dist
 """
 
 import argparse
@@ -22,6 +22,8 @@ PAGES = {
     'docs/INSPECTION.md': ('docs/INSPECTION.html', '連線與日誌'),
     'CHANGELOG.md': ('CHANGELOG.html', '更新紀錄'),
     'docs/BUILDING.md': ('docs/BUILDING.html', '開發與建置'),
+    'docs/ANDROID.md': ('docs/ANDROID.html', 'Android 版'),
+    'docs/IOS.md': ('docs/IOS.html', 'iOS 版'),
     'docs/ARCHITECTURE.md': ('docs/ARCHITECTURE.html', '架構與介面'),
     'docs/TESTING.md': ('docs/TESTING.html', '測試紀錄'),
     'NOTICE.md': ('NOTICE.html', '第三方聲明'),
@@ -69,11 +71,21 @@ def local_links(source, rendered):
     return re.sub(r'href="([^"]+)"', replace, rendered)
 
 
+def read_version():
+    manifest = (ROOT / 'pubspec.yaml').read_text(encoding='utf-8')
+    match = re.search(r'(?m)^version:\s*([^+\s]+)\+\d+\s*$', manifest)
+    if not match:
+        raise SystemExit('pubspec.yaml has no version')
+    return match.group(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='0.2.3')
+    parser.add_argument('--version', default=None)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist')
     args = parser.parse_args()
+    if args.version is None:
+        args.version = read_version()
     if not re.fullmatch(r'\d+\.\d+\.\d+', args.version):
         parser.error('Version must contain major.minor.patch')
     args.output.mkdir(parents=True, exist_ok=True)
