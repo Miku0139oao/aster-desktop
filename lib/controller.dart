@@ -488,6 +488,12 @@ class AppController extends ChangeNotifier {
       if (page == 4 && !busy && epoch == _operationEpoch) {
         await loadLogs();
       }
+      // A Shortcut can set the route while the app stays in the foreground, so
+      // the resume callback alone is not enough. Skipped on the nodes page to
+      // avoid a pointless channel call every poll.
+      if (isMobilePlatform && page != 1 && !busy) {
+        await _consumePendingRoute();
+      }
       // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
       if (Platform.isMacOS) {
         final now = DateTime.now();

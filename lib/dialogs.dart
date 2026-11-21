@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:yaml/yaml.dart';
 import 'package:re_editor/re_editor.dart';
@@ -153,16 +154,34 @@ class _ImportDialogState extends State<_ImportDialog> {
                 onPressed: working
                     ? null
                     : () async {
-                        final selected = await openFile(
-                          acceptedTypeGroups: [
-                            const XTypeGroup(
-                              label: 'Configuration',
-                              extensions: ['yaml', 'yml', 'txt'],
-                            ),
-                          ],
-                        );
-                        if (selected != null && mounted) {
-                          setState(() => file = selected.path);
+                        try {
+                          final selected = await openFile(
+                            acceptedTypeGroups: [
+                              // file_selector_ios rejects type groups that only
+                              // set extensions, so iOS needs UTIs.
+                              XTypeGroup(
+                                label: 'Configuration',
+                                extensions: const ['yaml', 'yml', 'txt'],
+                                uniformTypeIdentifiers: Platform.isIOS
+                                    ? const [
+                                        'public.yaml',
+                                        'public.plain-text',
+                                        'public.data',
+                                      ]
+                                    : null,
+                              ),
+                            ],
+                          );
+                          if (selected != null && mounted) {
+                            setState(() => file = selected.path);
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            setState(() => error = c.tr(
+                                  '無法開啟檔案選擇器：$e',
+                                  'Could not open the file picker: $e',
+                                ));
+                          }
                         }
                       },
                 icon: const Icon(Icons.folder_open),
@@ -351,11 +370,31 @@ Future<void> exportText(
   String content,
   String name,
 ) async {
-  final location = await getSaveLocation(
-    suggestedName: name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_'),
-  );
-  if (location == null) return;
+  final safeName = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
   try {
+    // iOS and Android have no native save dialog in file_selector. Write into
+    // the app's documents directory instead; on iOS it is visible in Files
+    // (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace).
+    if (Platform.isIOS || Platform.isAndroid) {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/$safeName');
+      await file.writeAsString(content);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              c.tr(
+                '檔案已儲存到「檔案」App：$safeName',
+                'Saved to the Files app as $safeName',
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final location = await getSaveLocation(suggestedName: safeName);
+    if (location == null) return;
     await File(location.path).writeAsString(content);
     if (context.mounted) {
       ScaffoldMessenger.of(
