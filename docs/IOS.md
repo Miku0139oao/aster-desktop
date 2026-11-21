@@ -59,19 +59,17 @@ python3 scripts/build-ios.py
 `scripts/build-ios.py` 會：
 
 1. 用 gomobile 產生 `ios/mobileapi.xcframework`。
-2. 執行 `scripts/configure-ios.rb`，加入 `AsterTunnel` extension、App Group entitlement、framework 與 embed phase。
+2. 執行 `scripts/configure-ios.rb`，加入 `AsterTunnel` extension、App Group entitlement 與 framework 連結（靜態 framework 不嵌入）。
 3. 執行 Flutter unsigned iOS release build。
 
 CI 另會確認產物內含：
 
 - `Runner.app`
-- `Frameworks/Mobileapi.framework`
 - `PlugIns/AsterTunnel.appex`
-- extension 內的 `Mobileapi.framework`
 - `Metadata.appintents`
-- Packet Tunnel extension point 與 `app.aster.desktop.tunnel` bundle id
+- Packet Tunnel extension point 與 `app.aster.desktop`／`app.aster.desktop.tunnel` bundle id
 - App 與 extension 的 App Group 及 `packet-tunnel-provider` entitlement 設定
-- App 與 extension 都靜態連結 `Mobileapi`（gomobile 產生的 framework 是靜態的，不會出現在 `otool -L`）
+- App 與 extension 都靜態連結 `Mobileapi`（gomobile 產生的 framework 是靜態的，只連結、不嵌入，也不會出現在 `otool -L`）
 
 ## 目前限制
 

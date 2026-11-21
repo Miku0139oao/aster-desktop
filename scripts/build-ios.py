@@ -34,11 +34,13 @@ def main():
     go = os.environ.get("ASTER_GO", "go")
     go_bin = Path(run([go, "env", "GOPATH"], capture=True).stdout.strip()) / "bin"
     gomobile = Path(os.environ.get("ASTER_GOMOBILE", go_bin / "gomobile"))
+    mobile_version = "v0.0.0-20261011034528-197770444867"
     if not gomobile.exists():
-        mobile_version = "v0.0.0-20261011034528-197770444867"
         run([go, "install", "golang.org/x/mobile/cmd/gomobile@" + mobile_version], cwd=bridge)
         run([go, "install", "golang.org/x/mobile/cmd/gobind@" + mobile_version], cwd=bridge)
     run([gomobile, "init"], cwd=bridge)
+    # `gomobile init` installs gobind@latest, replacing the pinned generator.
+    run([go, "install", "golang.org/x/mobile/cmd/gobind@" + mobile_version], cwd=bridge)
     run(
         [
             gomobile,

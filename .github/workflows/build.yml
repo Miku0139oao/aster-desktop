@@ -197,15 +197,15 @@ jobs:
           app=build/ios/iphoneos/Runner.app
           fail() { echo "iOS verification failed: $1" >&2; exit 1; }
           test -x "$app/Runner" || fail "Runner executable is missing"
-          test -d "$app/Frameworks/Mobileapi.framework" || fail "app does not embed Mobileapi.framework"
           test -x "$app/PlugIns/AsterTunnel.appex/AsterTunnel" || fail "AsterTunnel extension executable is missing"
-          test -d "$app/PlugIns/AsterTunnel.appex/Frameworks/Mobileapi.framework" || fail "extension does not embed Mobileapi.framework"
           test -d "$app/Metadata.appintents" || fail "App Intents metadata is missing"
           # An unsigned CI build cannot carry entitlements, so check the
           # configuration that a signed build would embed.
           plutil -extract NSExtension.NSExtensionPointIdentifier raw \
             "$app/PlugIns/AsterTunnel.appex/Info.plist" \
             | grep -qx com.apple.networkextension.packet-tunnel || fail "extension point is not packet-tunnel"
+          plutil -extract CFBundleIdentifier raw "$app/Info.plist" \
+            | grep -qx app.aster.desktop || fail "app bundle id is not app.aster.desktop"
           plutil -extract CFBundleIdentifier raw "$app/PlugIns/AsterTunnel.appex/Info.plist" \
             | grep -qx app.aster.desktop.tunnel || fail "extension bundle id is not app.aster.desktop.tunnel"
           grep -q group.app.aster.desktop ios/Runner/Runner.entitlements || fail "app App Group entitlement is missing"
@@ -225,7 +225,12 @@ jobs:
       - name: Package the unsigned app for CI inspection
         run: |
           ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app build/Aster-iOS-unsigned.zip
-          shasum -a 256 ios/mobileapi.xcframework.sha256 build/Aster-iOS-unsigned.zip > build/ios-checksums.txt
+          # The framework is linked statically, so the zip does not contain it.
+          # Record the engine digest next to the app checksum for traceability.
+          {
+            echo "engine sha256 $(cat ios/mobileapi.xcframework.sha256)"
+            shasum -a 256 build/Aster-iOS-unsigned.zip
+          } > build/ios-checksums.txt
       - name: Preserve iOS build
         uses: actions/upload-artifact@v4
         with:

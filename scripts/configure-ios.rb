@@ -64,6 +64,7 @@ extension.build_configurations.each do |configuration|
   settings["CURRENT_PROJECT_VERSION"] = build_number || "1"
   settings["IPHONEOS_DEPLOYMENT_TARGET"] = "16.0"
   settings["APPLICATION_EXTENSION_API_ONLY"] = "YES"
+  settings["SKIP_INSTALL"] = "YES"
   settings["SWIFT_VERSION"] = "5.0"
   settings["LD_RUNPATH_SEARCH_PATHS"] = [
     "$(inherited)",
@@ -73,7 +74,14 @@ extension.build_configurations.each do |configuration|
   settings["OTHER_LDFLAGS"] = [settings["OTHER_LDFLAGS"], "-lresolv"].compact.join(" ")
 end
 
-framework_ref = project.frameworks_group.files.find { |file| file.path == "mobileapi.xcframework" }
+# gomobile bind emits a static framework, so it must be linked but never
+# embedded; embedding would copy a static library into the bundle and ask
+# Xcode to codesign it.
+framework_ref = project.frameworks_group.files.find do |file|
+  file.path == "mobileapi.xcframework" ||
+    file.path.to_s.end_with?("/mobileapi.xcframework") ||
+    file.path.to_s == mobile_framework
+end
 framework_ref ||= project.frameworks_group.new_file(mobile_framework)
 framework_ref.source_tree = "<group>"
 framework_ref.path = mobile_framework
@@ -85,27 +93,15 @@ def link_framework(target, reference)
   target.frameworks_build_phase.add_file_reference(reference, true)
 end
 
-def embed_framework(target, reference)
-  phase = target.copy_files_build_phases.find { |item| item.name == "Embed Frameworks" }
-  unless phase
-    phase = target.new_copy_files_build_phase("Embed Frameworks")
-    phase.dst_subfolder_spec = "10"
-  end
-  phase.files_references.compact.each do |existing|
-    return if existing == reference
-  end
-  build_file = phase.add_file_reference(reference, true)
-  build_file.settings = {
-    "ATTRIBUTES" => ["CodeSignOnCopy", "RemoveHeadersOnCopy"],
-  }
-end
-
 [runner, extension].each do |target|
   target.add_system_framework("NetworkExtension") unless target.frameworks_build_phase.files_references.compact.any? {
     |file| file.path == "NetworkExtension.framework"
   }
   link_framework(target, framework_ref)
-  embed_framework(target, framework_ref)
+  # Remove an embed entry left by an earlier configure run.
+  target.copy_files_build_phases.each do |phase|
+    phase.files.delete_if { |file| file.file_ref == framework_ref }
+  end
 end
 
 unless runner.dependencies.any? { |dependency| dependency.target == extension }
