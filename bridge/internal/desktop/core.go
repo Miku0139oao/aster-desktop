@@ -472,7 +472,10 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 	}
 	c.mu.Lock()
 	wasRunning := c.running
-	c.fd = fd
+	previousFD := c.fd
+	if !wasRunning {
+		c.fd = fd
+	}
 	c.mu.Unlock()
 	failed := true
 	defer func() {
@@ -486,17 +489,19 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 			return
 		}
 		c.mu.Lock()
-		pending := c.fd
-		c.fd = 0
+		if wasRunning {
+			// Another core still owns the previous descriptor.
+			c.fd = previousFD
+		} else {
+			c.fd = 0
+		}
 		c.activeTun = ""
 		c.mu.Unlock()
 		// Android detaches the descriptor with DetachFd and the provider hands
-		// over a dup, so on failure the caller has no way to release it. Only
-		// close it when this call did not leave a running core owning it.
-		if pending > 0 && (!wasRunning || !c.Status().Running) {
-			if err := closeIfOpen(pending); err != nil {
-				c.appendLog("Mobile core: could not release the TUN descriptor: " + err.Error())
-			}
+		// over a dup, so on failure the caller has no way to release it. The
+		// helper skips a descriptor the core already took and closed.
+		if err := closeIfOpen(fd); err != nil {
+			c.appendLog("Mobile core: could not release the TUN descriptor: " + err.Error())
 		}
 	}()
 	if err := c.start(ctx, content, s, false); err != nil {
