@@ -170,6 +170,7 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 	var tunOptions struct {
 		IncludePackages []string `json:"includePackages"`
 		ExcludePackages []string `json:"excludePackages"`
+		SystemDNS       []string `json:"systemDNS"`
 	}
 	if options != "" {
 		if err := json.Unmarshal([]byte(options), &tunOptions); err != nil {
@@ -177,6 +178,11 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 		}
 	}
 	h.app.Core.SetTunPackages(tunOptions.IncludePackages, tunOptions.ExcludePackages)
+	if len(tunOptions.SystemDNS) > 0 {
+		// iOS cannot read the device resolvers once the tunnel owns routing,
+		// so the extension captures them before applying tunnel settings.
+		h.app.Core.SetSystemDNS(tunOptions.SystemDNS)
+	}
 	h.app.Store.State.Settings.Tun = true
 	h.app.Store.State.Settings.SystemProxy = false
 	if err := h.app.Store.Save(); err != nil {
@@ -198,13 +204,14 @@ func (h *Host) StopVPN() (string, error) {
 	return encodeResponse(result, err)
 }
 
-// SetSystemDNS passes the active Android network resolvers to the embedded
-// core. Android builds use the GUI DNS mode, which cannot read /etc/resolv.conf.
+// SetSystemDNS passes the VPN device's current resolvers to the embedded core.
+// Android and iOS cannot read the system resolvers from inside the tunnel, so
+// the app supplies them before the tunnel takes over routing.
 func (h *Host) SetSystemDNS(servers string) error {
 	if h == nil || h.app == nil {
 		return errors.New("mobile host is not ready")
 	}
-	return setSystemDNS(servers)
+	return setSystemDNS(servers, h.app.Core)
 }
 
 func (h *Host) Close() error {

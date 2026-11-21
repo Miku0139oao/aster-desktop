@@ -35,6 +35,7 @@ type Core struct {
 	fd                           int
 	includePackages              []string
 	excludePackages              []string
+	systemDNS                    []string
 	cmd                          *exec.Cmd
 	done                         chan struct{}
 	runCancel                    context.CancelFunc
@@ -446,8 +447,10 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	c.mu.Lock()
 	fd := c.fd
 	include, exclude := c.includePackages, c.excludePackages
+	systemDNS := c.systemDNS
 	c.mu.Unlock()
 	applyMobileTunOptions(tun, fd, include, exclude)
+	withSystemDNS(doc, systemDNS)
 	doc["tun"] = tun
 	final, err := yaml.Marshal(doc)
 	if err != nil {
@@ -686,8 +689,10 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		c.mu.Lock()
 		fd := c.fd
 		include, exclude := c.includePackages, c.excludePackages
+		systemDNS := c.systemDNS
 		c.mu.Unlock()
 		applyMobileTunOptions(tun, fd, include, exclude)
+		withSystemDNS(doc, systemDNS)
 		doc["tun"] = tun
 		final, err := yaml.Marshal(doc)
 		if err != nil {

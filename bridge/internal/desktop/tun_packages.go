@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"net/netip"
 	"regexp"
 	"strings"
 )
@@ -60,6 +61,69 @@ func (c *Core) tunPackages() ([]string, []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]string{}, c.includePackages...), append([]string{}, c.excludePackages...)
+}
+
+// SetSystemDNS records the VPN device's current resolver addresses. They
+// replace the core's "system" resolver only while the supplied profile still
+// uses it, which is the default for imported subscriptions. Mobile platforms
+// cannot read the system resolvers from inside the tunnel: Android needs the
+// VpnService LinkProperties, and iOS can only read /etc/resolv.conf before the
+// tunnel owns routing, so the app passes the addresses in.
+func (c *Core) SetSystemDNS(servers []string) {
+	c.mu.Lock()
+	c.systemDNS = normalizeDNSAddresses(servers)
+	c.mu.Unlock()
+}
+
+// withSystemDNS replaces the default "system" resolver in an already parsed
+// core document. Explicit DNS configuration in the profile is left untouched.
+func withSystemDNS(doc map[string]any, servers []string) {
+	if len(servers) == 0 {
+		return
+	}
+	dns, ok := doc["dns"].(map[string]any)
+	if !ok {
+		return
+	}
+	nameserver, ok := dns["nameserver"].([]any)
+	if !ok || len(nameserver) == 0 {
+		return
+	}
+	values := make(map[string]bool, len(nameserver))
+	for _, value := range nameserver {
+		text, _ := value.(string)
+		values[text] = true
+	}
+	if len(values) != 1 || !values["system"] {
+		return
+	}
+	replacement := make([]any, len(servers))
+	for index, server := range servers {
+		replacement[index] = server
+	}
+	dns["nameserver"] = replacement
+	doc["dns"] = dns
+}
+
+func normalizeDNSAddresses(servers []string) []string {
+	result := make([]string, 0, len(servers))
+	seen := make(map[string]bool, len(servers))
+	for _, value := range servers {
+		addr, err := netip.ParseAddr(strings.TrimSpace(value))
+		if err != nil || addr.IsUnspecified() || addr.IsMulticast() {
+			continue
+		}
+		text := addr.String()
+		if seen[text] {
+			continue
+		}
+		seen[text] = true
+		result = append(result, text)
+		if len(result) == 4 {
+			break
+		}
+	}
+	return result
 }
 
 // applyMobileTunOptions owns the fields that differ when Android supplies the

@@ -6,6 +6,7 @@
 - iOS 新增 NetworkExtension Packet Tunnel、App Group 共用狀態與 Siri／捷徑入口；iOS 不支援 Android 的套件層級分流，介面會說明並改用網域／IP／規則。
 - 修正 iOS 斷線後過早重開 in-app host 造成 App Group 鎖衝突、Flutter 輪詢與連線／斷線交錯、tunnel 啟動失敗長時間無回應、從系統設定或捷徑啟動 tunnel 時被 App 內的 core 擋住，以及 App Intent 連線失敗仍顯示成功。
 - App 進入背景時釋放 in-app host；Connect 失敗會回報原因，tunnel 錯誤訊息改為可操作的在地化提示。
+- iOS tunnel 在生效前擷取裝置當下的 DNS 解析器並注入 core，避免 tunnel 接管路由後無法解析節點網域；設定檔已自訂 `dns.nameserver` 時維持原設定。
 - CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
 
 ## 0.3.5 — 2026-10-26

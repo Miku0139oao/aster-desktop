@@ -14,6 +14,7 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 - App 進入背景時會釋放 in-app host，讓使用者從「設定」、控制中心或捷徑啟動的 tunnel 能取得鎖；回到前景後再按需重開。
 - Flutter 每兩秒輪詢一次狀態，所有通道請求、Siri／捷徑與狀態變更都經過序列化，避免輪詢和連線／斷線交錯。
 - Tunnel 只把實際的 utun descriptor 交給 core；iOS 不支援 Android 的套件層級分流，啟動時會清空套件選取條件。
+- Tunnel 生效前會先讀取裝置當下的 DNS 解析器，並在設定檔仍使用預設 `system` 時注入 core；tunnel 生效後 `/etc/resolv.conf` 可能指向 Aster 自己的位址，不能再用來解析節點網域。設定檔若已指定 `dns.nameserver`，則維持原設定。
 
 ## App Intents
 
@@ -75,5 +76,5 @@ CI 另會確認產物內含：
 - 尚未在 iPhone 實機驗證；背景／前景切換與從系統設定啟動 tunnel 需在真機確認。
 - Tunnel fd 取得依賴 iOS utun descriptor，需在支援的 iOS 版本與真機確認。
 - App 分流在 iOS 受 Apple NetworkExtension 限制，不能照搬 Android 的 package VPN。
-- iOS 不像 Android 會把當前網路的 DNS 注入 core；目前由 core 使用設定檔中的 `dns` 設定。
+- iOS 沒有 Android 的 `VpnService.protect()`；provider 自己的對外連線需靠 NetworkExtension 的預設排除行為，若實機發現回流，需改以綁定實體介面處理。
 - XCFramework 與未簽章 build 不會提交到 Git。

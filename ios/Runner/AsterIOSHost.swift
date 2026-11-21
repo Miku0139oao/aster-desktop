@@ -155,6 +155,7 @@ final class AsterIOSHost {
 
     private func startTunnel(request: String) async throws -> String {
         let object = try requestObject(request)
+        var started: NETunnelProviderManager?
         do {
             if let manager = try await tunnelManager(), isActive(manager.connection) {
                 let data = try await sendProviderMessageWhenReady(
@@ -169,12 +170,19 @@ final class AsterIOSHost {
             try closeHost()
 
             let manager = try await preparedTunnelManager()
+            started = manager
             try manager.connection.startVPNTunnel()
             try await waitForConnected(manager: manager)
 
             let data = try await sendProviderMessage(Data(request.utf8))
             return String(decoding: data, as: UTF8.self)
         } catch {
+            // A tunnel that came up without a working core would black-hole all
+            // traffic and make the next Connect appear to hang.
+            if let started, isActive(started.connection) {
+                started.connection.stopVPNTunnel()
+                await waitForTunnelToStop(manager: started)
+            }
             try? await openHostIfNeeded()
             return AsterIOSRuntime.errorResponse(id: object.id, message: error.localizedDescription)
         }

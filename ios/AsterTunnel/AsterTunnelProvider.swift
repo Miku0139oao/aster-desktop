@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Network
 import NetworkExtension
 
 final class AsterTunnelProvider: NEPacketTunnelProvider {
@@ -13,6 +14,10 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
     ) {
+        // Capture the device resolvers before the tunnel owns routing. Inside
+        // the extension the core cannot discover them, and after this call
+        // /etc/resolv.conf can point at the tunnel's own address.
+        let resolvers = systemResolvers()
         let settings = packetTunnelSettings()
         setTunnelNetworkSettings(settings) { [weak self] error in
             guard let self else { return }
@@ -22,7 +27,7 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
             }
             self.engineQueue.async {
                 do {
-                    try self.startMobileCore()
+                    try self.startMobileCore(resolvers: resolvers)
                     completionHandler(nil)
                 } catch {
                     self.closeMobileCore()
@@ -30,6 +35,27 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
                 }
             }
         }
+    }
+
+    private func systemResolvers() -> [String] {
+        guard let text = try? String(
+            contentsOfFile: "/etc/resolv.conf",
+            encoding: .utf8
+        ) else {
+            return []
+        }
+        var result: [String] = []
+        for line in text.split(separator: "\n") {
+            let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            guard fields.count >= 2, fields[0] == "nameserver" else { continue }
+            let value = String(fields[1])
+            if IPv4Address(value) == nil && IPv6Address(value) == nil { continue }
+            // Never feed the tunnel its own resolver back; that would loop.
+            if value == "198.18.0.2" || value == "fd00:a57e:0:1::2" { continue }
+            if !result.contains(value) { result.append(value) }
+            if result.count == 4 { break }
+        }
+        return result
     }
 
     override func stopTunnel(
@@ -49,6 +75,14 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         engineQueue.async { [weak self] in
             guard let self else {
                 completionHandler?(nil)
+                return
+            }
+            guard self.hostOpen else {
+                let response = AsterIOSRuntime.errorResponse(
+                    id: 0,
+                    message: "Aster VPN is not running"
+                )
+                completionHandler?(Data(response.utf8))
                 return
             }
             do {
@@ -71,7 +105,7 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
 
     override func wake() {}
 
-    private func startMobileCore() throws {
+    private func startMobileCore(resolvers: [String]) throws {
         let directory = try AsterIOSRuntime.containerURL()
         // The app may still be releasing its in-app host (for example when the
         // tunnel is started from Settings or Control Center). The App Group
@@ -100,8 +134,18 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         }
         // iOS tunnels have no Android package selectors. Pass empty routing so
         // the core does not inherit selectors saved by another platform.
-        let options = #"{"includePackages":[],"excludePackages":[]}"#
-        let response = try AsterIOSRuntime.startHostVPN(fd: fd, options: options)
+        var options: [String: Any] = [
+            "includePackages": [],
+            "excludePackages": [],
+        ]
+        if !resolvers.isEmpty {
+            options["systemDNS"] = resolvers
+        }
+        let encoded = try JSONSerialization.data(withJSONObject: options)
+        let response = try AsterIOSRuntime.startHostVPN(
+            fd: fd,
+            options: String(decoding: encoded, as: UTF8.self)
+        )
         if let error = AsterIOSRuntime.responseError(response) {
             throw AsterIOSError.mobileEngine(error)
         }
