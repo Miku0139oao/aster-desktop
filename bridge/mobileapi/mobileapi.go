@@ -23,6 +23,11 @@ type SocketProtector interface {
 }
 
 type Host struct {
+	// mu guards app. Calls hold it for reading, so Close waits for in-flight
+	// requests instead of closing the App underneath them. The Swift layer
+	// serializes its own access, but the Android service and future callers
+	// should not have to.
+	mu  sync.RWMutex
 	app *desktop.App
 	ctx context.Context
 }
@@ -117,10 +122,26 @@ func SetHostSystemDNS(servers string) error {
 	return host.SetSystemDNS(servers)
 }
 
-func (h *Host) SetProtector(protector SocketProtector) error {
-	if h == nil || h.app == nil {
-		return errors.New("mobile host is not ready")
+// currentApp returns the open App while holding the read lock. Callers must
+// call the returned release function before returning.
+func (h *Host) currentApp() (*desktop.App, func(), error) {
+	if h == nil {
+		return nil, func() {}, errors.New("mobile host is not ready")
 	}
+	h.mu.RLock()
+	if h.app == nil {
+		h.mu.RUnlock()
+		return nil, func() {}, errors.New("mobile host is not ready")
+	}
+	return h.app, h.mu.RUnlock, nil
+}
+
+func (h *Host) SetProtector(protector SocketProtector) error {
+	_, release, err := h.currentApp()
+	if err != nil {
+		return err
+	}
+	defer release()
 	if protector == nil {
 		return errors.New("socket protector is required")
 	}
@@ -140,14 +161,16 @@ func (h *Host) SetProtector(protector SocketProtector) error {
 }
 
 func (h *Host) Call(request string) (string, error) {
-	if h == nil || h.app == nil {
-		return "", errors.New("mobile host is not ready")
+	app, release, err := h.currentApp()
+	if err != nil {
+		return "", err
 	}
+	defer release()
 	var req desktop.Request
 	if err := json.Unmarshal([]byte(request), &req); err != nil {
 		return "", errors.New("invalid mobile request")
 	}
-	result, err := h.app.Dispatch(h.ctx, req)
+	result, err := app.Dispatch(h.ctx, req)
 	response := desktop.Response{ID: req.ID, Result: result}
 	if err != nil {
 		response.Result = nil
@@ -161,9 +184,11 @@ func (h *Host) Call(request string) (string, error) {
 }
 
 func (h *Host) StartVPN(fd int32, options string) (string, error) {
-	if h == nil || h.app == nil {
-		return "", errors.New("mobile host is not ready")
+	app, release, err := h.currentApp()
+	if err != nil {
+		return "", err
 	}
+	defer release()
 	if fd <= 0 {
 		return "", errors.New("VPN TUN descriptor is not available")
 	}
@@ -177,30 +202,32 @@ func (h *Host) StartVPN(fd int32, options string) (string, error) {
 			return "", errors.New("invalid mobile package routing options")
 		}
 	}
-	h.app.Core.SetTunPackages(tunOptions.IncludePackages, tunOptions.ExcludePackages)
+	app.Core.SetTunPackages(tunOptions.IncludePackages, tunOptions.ExcludePackages)
 	if len(tunOptions.SystemDNS) > 0 {
 		// iOS cannot read the device resolvers once the tunnel owns routing,
 		// so the extension captures them before applying tunnel settings.
-		h.app.Core.SetSystemDNS(tunOptions.SystemDNS)
+		app.Core.SetSystemDNS(tunOptions.SystemDNS)
 	}
-	h.app.Store.State.Settings.Tun = true
-	h.app.Store.State.Settings.SystemProxy = false
-	if err := h.app.Store.Save(); err != nil {
+	app.Store.State.Settings.Tun = true
+	app.Store.State.Settings.SystemProxy = false
+	if err := app.Store.Save(); err != nil {
 		return "", err
 	}
 	params, _ := json.Marshal(map[string]any{
 		"fd":              int(fd),
 		"skipSystemProxy": true,
 	})
-	result, err := h.app.Dispatch(h.ctx, desktop.Request{Method: "connect", Params: params})
+	result, err := app.Dispatch(h.ctx, desktop.Request{Method: "connect", Params: params})
 	return encodeResponse(result, err)
 }
 
 func (h *Host) StopVPN() (string, error) {
-	if h == nil || h.app == nil {
-		return "", errors.New("mobile host is not ready")
+	app, release, err := h.currentApp()
+	if err != nil {
+		return "", err
 	}
-	result, err := h.app.Dispatch(h.ctx, desktop.Request{Method: "disconnect"})
+	defer release()
+	result, err := app.Dispatch(h.ctx, desktop.Request{Method: "disconnect"})
 	return encodeResponse(result, err)
 }
 
@@ -208,19 +235,28 @@ func (h *Host) StopVPN() (string, error) {
 // Android and iOS cannot read the system resolvers from inside the tunnel, so
 // the app supplies them before the tunnel takes over routing.
 func (h *Host) SetSystemDNS(servers string) error {
-	if h == nil || h.app == nil {
-		return errors.New("mobile host is not ready")
+	app, release, err := h.currentApp()
+	if err != nil {
+		return err
 	}
-	return setSystemDNS(servers, h.app.Core)
+	defer release()
+	return setSystemDNS(servers, app.Core)
 }
 
 func (h *Host) Close() error {
-	if h == nil || h.app == nil {
+	if h == nil {
 		return nil
 	}
-	err := h.app.Close()
+	// Wait for in-flight calls before closing, then clear app so later calls
+	// report that the host is no longer ready.
+	h.mu.Lock()
+	app := h.app
 	h.app = nil
-	return err
+	h.mu.Unlock()
+	if app == nil {
+		return nil
+	}
+	return app.Close()
 }
 
 func encodeResponse(result any, err error) (string, error) {
