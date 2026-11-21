@@ -33,8 +33,17 @@ Flutter 打包各自在該平台執行；Go 橋接層可以交叉編譯。原生
 
 ```sh
 python -m pip install -r scripts/docs-requirements.txt
-python scripts/package-docs.py --version 0.2.3 --output dist
+python scripts/package-docs.py --output dist
 ```
+
+`--version` 預設讀取 `pubspec.yaml`；只有要為舊版重製文件時才需要指定。桌面打包腳本（`build.sh`、`build.ps1`、`package-linux.sh`、`package-windows.ps1`）也從 `pubspec.yaml` 取得版本。Go 橋接層的預設版本在 `bridge/internal/desktop/model.go`：桌面建置會用 `-ldflags` 覆寫成 pubspec 版本，但 Android／iOS 的 gomobile 建置無法套用同一個旗標，所以 `TestVersionMatchesPubspec` 要求兩者相等，升版時必須一起改。
+
+## 發佈
+
+1. 更新 `pubspec.yaml` 的 `version`、`bridge/internal/desktop/model.go` 的 `Version` 預設值，以及 `CHANGELOG.md` 同版本小節（`go test ./...` 會檢查前兩者一致），合併到 `main`。
+2. 在 `main` 建置通過後建立並推送 tag：`git tag v<version> && git push origin v<version>`。
+3. tag 觸發 `.github/workflows/build.yml`：`release` job 只在 tag 上執行，等桌面四種 runner、Android 與 iOS 全部完成後，下載各平台 artifact、產生離線文件、合併重複的來源包、寫出 `SHA256SUMS`，再以 `gh release create` 發佈。tag 與 `pubspec.yaml` 版本不一致時會直接失敗。
+4. 發佈後可用 `scripts/assemble-release.py` 在本機檢視同名資產如何彙整；建置結果在 workflow summary 與發佈頁。
 
 ## 授權
 

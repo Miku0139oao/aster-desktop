@@ -2,9 +2,9 @@
 
 **用桌面視窗管理代理，匯入訂閱 → 選擇節點 → 按下連線。**
 
-Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS、Linux 與 Android；介面預設跟隨系統語言，提供繁體中文、简体中文與 English。不用自行安裝核心或設定 Controller 位址與密碼，但需要準備自己的訂閱、節點連結或 Clash YAML。
+Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS、Linux、Android 與 iOS（iOS 目前為未簽章建置）；介面預設跟隨系統語言，提供繁體中文、简体中文與 English。不用自行安裝核心或設定 Controller 位址與密碼，但需要準備自己的訂閱、節點連結或 Clash YAML。
 
-**[下載 0.3.5 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.5)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
+**[下載 0.4.0 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
 
 ## 看看介面
 
@@ -56,18 +56,22 @@ Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手
 
 | 系統 | 建議下載 | 安裝方式 |
 | --- | --- | --- |
-| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.5/Aster-Desktop-0.3.5-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
-| Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
-| macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
-| macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
-| Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.deb) | 使用系統套件安裝程式開啟 |
-| Arch Linux x64，GNOME／KDE | [Arch 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.2.3/Aster-Desktop-0.2.3-linux-x64.pkg.tar.zst) | 使用套件管理員安裝 |
+| Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
+| macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
+| macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
+| Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-linux-x64.deb) | 使用系統套件安裝程式開啟 |
+| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
+| iOS（實驗性） | [未簽章 zip](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-ios-unsigned.zip) | 僅供檢查與自行簽章，不能直接安裝 |
 
-[所有檔案、Android APK、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.3.5) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.3.5/SHA256SUMS)
+[所有檔案、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/SHA256SUMS)
 
-Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。桌面套件仍為 0.2.3，後續版本會分開標示。
+Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。自 0.4.0 起桌面、Android 與 iOS 由同一個 tag 的 CI 一起建置與發佈。
 
-Mac 套件使用本機簽署，尚未取得 Apple Developer ID 簽章／公證；首次開啟可能需要到「系統設定 → 隱私權與安全性」允許開啟。[安裝與授權說明](docs/USER_GUIDE.md#安裝與升級)列出詳細步驟與平台限制。
+iOS 產物沒有簽章，只供編譯與結構檢查；TestFlight、Ad Hoc IPA、NetworkExtension 實機授權與 App Store 發佈需要付費 Apple Developer Program 簽章設定，見 [iOS 版說明](docs/IOS.md)。
+
+本版由 CI 在 Ubuntu 24.04 建置 Linux 套件，未包含 Arch 原生套件；需要 Arch 套件者請依[開發與建置](docs/BUILDING.md)在 Arch 上自行建置。可攜版另有 `linux-ubuntu-24.04-x64-portable.tar.gz` 與 `windows-x64-portable.zip`。
+
+Mac 套件由 CI 以本機簽署建置，尚未取得 Apple Developer ID 簽章／公證；首次開啟可能需要到「系統設定 → 隱私權與安全性」允許開啟。[安裝與授權說明](docs/USER_GUIDE.md#安裝與升級)列出詳細步驟與平台限制。
 
 ## 三步開始使用
 
@@ -90,18 +94,19 @@ Mac 套件使用本機簽署，尚未取得 Apple Developer ID 簽章／公證�
 
 ## 更新與驗證狀態
 
-0.2.3 正式版沿用已通過測試並由使用者確認可用的 0.2.3 beta 1 安裝包，二進位檔案與來源包的 SHA-256 相同；已安裝該測試版者不必重新安裝。GUI 由使用者下載安裝包升級；核心可在「進階設定 → 檢查更新」更新，下載時保持目前代理，驗證後才短暫重啟。
+0.4.0 的桌面、Android 與 iOS 產物由同一個 tag 的 CI 建置並一起發佈；GUI 由使用者下載安裝包升級；核心可在「進階設定 → 檢查更新」更新，下載時保持目前代理，驗證後才短暫重啟。
 
-Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝驗證已通過；Mac 實機 TUN／網路／背景服務授權／Gatekeeper 互動／睡眠喚醒，以及 GNOME／KDE 桌面整合仍有待實機驗收項目。詳見[測試紀錄](docs/TESTING.md)，遇到問題請先查看[常見問題](docs/FAQ.md)。
+Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝驗證已通過；Mac 實機 TUN／網路／背景服務授權／Gatekeeper 互動／睡眠喚醒，以及 GNOME／KDE 桌面整合仍有待實機驗收項目。iOS 目前完成編譯、bundle／entitlement 與引擎連結檢查，尚未在 iPhone 實機驗證。詳見[測試紀錄](docs/TESTING.md)，遇到問題請先查看[常見問題](docs/FAQ.md)。
 
 ## 文件與開發
 
 - [完整使用手冊](docs/USER_GUIDE.md)：安裝、首次使用、分流、流量、更新、備份與退出。
 - [常見問題與故障排除](docs/FAQ.md)：無法連線、TUN、授權、安裝、日誌與回報方式。
 - [Android 版](docs/ANDROID.md)：VpnService、應用程式分流、權限、簽章與建置。
+- [iOS 版](docs/IOS.md)：NetworkExtension、App Group、Siri／捷徑、簽章限制與建置。
 - [應用程式分流](docs/APPLICATION_ROUTING.md) · [日誌與連線查閱](docs/INSPECTION.md)。
 - [開發與建置](docs/BUILDING.md) · [架構與介面](docs/ARCHITECTURE.md) · [測試紀錄](docs/TESTING.md) · [更新紀錄](CHANGELOG.md)。
 
 ## 授權與來源
 
-GPL-3.0，見 [LICENSE](LICENSE) 與[第三方聲明](NOTICE.md)。0.2.3 執行程式來源固定於 [e3aab7a](https://github.com/Miku0139oao/aster-desktop/tree/e3aab7acba9e245a0858c01fd5be7fd976efd565)，內附核心與轉換器固定於 [a9a33503](https://github.com/Miku0139oao/aster-core/tree/a9a33503b39a03681bc52d9758907316a22df199)。發佈頁提供對應桌面與核心來源、建置腳本及校驗碼。
+GPL-3.0，見 [LICENSE](LICENSE) 與[第三方聲明](NOTICE.md)。0.4.0 執行程式來源固定於 [v0.4.0](https://github.com/Miku0139oao/aster-desktop/tree/v0.4.0)，內附核心與轉換器固定於 [a9a33503](https://github.com/Miku0139oao/aster-core/tree/a9a33503b39a03681bc52d9758907316a22df199)。發佈頁提供對應桌面與核心來源、建置腳本及校驗碼。
