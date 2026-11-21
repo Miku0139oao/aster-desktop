@@ -155,7 +155,7 @@ Future<void> runMobileApp(List<String> args) async {
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      '行動版引擎不完整。請重新安裝 APK。\nThe mobile engine is incomplete. Reinstall the APK.',
+                      '行動版引擎不完整。請重新安裝 App。\nThe mobile engine is incomplete. Reinstall the app.',
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),

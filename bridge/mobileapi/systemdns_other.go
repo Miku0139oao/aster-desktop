@@ -2,5 +2,6 @@
 
 package mobileapi
 
-// The desktop-hosted tests do not run the Android GUI build of the core.
-func setSystemDNS(string) error { return nil }
+// iOS and desktop-hosted tests have no Android-only resolver override; the
+// addresses are applied through the core's runtime configuration instead.
+func updatePlatformDNS([]string) error { return nil }

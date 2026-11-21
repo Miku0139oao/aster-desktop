@@ -44,6 +44,7 @@ class ProcessBackend implements DesktopBackend {
       directory = '${executable.parent.parent.path}/Resources';
     }
     if (Platform.isAndroid) return AndroidBackend();
+    if (Platform.isIOS) return IOSBackend();
     final development = Directory.current.path;
     final suffix = Platform.isWindows ? '.exe' : '';
     var bridge = '$directory/aster-bridge$suffix';
@@ -498,16 +499,26 @@ class AndroidBackend implements DesktopBackend {
       'method': method,
       'params': params ?? {},
     });
-    final encoded = await _channel
-        .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
-          if (method != 'connect') 'request': request,
-        })
-        .timeout(
-          method == 'updateCore' ? Duration(minutes: 20) : Duration(minutes: 3),
-          onTimeout: () => throw const BackendException(
-            'The operation timed out. Check your connection and try again.',
-          ),
-        );
+    final String? encoded;
+    try {
+      encoded = await _channel
+          .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+            if (method != 'connect') 'request': request,
+          })
+          .timeout(
+            method == 'updateCore'
+                ? Duration(minutes: 20)
+                : Duration(minutes: 3),
+            onTimeout: () => throw const BackendException(
+              'The operation timed out. Check your connection and try again.',
+            ),
+          );
+    } on PlatformException catch (e) {
+      // Native failures arrive as PlatformException(operation, message, ...).
+      // The message is what the hint mapper matches on, so surface it directly
+      // instead of the platform wrapper.
+      throw BackendException(e.message ?? 'The VPN operation failed.');
+    }
     return _decode(encoded);
   }
 
@@ -545,6 +556,75 @@ class AndroidBackend implements DesktopBackend {
       );
     }
     return value.containsKey('result') ? value['result'] : value;
+  }
+
+  @override
+  Future<void> close() async {
+    try {
+      await _channel.invokeMethod<String>('stopVpn');
+    } finally {
+      await _events.close();
+    }
+  }
+}
+
+class IOSBackend implements DesktopBackend {
+  final _events = StreamController<Json>.broadcast();
+  final _channel = const MethodChannel('app.astercore/ios');
+  int _next = 0;
+
+  @override
+  Stream<Json> get events => _events.stream;
+
+  Future<String?> initialRoute() =>
+      _channel.invokeMethod<String>('initialRoute');
+
+  /// Releases the in-app engine so the NetworkExtension can take the App Group
+  /// lock while the app is in the background.
+  Future<void> releaseHost() async {
+    try {
+      await _channel.invokeMethod<void>('releaseHost');
+    } catch (_) {
+      // The next request reopens the host, so a failed release is not fatal.
+    }
+  }
+
+  @override
+  Future<dynamic> call(String method, [Json? params]) async {
+    final request = jsonEncode({
+      'id': ++_next,
+      'method': method,
+      'params': params ?? {},
+    });
+    final String? encoded;
+    try {
+      encoded = await _channel
+          .invokeMethod<String>(method == 'connect' ? 'startVpn' : 'call', {
+            'request': request,
+          })
+          .timeout(
+            method == 'updateCore'
+                ? Duration(minutes: 20)
+                : Duration(minutes: 3),
+            onTimeout: () => throw const BackendException(
+              'The operation timed out. Check your connection and try again.',
+            ),
+          );
+    } on PlatformException catch (e) {
+      // Native failures arrive as PlatformException(operation, message, ...).
+      // The message is what the hint mapper matches on, so surface it directly
+      // instead of the platform wrapper.
+      throw BackendException(e.message ?? 'The VPN operation failed.');
+    }
+    if (encoded == null || encoded.isEmpty) return null;
+    final value = jsonDecode(encoded);
+    if (value is! Json) {
+      throw const BackendException('The iOS tunnel returned an invalid reply.');
+    }
+    if (value['error'] != null) {
+      throw BackendException((value['error'] as Json)['message'] as String);
+    }
+    return value['result'];
   }
 
   @override

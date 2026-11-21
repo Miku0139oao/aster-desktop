@@ -81,3 +81,66 @@ func TestCoreTunPackages(t *testing.T) {
 		t.Fatalf("exclude = %#v, want %#v", exclude, want)
 	}
 }
+
+func TestWithSystemDNSReplacesDefaultResolver(t *testing.T) {
+	doc := map[string]any{
+		"dns": map[string]any{"enable": true, "nameserver": []any{"system"}},
+	}
+	withSystemDNS(doc, []string{"192.168.1.1", "fd00::1"})
+	nameserver := doc["dns"].(map[string]any)["nameserver"]
+	if want := []any{"192.168.1.1", "fd00::1"}; !reflect.DeepEqual(nameserver, want) {
+		t.Fatalf("nameserver = %#v, want %#v", nameserver, want)
+	}
+}
+
+func TestWithSystemDNSKeepsExplicitProfileDNS(t *testing.T) {
+	cases := map[string][]any{
+		"custom": {"1.1.1.1", "8.8.8.8"},
+		"mixed":  {"system", "1.1.1.1"},
+		"empty":  {},
+	}
+	for name, nameserver := range cases {
+		doc := map[string]any{"dns": map[string]any{"enable": true, "nameserver": nameserver}}
+		withSystemDNS(doc, []string{"192.168.1.1"})
+		if got := doc["dns"].(map[string]any)["nameserver"]; !reflect.DeepEqual(got, nameserver) {
+			t.Fatalf("%s: nameserver = %#v, want %#v", name, got, nameserver)
+		}
+	}
+}
+
+func TestWithSystemDNSIgnoresMissingDNS(t *testing.T) {
+	doc := map[string]any{"proxies": []any{}}
+	withSystemDNS(doc, []string{"192.168.1.1"})
+	if _, exists := doc["dns"]; exists {
+		t.Fatalf("withSystemDNS must not create a dns section")
+	}
+	withSystemDNS(map[string]any{"dns": map[string]any{"nameserver": []any{"system"}}}, nil)
+}
+
+func TestNormalizeDNSAddresses(t *testing.T) {
+	got := normalizeDNSAddresses([]string{
+		"192.168.1.1", " 192.168.1.1 ", "fe80::1", "0.0.0.0", "224.0.0.1",
+		"not-an-address", "1.1.1.1", "8.8.8.8", "9.9.9.9", "2606:4700::1111",
+	})
+	if want := []string{"192.168.1.1", "fe80::1", "1.1.1.1", "8.8.8.8"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("addresses = %#v, want %#v", got, want)
+	}
+}
+
+func TestMobileTunChangedOnlyBlocksStructuralEdits(t *testing.T) {
+	core := NewCore("", t.TempDir())
+	tun := map[string]any{"enable": true, "mtu": 9000}
+	if changed, err := core.mobileTunChanged(tun); err != nil || changed {
+		t.Fatalf("changed = %v, err = %v; nothing is running yet", changed, err)
+	}
+	core.mu.Lock()
+	core.activeTun = "enable: true\nmtu: 9000\n"
+	core.mu.Unlock()
+	if changed, err := core.mobileTunChanged(tun); err != nil || changed {
+		t.Fatalf("changed = %v, err = %v; identical TUN must not force a rebuild", changed, err)
+	}
+	tun["mtu"] = 1500
+	if changed, err := core.mobileTunChanged(tun); err != nil || !changed {
+		t.Fatalf("changed = %v, err = %v; a different TUN must require a reconnect", changed, err)
+	}
+}

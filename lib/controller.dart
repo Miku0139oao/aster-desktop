@@ -8,6 +8,8 @@ import 'package:yaml/yaml.dart';
 import 'backend.dart';
 import 'localization.dart';
 
+bool get isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+
 class AppSettings {
   const AppSettings({
     this.language = AppLanguage.system,
@@ -98,6 +100,7 @@ class AppController extends ChangeNotifier {
   final _testingNodes = <(String?, String)>{};
   int _latencyEpoch = 0;
   bool _disposed = false;
+  bool _foreground = true;
 
   bool isTestingNode(String name, {String? provider}) =>
       _testingNodes.contains((provider, name));
@@ -209,6 +212,7 @@ class AppController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       await refresh();
+      await _consumePendingRoute();
       ready = true;
     } catch (e) {
       error = e.toString();
@@ -437,13 +441,18 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> poll() async {
-    if (_polling || busy || !ready) return;
+    if (!_foreground || _polling || busy || !ready) return;
     _polling = true;
     final epoch = _operationEpoch;
+    // Backgrounding releases the in-app host so a tunnel started from Settings
+    // can take the App Group lock. A poll that was already in flight must not
+    // issue another channel call after that: on iOS the call would reopen the
+    // host and take the lock back inside a suspended process.
+    bool active() => _foreground && !_disposed && !busy;
     try {
       final wasRunning = running;
       await refresh();
-      if (busy || epoch != _operationEpoch) return;
+      if (!active() || epoch != _operationEpoch) return;
       if (wasRunning && !running) {
         upload = 0;
         download = 0;
@@ -476,16 +485,26 @@ class AppController extends ChangeNotifier {
           }
         }
       }
-      if (page == 7) {
+      if (page == 7 && active()) {
         trafficHistory = await backend.call('trafficHistory', {
           'days': preferences['statisticsRange'] ?? 7,
         }) as Json;
       }
-      if (page == 4 && !busy && epoch == _operationEpoch) {
+      if (page == 4 && active() && epoch == _operationEpoch) {
         await loadLogs();
       }
-      // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
-      if (Platform.isMacOS) {
+      // A Shortcut can set the route while the app stays in the foreground, so
+      // the resume callback alone is not enough. Consume it on every page: a
+      // skipped read leaves the key behind, and the next page change would
+      // then jump back to the node selector unexpectedly. Reading it is one
+      // UserDefaults lookup in the app process, not a host call.
+      if (isMobilePlatform && active()) {
+        await _consumePendingRoute();
+      }
+      // macOS schedules refreshes in Flutter because TUN changes must pass
+      // through XPC. Mobile has no Go-side scheduler at all, so it refreshes
+      // here while the app is in the foreground.
+      if ((Platform.isMacOS || isMobilePlatform) && active()) {
         final now = DateTime.now();
         for (final profile in profiles.where((p) => p.url.isNotEmpty)) {
           final hours =
@@ -503,17 +522,45 @@ class AppController extends ChangeNotifier {
             _refreshAttempts[profile.id] = now;
             await backend.call('refresh', {'id': profile.id});
             await refresh();
+            if (!active()) return;
           }
         }
       }
       notifyListeners();
     } catch (e) {
-      if (busy || epoch != _operationEpoch) return;
+      // A request that was cut short by backgrounding is not a user-visible
+      // failure; the next foreground poll retries it.
+      if (busy || epoch != _operationEpoch || !_foreground || _disposed) return;
       error = e.toString();
       notifyListeners();
     } finally {
       _polling = false;
     }
+  }
+
+  Future<void> _consumePendingRoute() async {
+    if (backend is! IOSBackend || _disposed) return;
+    final route = await (backend as IOSBackend).initialRoute();
+    if (!_disposed && route == 'nodes' && page != 1) navigate(1);
+  }
+
+  /// Shortcuts and Siri can hand over a route while the app is already open.
+  /// Reading it on resume avoids a channel round trip on every poll.
+  void checkPendingRoute() {
+    if (isMobilePlatform) unawaited(_consumePendingRoute());
+  }
+
+  /// The iOS NetworkExtension needs the App Group engine lock while the app is
+  /// suspended, so release the in-app host when the app leaves the foreground.
+  void releaseHost() {
+    _foreground = false;
+    if (backend is IOSBackend) {
+      unawaited((backend as IOSBackend).releaseHost());
+    }
+  }
+
+  void resumeForeground() {
+    _foreground = true;
   }
 
   void _onEvent(Json event) {
@@ -530,10 +577,15 @@ class AppController extends ChangeNotifier {
         updateProgress = event['data'] as String;
       case 'engineStopped':
         running = false;
-        error = tr(
-          '背景程序已停止，請重新開啟 Aster Desktop。',
-          'The desktop engine stopped. Reopen Aster Desktop.',
-        );
+        error = isMobilePlatform
+            ? tr(
+                '連線已停止。請重新連線。',
+                'The connection stopped. Connect again.',
+              )
+            : tr(
+                '背景程序已停止，請重新開啟 Aster Desktop。',
+                'The desktop engine stopped. Reopen Aster Desktop.',
+              );
       default:
         return;
     }

@@ -55,7 +55,11 @@ void main() {
             .transform(utf8.decoder)
             .transform(const LineSplitter())
             .first
-            .timeout(const Duration(seconds: 5));
+            .timeout(
+              // Slow CI runners can take several seconds to service the
+              // activation socket while the platform thread is busy resizing.
+              const Duration(seconds: 20),
+            );
         expect(reply, 'ok');
       } finally {
         socket.destroy();

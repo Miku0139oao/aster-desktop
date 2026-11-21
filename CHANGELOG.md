@@ -1,5 +1,20 @@
 # 更新紀錄
 
+## 未發佈 — iOS 客戶端基礎
+
+- 同步 Android 0.3.1–0.3.5 的手機版導覽、多語系、圖示與核心生命週期修正。
+- iOS 新增 NetworkExtension Packet Tunnel、App Group 共用狀態與 Siri／捷徑入口；iOS 不支援 Android 的套件層級分流，介面會說明並改用網域／IP／規則。
+- 修正 iOS 斷線後過早重開 in-app host 造成 App Group 鎖衝突、Flutter 輪詢與連線／斷線交錯、tunnel 啟動失敗長時間無回應、從系統設定或捷徑啟動 tunnel 時被 App 內的 core 擋住，以及 App Intent 連線失敗仍顯示成功。
+- App 進入背景時釋放 in-app host；Connect 失敗會回報原因，tunnel 錯誤訊息改為可操作的在地化提示。
+- iOS tunnel 在生效前擷取裝置當下的 DNS 解析器並注入 core，避免 tunnel 接管路由後無法解析節點網域；設定檔已自訂 `dns.nameserver` 時維持原設定。
+- iOS 修正本機設定檔匯入（`file_selector_ios` 需要 UTI）與匯出（iOS 沒有儲存對話框，改存到 App 文件夾並在「檔案」App 顯示）。
+- iOS 會自動更新訂閱（原本只有 macOS 會排程），且連線中不會因套用新設定而重建 TUN、讓流量中斷。
+- Tunnel 回覆逾時不再永久卡住後續請求；核心回復 panic 時會回報失敗，不再誤顯示已連線。
+- 手機版的原生錯誤改顯示實際原因（不再出現 `PlatformException` 包裝），逾時與 TUN 設定變更會提示先中斷再重新連線。
+- Android 匯出改存到檔案管理員可瀏覽的 `Android/data/app.aster.desktop/files`，不再誤稱存到「檔案」App；iOS 維持 App 文件夾。
+- 修正快取的 `GeoSite.dat` 缺少規則清單（例如 `geolocation-!cn`）時設定驗證永久失敗：現在會把舊檔移到 `.stale` 並重新下載目前版本後重試。
+- CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
+
 ## 0.3.5 — 2026-10-26
 
 - 修正 Android in-process core 停止時只改狀態、沒有完整釋放 mixed proxy、UDP、Controller、DNS 與 TUN 的問題；通知列 Disconnect 後不會再繼續代理或留下 7890 listener，也不會把正常停止誤顯示成操作失敗。

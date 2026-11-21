@@ -35,19 +35,29 @@ type Core struct {
 	fd                           int
 	includePackages              []string
 	excludePackages              []string
-	cmd                          *exec.Cmd
-	done                         chan struct{}
-	runCancel                    context.CancelFunc
-	lastError                    string
-	stopping                     bool
-	coreVersion                  string
-	activeContent                string
-	activeSettings               Settings
-	logMu                        sync.Mutex
-	logs                         []string
-	proxy                        *ProxySnapshot
-	proxyMu                      sync.Mutex
-	client                       *http.Client
+	systemDNS                    []string
+	// activeTun is the marshaled TUN section of the running mobile config. The
+	// core's listener owns the only copy of the TUN descriptor and closes it
+	// when it re-creates the TUN, so applying a different TUN section would
+	// rebuild it from a closed descriptor.
+	activeTun string
+	// retiredGeoSite records that the cached GeoSite.dat was already replaced
+	// once. Without it, a list that no database contains would retire the
+	// freshly downloaded file on every validation and download it again.
+	retiredGeoSite bool
+	cmd            *exec.Cmd
+	done           chan struct{}
+	runCancel      context.CancelFunc
+	lastError      string
+	stopping       bool
+	coreVersion    string
+	activeContent  string
+	activeSettings Settings
+	logMu          sync.Mutex
+	logs           []string
+	proxy          *ProxySnapshot
+	proxyMu        sync.Mutex
+	client         *http.Client
 }
 type CoreStatus struct {
 	Running bool   `json:"running"`
@@ -122,6 +132,17 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 			return nil, err
 		}
 		if _, err = executor.ParseWithBytes(b); err != nil {
+			// A cached GeoSite.dat is authoritative: the core only downloads a
+			// new one when the file is missing. An old or trimmed copy that
+			// lacks a referenced list therefore blocks the configuration
+			// forever, so retire it and let the core fetch a current copy.
+			if missingGeoSiteList(err.Error()) && c.retireGeoSiteCache() {
+				if _, retryErr := executor.ParseWithBytes(b); retryErr == nil {
+					return b, nil
+				} else {
+					err = retryErr
+				}
+			}
 			return nil, fmt.Errorf("configuration validation failed: %w", err)
 		}
 		return b, nil
@@ -152,10 +173,67 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Binary, "-d", c.Dir, "-f", name, "-t")
 	hideCommand(cmd)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil && missingGeoSiteList(string(output)) && c.retireGeoSiteCache() {
+		// The core downloads a fresh database on the retry, which can outlast
+		// the 30 second failure window.
+		retryCtx, retryCancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			2*time.Minute,
+		)
+		retry := exec.CommandContext(retryCtx, c.Binary, "-d", c.Dir, "-f", name, "-t")
+		hideCommand(retry)
+		output, err = retry.CombinedOutput()
+		retryCancel()
+	}
+	if err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w\n%s", err, bounded(string(output), 3000))
 	}
 	return b, nil
+}
+
+// missingGeoSiteList reports whether a failed core run says a GeoSite rule
+// list is absent from the cached database.
+func missingGeoSiteList(output string) bool {
+	return strings.Contains(output, "not found in GeoSite.dat")
+}
+
+// retireGeoSiteCache moves the cached GeoSite.dat aside so the core downloads
+// a current copy. The core treats any existing file as authoritative, so a
+// stale or trimmed database lacking a referenced list would otherwise block
+// every configuration that uses that list.
+func (c *Core) retireGeoSiteCache() bool {
+	c.mu.Lock()
+	retired := c.retiredGeoSite
+	c.mu.Unlock()
+	if retired {
+		// The retry already downloaded a current database and the list is
+		// still missing, so the reference is wrong; downloading again would
+		// not help.
+		return false
+	}
+	entries, err := os.ReadDir(c.Dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(entry.Name(), "GeoSite.dat") {
+			continue
+		}
+		path := filepath.Join(c.Dir, entry.Name())
+		// Windows refuses to rename over an existing file.
+		_ = os.Remove(path + ".stale")
+		if err := os.Rename(path, path+".stale"); err != nil {
+			c.appendLog("Geodata: could not replace the cached GeoSite.dat: " + err.Error())
+			return false
+		}
+		c.mu.Lock()
+		c.retiredGeoSite = true
+		c.mu.Unlock()
+		c.appendLog("Geodata: the cached GeoSite.dat is missing a rule list; downloading a current copy")
+		return true
+	}
+	return false
 }
 func (c *Core) recordError(err error) {
 	c.mu.Lock()
@@ -383,32 +461,55 @@ func (c *Core) start(ctx context.Context, content string, s Settings, privileged
 	}
 }
 
-func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd int) error {
+// StartWithFD runs the in-process core against a VPN-provided TUN descriptor.
+// The core takes ownership of fd and closes it when the listener stops.
+func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd int) (result error) {
 	if !c.InProcess {
 		return errors.New("mobile core is not enabled")
 	}
 	if fd <= 0 {
-		return errors.New("Android VPN descriptor is not available")
+		return errors.New("VPN TUN descriptor is not available")
 	}
 	c.mu.Lock()
-	c.fd = fd
+	wasRunning := c.running
+	previousFD := c.fd
+	if !wasRunning {
+		c.fd = fd
+	}
 	c.mu.Unlock()
 	failed := true
 	defer func() {
-		if err := recover(); err != nil {
-			c.recordError(fmt.Errorf("mobile core failed: %v", err))
+		if r := recover(); r != nil {
+			// This is the only failure handler for a panicking core, so it must
+			// report the panic; returning nil would be read as a working tunnel.
+			result = fmt.Errorf("mobile core failed: %v", r)
+			c.recordError(result)
 		}
-		if failed {
-			c.mu.Lock()
+		if !failed {
+			return
+		}
+		c.mu.Lock()
+		if wasRunning {
+			// Another core still owns the previous descriptor.
+			c.fd = previousFD
+		} else {
 			c.fd = 0
-			c.mu.Unlock()
+		}
+		c.activeTun = ""
+		c.mu.Unlock()
+		// Android detaches the descriptor with DetachFd and the provider hands
+		// over a dup, so on failure the caller has no way to release it. The
+		// helper skips a descriptor the core already took and closed.
+		if err := closeIfOpen(fd); err != nil {
+			c.appendLog("Mobile core: could not release the TUN descriptor: " + err.Error())
 		}
 	}()
-	err := c.start(ctx, content, s, false)
-	if err == nil {
-		failed = false
+	if err := c.start(ctx, content, s, false); err != nil {
+		result = err
+		return result
 	}
-	return err
+	failed = false
+	return nil
 }
 
 func (c *Core) startInProcess(ctx context.Context, content string, s Settings) error {
@@ -446,9 +547,15 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	c.mu.Lock()
 	fd := c.fd
 	include, exclude := c.includePackages, c.excludePackages
+	systemDNS := c.systemDNS
 	c.mu.Unlock()
 	applyMobileTunOptions(tun, fd, include, exclude)
+	withSystemDNS(doc, systemDNS)
 	doc["tun"] = tun
+	activeTun, err := yaml.Marshal(tun)
+	if err != nil {
+		return err
+	}
 	final, err := yaml.Marshal(doc)
 	if err != nil {
 		return err
@@ -456,6 +563,12 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	logrus.SetOutput(coreLogWriter(c))
 	if err = hub.Parse(final, hub.WithExternalController(address), hub.WithSecret(c.Secret)); err != nil {
 		c.appendLog("Mobile core: " + err.Error())
+		// hub.Parse applies inbounds and DNS before it builds the TUN, and it
+		// does not roll back a partial apply. Leaving those listeners behind
+		// would keep a dead configuration running after the VPN reported a
+		// failed start, so shut the applied state down here.
+		_ = hub.Parse([]byte(inProcessStopConfig))
+		executor.Shutdown()
 		return err
 	}
 	runCtx, cancel := context.WithCancel(ctx)
@@ -465,6 +578,7 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	c.coreVersion = "mobile-" + CoreCommit[:7]
 	c.lastError = ""
 	c.activeContent, c.activeSettings = content, s
+	c.activeTun = string(activeTun)
 	c.done = make(chan struct{})
 	c.runCancel = cancel
 	c.mu.Unlock()
@@ -480,6 +594,20 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 		)
 	}
 	return nil
+}
+
+// mobileTunChanged reports whether applying tun would make the core rebuild
+// its TUN listener. The running mobile listener owns the only TUN descriptor,
+// so a rebuild would attach it to a descriptor that is already closed.
+func (c *Core) mobileTunChanged(tun map[string]any) (bool, error) {
+	newTun, err := yaml.Marshal(tun)
+	if err != nil {
+		return false, err
+	}
+	c.mu.Lock()
+	activeTun := c.activeTun
+	c.mu.Unlock()
+	return activeTun != "" && string(newTun) != activeTun, nil
 }
 
 func startupTimeout(content []byte) time.Duration {
@@ -518,6 +646,7 @@ func (c *Core) Stop() error {
 		port := c.activeSettings.MixedPort
 		controller := c.Address
 		c.fd = 0
+		c.activeTun = ""
 		c.mu.Unlock()
 		if cancel != nil {
 			cancel()
@@ -686,9 +815,25 @@ func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged
 		c.mu.Lock()
 		fd := c.fd
 		include, exclude := c.includePackages, c.excludePackages
+		systemDNS := c.systemDNS
 		c.mu.Unlock()
 		applyMobileTunOptions(tun, fd, include, exclude)
+		withSystemDNS(doc, systemDNS)
 		doc["tun"] = tun
+		if fd > 0 {
+			changed, err := c.mobileTunChanged(tun)
+			if err != nil {
+				return err
+			}
+			if changed {
+				// The listener owns the TUN descriptor and closes it when it
+				// re-creates the TUN. Applying a changed TUN section would
+				// rebuild it from a closed descriptor, leaving the core running
+				// but unable to pass traffic while the OS still reports the
+				// VPN connected.
+				return errors.New("TUN settings changed; disconnect and reconnect to apply them")
+			}
+		}
 		final, err := yaml.Marshal(doc)
 		if err != nil {
 			return err
