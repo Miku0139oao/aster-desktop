@@ -128,6 +128,17 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 			return nil, err
 		}
 		if _, err = executor.ParseWithBytes(b); err != nil {
+			// A cached GeoSite.dat is authoritative: the core only downloads a
+			// new one when the file is missing. An old or trimmed copy that
+			// lacks a referenced list therefore blocks the configuration
+			// forever, so retire it and let the core fetch a current copy.
+			if missingGeoSiteList(err.Error()) && c.retireGeoSiteCache() {
+				if _, retryErr := executor.ParseWithBytes(b); retryErr == nil {
+					return b, nil
+				} else {
+					err = retryErr
+				}
+			}
 			return nil, fmt.Errorf("configuration validation failed: %w", err)
 		}
 		return b, nil
@@ -158,10 +169,55 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Binary, "-d", c.Dir, "-f", name, "-t")
 	hideCommand(cmd)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	output, err := cmd.CombinedOutput()
+	if err != nil && missingGeoSiteList(string(output)) && c.retireGeoSiteCache() {
+		// The core downloads a fresh database on the retry, which can outlast
+		// the 30 second failure window.
+		retryCtx, retryCancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			2*time.Minute,
+		)
+		retry := exec.CommandContext(retryCtx, c.Binary, "-d", c.Dir, "-f", name, "-t")
+		hideCommand(retry)
+		output, err = retry.CombinedOutput()
+		retryCancel()
+	}
+	if err != nil {
 		return nil, fmt.Errorf("configuration validation failed: %w\n%s", err, bounded(string(output), 3000))
 	}
 	return b, nil
+}
+
+// missingGeoSiteList reports whether a failed core run says a GeoSite rule
+// list is absent from the cached database.
+func missingGeoSiteList(output string) bool {
+	return strings.Contains(output, "not found in GeoSite.dat")
+}
+
+// retireGeoSiteCache moves the cached GeoSite.dat aside so the core downloads
+// a current copy. The core treats any existing file as authoritative, so a
+// stale or trimmed database lacking a referenced list would otherwise block
+// every configuration that uses that list.
+func (c *Core) retireGeoSiteCache() bool {
+	entries, err := os.ReadDir(c.Dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.EqualFold(entry.Name(), "GeoSite.dat") {
+			continue
+		}
+		path := filepath.Join(c.Dir, entry.Name())
+		// Windows refuses to rename over an existing file.
+		_ = os.Remove(path + ".stale")
+		if err := os.Rename(path, path+".stale"); err != nil {
+			c.appendLog("Geodata: could not replace the cached GeoSite.dat: " + err.Error())
+			return false
+		}
+		c.appendLog("Geodata: the cached GeoSite.dat is missing a rule list; downloading a current copy")
+		return true
+	}
+	return false
 }
 func (c *Core) recordError(err error) {
 	c.mu.Lock()

@@ -11,6 +11,7 @@
 - iOS 會自動更新訂閱（原本只有 macOS 會排程），且連線中不會因套用新設定而重建 TUN、讓流量中斷。
 - Tunnel 回覆逾時不再永久卡住後續請求；核心回復 panic 時會回報失敗，不再誤顯示已連線。
 - 手機版的原生錯誤改顯示實際原因（不再出現 `PlatformException` 包裝），逾時與 TUN 設定變更會提示先中斷再重新連線。
+- 修正快取的 `GeoSite.dat` 缺少規則清單（例如 `geolocation-!cn`）時設定驗證永久失敗：現在會把舊檔移到 `.stale` 並重新下載目前版本後重試。
 - CI 新增 iOS 產物檢查：Packet Tunnel extension point、bundle id、entitlement 與 app／extension 的 Mobileapi 連結。
 
 ## 0.3.5 — 2026-10-26
