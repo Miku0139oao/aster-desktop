@@ -608,7 +608,9 @@ Future<void> showRuleDialog(
   bool application = false,
 }) async {
   final p = c.active!;
-  String type = application ? 'PROCESS-NAME' : 'DOMAIN-SUFFIX';
+  String type = application && !Platform.isIOS
+      ? 'PROCESS-NAME'
+      : 'DOMAIN-SUFFIX';
   String target = 'DIRECT';
   final targets = <String>{'DIRECT', 'REJECT'};
   try {
@@ -668,16 +670,20 @@ Future<void> showRuleDialog(
                       value: 'IP-CIDR',
                       child: Text(c.tr('IP 範圍', 'IP range')),
                     ),
-                    DropdownMenuItem(
-                      value: 'PROCESS-NAME',
-                      child: Text(c.tr('應用程式名稱', 'Application name')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'PROCESS-PATH',
-                      child: Text(
-                        c.tr('應用程式完整路徑', 'Application executable path'),
+                    // iOS cannot inspect other apps' processes, so these
+                    // conditions could never match there.
+                    if (!Platform.isIOS) ...[
+                      DropdownMenuItem(
+                        value: 'PROCESS-NAME',
+                        child: Text(c.tr('應用程式名稱', 'Application name')),
                       ),
-                    ),
+                      DropdownMenuItem(
+                        value: 'PROCESS-PATH',
+                        child: Text(
+                          c.tr('應用程式完整路徑', 'Application executable path'),
+                        ),
+                      ),
+                    ],
                   ],
                   onChanged: (v) => setState(() => type = v!),
                 ),
