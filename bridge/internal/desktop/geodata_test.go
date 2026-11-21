@@ -33,8 +33,14 @@ func TestRetireGeoSiteCacheMovesTheFileAside(t *testing.T) {
 	if _, err := os.Stat(path + ".stale"); err != nil {
 		t.Fatalf("expected the retired copy to remain: %v", err)
 	}
+	if err := os.WriteFile(path, []byte("fresh download"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if core.retireGeoSiteCache() {
-		t.Fatal("retiring must report false once no database is left")
+		t.Fatal("a list that is still missing must not retire the fresh download again")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the fresh download must stay in place: %v", err)
 	}
 }
 

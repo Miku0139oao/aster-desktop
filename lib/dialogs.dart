@@ -372,10 +372,12 @@ Future<void> exportText(
 ) async {
   final safeName = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
   try {
-    // iOS and Android have no native save dialog in file_selector. Write into
-    // the app's documents directory instead; on iOS it is visible in Files
-    // (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace).
-    if (Platform.isIOS || Platform.isAndroid) {
+    // iOS and Android have no native save dialog in file_selector. iOS writes
+    // into the app's documents directory, which the Files app exposes
+    // (UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace). Android's
+    // documents directory is private to the app, so exports go to the app's
+    // external files directory instead, which file managers can browse.
+    if (Platform.isIOS) {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/$safeName');
       await file.writeAsString(content);
@@ -383,9 +385,26 @@ Future<void> exportText(
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
+              c.tr('檔案已儲存到「檔案」App：$safeName', 'Saved to the Files app as $safeName'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (Platform.isAndroid) {
+      final directory =
+          await getExternalStorageDirectory() ??
+          await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/$safeName');
+      await file.writeAsString(content);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
               c.tr(
-                '檔案已儲存到「檔案」App：$safeName',
-                'Saved to the Files app as $safeName',
+                '檔案已儲存到 Android/data/app.aster.desktop/files：$safeName',
+                'Saved to Android/data/app.aster.desktop/files as $safeName',
               ),
             ),
           ),

@@ -118,9 +118,10 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
         let directory = try AsterIOSRuntime.containerURL()
         // The app may still be releasing its in-app host (for example when the
         // tunnel is started from Settings or Control Center). The App Group
-        // engine lock is exclusive, so retry briefly before failing.
+        // engine lock is exclusive, so retry before failing; the app's release
+        // waits for any in-flight request, which can take a few seconds.
         var lastError: Error?
-        for attempt in 0..<50 {
+        for attempt in 0..<150 {
             do {
                 try AsterIOSRuntime.openHost(directory.path)
                 hostOpen = true
@@ -128,7 +129,7 @@ final class AsterTunnelProvider: NEPacketTunnelProvider {
                 break
             } catch {
                 lastError = error
-                if attempt < 49 {
+                if attempt < 149 {
                     Thread.sleep(forTimeInterval: 0.1)
                 }
             }

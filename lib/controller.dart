@@ -444,10 +444,15 @@ class AppController extends ChangeNotifier {
     if (!_foreground || _polling || busy || !ready) return;
     _polling = true;
     final epoch = _operationEpoch;
+    // Backgrounding releases the in-app host so a tunnel started from Settings
+    // can take the App Group lock. A poll that was already in flight must not
+    // issue another channel call after that: on iOS the call would reopen the
+    // host and take the lock back inside a suspended process.
+    bool active() => _foreground && !_disposed && !busy;
     try {
       final wasRunning = running;
       await refresh();
-      if (busy || epoch != _operationEpoch) return;
+      if (!active() || epoch != _operationEpoch) return;
       if (wasRunning && !running) {
         upload = 0;
         download = 0;
@@ -480,12 +485,12 @@ class AppController extends ChangeNotifier {
           }
         }
       }
-      if (page == 7) {
+      if (page == 7 && active()) {
         trafficHistory = await backend.call('trafficHistory', {
           'days': preferences['statisticsRange'] ?? 7,
         }) as Json;
       }
-      if (page == 4 && !busy && epoch == _operationEpoch) {
+      if (page == 4 && active() && epoch == _operationEpoch) {
         await loadLogs();
       }
       // A Shortcut can set the route while the app stays in the foreground, so
@@ -493,13 +498,13 @@ class AppController extends ChangeNotifier {
       // skipped read leaves the key behind, and the next page change would
       // then jump back to the node selector unexpectedly. Reading it is one
       // UserDefaults lookup in the app process, not a host call.
-      if (isMobilePlatform && !busy) {
+      if (isMobilePlatform && active()) {
         await _consumePendingRoute();
       }
       // macOS schedules refreshes in Flutter because TUN changes must pass
       // through XPC. Mobile has no Go-side scheduler at all, so it refreshes
       // here while the app is in the foreground.
-      if (Platform.isMacOS || isMobilePlatform) {
+      if ((Platform.isMacOS || isMobilePlatform) && active()) {
         final now = DateTime.now();
         for (final profile in profiles.where((p) => p.url.isNotEmpty)) {
           final hours =
@@ -517,12 +522,15 @@ class AppController extends ChangeNotifier {
             _refreshAttempts[profile.id] = now;
             await backend.call('refresh', {'id': profile.id});
             await refresh();
+            if (!active()) return;
           }
         }
       }
       notifyListeners();
     } catch (e) {
-      if (busy || epoch != _operationEpoch) return;
+      // A request that was cut short by backgrounding is not a user-visible
+      // failure; the next foreground poll retries it.
+      if (busy || epoch != _operationEpoch || !_foreground || _disposed) return;
       error = e.toString();
       notifyListeners();
     } finally {

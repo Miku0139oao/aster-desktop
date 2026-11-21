@@ -40,7 +40,11 @@ type Core struct {
 	// core's listener owns the only copy of the TUN descriptor and closes it
 	// when it re-creates the TUN, so applying a different TUN section would
 	// rebuild it from a closed descriptor.
-	activeTun      string
+	activeTun string
+	// retiredGeoSite records that the cached GeoSite.dat was already replaced
+	// once. Without it, a list that no database contains would retire the
+	// freshly downloaded file on every validation and download it again.
+	retiredGeoSite bool
 	cmd            *exec.Cmd
 	done           chan struct{}
 	runCancel      context.CancelFunc
@@ -199,6 +203,15 @@ func missingGeoSiteList(output string) bool {
 // stale or trimmed database lacking a referenced list would otherwise block
 // every configuration that uses that list.
 func (c *Core) retireGeoSiteCache() bool {
+	c.mu.Lock()
+	retired := c.retiredGeoSite
+	c.mu.Unlock()
+	if retired {
+		// The retry already downloaded a current database and the list is
+		// still missing, so the reference is wrong; downloading again would
+		// not help.
+		return false
+	}
 	entries, err := os.ReadDir(c.Dir)
 	if err != nil {
 		return false
@@ -214,6 +227,9 @@ func (c *Core) retireGeoSiteCache() bool {
 			c.appendLog("Geodata: could not replace the cached GeoSite.dat: " + err.Error())
 			return false
 		}
+		c.mu.Lock()
+		c.retiredGeoSite = true
+		c.mu.Unlock()
 		c.appendLog("Geodata: the cached GeoSite.dat is missing a rule list; downloading a current copy")
 		return true
 	}
@@ -455,6 +471,7 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 		return errors.New("VPN TUN descriptor is not available")
 	}
 	c.mu.Lock()
+	wasRunning := c.running
 	c.fd = fd
 	c.mu.Unlock()
 	failed := true
@@ -465,11 +482,21 @@ func (c *Core) StartWithFD(ctx context.Context, content string, s Settings, fd i
 			result = fmt.Errorf("mobile core failed: %v", r)
 			c.recordError(result)
 		}
-		if failed {
-			c.mu.Lock()
-			c.fd = 0
-			c.activeTun = ""
-			c.mu.Unlock()
+		if !failed {
+			return
+		}
+		c.mu.Lock()
+		pending := c.fd
+		c.fd = 0
+		c.activeTun = ""
+		c.mu.Unlock()
+		// Android detaches the descriptor with DetachFd and the provider hands
+		// over a dup, so on failure the caller has no way to release it. Only
+		// close it when this call did not leave a running core owning it.
+		if pending > 0 && (!wasRunning || !c.Status().Running) {
+			if err := closeIfOpen(pending); err != nil {
+				c.appendLog("Mobile core: could not release the TUN descriptor: " + err.Error())
+			}
 		}
 	}()
 	if err := c.start(ctx, content, s, false); err != nil {
@@ -531,6 +558,12 @@ func (c *Core) startInProcess(ctx context.Context, content string, s Settings) e
 	logrus.SetOutput(coreLogWriter(c))
 	if err = hub.Parse(final, hub.WithExternalController(address), hub.WithSecret(c.Secret)); err != nil {
 		c.appendLog("Mobile core: " + err.Error())
+		// hub.Parse applies inbounds and DNS before it builds the TUN, and it
+		// does not roll back a partial apply. Leaving those listeners behind
+		// would keep a dead configuration running after the VPN reported a
+		// failed start, so shut the applied state down here.
+		_ = hub.Parse([]byte(inProcessStopConfig))
+		executor.Shutdown()
 		return err
 	}
 	runCtx, cancel := context.WithCancel(ctx)

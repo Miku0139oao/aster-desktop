@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -111,6 +113,9 @@ class _RuleEditorState extends State<RuleEditor> {
         : (widget.ip ?? '').contains(':')
         ? 'IP-CIDR6'
         : 'IP-CIDR';
+    // iOS has no per-process routing, so the process match types are not
+    // offered there; a caller that passes an application must fall back.
+    if (Platform.isIOS && kind.startsWith('PROCESS')) kind = 'DOMAIN';
     setMatch();
   }
 
@@ -142,8 +147,10 @@ class _RuleEditorState extends State<RuleEditor> {
               ),
               items: [
                 for (final entry in {
-                  'PROCESS-PATH': c.tr('應用程式路徑', 'Application path'),
-                  'PROCESS-NAME': c.tr('執行檔名稱', 'Executable name'),
+                  if (!Platform.isIOS) ...{
+                    'PROCESS-PATH': c.tr('應用程式路徑', 'Application path'),
+                    'PROCESS-NAME': c.tr('執行檔名稱', 'Executable name'),
+                  },
                   'DOMAIN': c.tr('完整網域', 'Exact domain'),
                   'DOMAIN-SUFFIX': c.tr('網域及子網域', 'Domain and subdomains'),
                   'IP-CIDR': c.tr('IPv4 範圍', 'IPv4 range'),

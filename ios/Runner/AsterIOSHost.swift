@@ -95,14 +95,19 @@ final class AsterIOSHost {
 
     func connectFromIntent() async throws {
         let request = try AsterIOSRuntime.jsonRequest(method: "connect")
-        let response = try await gate.run { try await self.startTunnel(request: request) }
+        // A Shortcut can run while the app is suspended. Reopening the in-app
+        // host afterwards would take the App Group lock in a process that iOS
+        // is about to suspend, blocking the next tunnel start.
+        let response = try await gate.run {
+            try await self.startTunnel(request: request, reopenHost: false)
+        }
         if let message = AsterIOSRuntime.responseError(response) {
             throw AsterIOSError.mobileEngine(message)
         }
     }
 
     func disconnectFromIntent() async throws {
-        _ = try await gate.run { try await self.stopTunnel() }
+        _ = try await gate.run { try await self.stopTunnel(reopenHost: false) }
     }
 
     func currentStatus() async -> String {
@@ -158,7 +163,7 @@ final class AsterIOSHost {
         }
     }
 
-    private func startTunnel(request: String) async throws -> String {
+    private func startTunnel(request: String, reopenHost: Bool = true) async throws -> String {
         let object = try requestObject(request)
         var started: NETunnelProviderManager?
         do {
@@ -188,12 +193,14 @@ final class AsterIOSHost {
                 started.connection.stopVPNTunnel()
                 await waitForTunnelToStop(manager: started)
             }
-            try? await openHostIfNeeded()
+            if reopenHost {
+                try? await openHostIfNeeded()
+            }
             return AsterIOSRuntime.errorResponse(id: object.id, message: error.localizedDescription)
         }
     }
 
-    private func stopTunnel() async throws -> String {
+    private func stopTunnel(reopenHost: Bool = true) async throws -> String {
         if let manager = try await tunnelManager() {
             if isActive(manager.connection) {
                 let request = try AsterIOSRuntime.jsonRequest(method: "disconnect")
@@ -205,7 +212,9 @@ final class AsterIOSHost {
             // desktop "already running" error.
             await waitForTunnelToStop(manager: manager)
         }
-        try await openHostIfNeeded()
+        if reopenHost {
+            try await openHostIfNeeded()
+        }
         return #"{"result":true}"#
     }
 
