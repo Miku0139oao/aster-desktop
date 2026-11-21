@@ -100,6 +100,7 @@ enum AsterIOSError: LocalizedError {
     case tunnelStopped
     case tunnelFileDescriptor
     case invalidProviderReply
+    case tunnelReplyTimeout
 
     var errorDescription: String? {
         switch self {
@@ -119,6 +120,8 @@ enum AsterIOSError: LocalizedError {
             return "iOS did not expose the tunnel packet descriptor."
         case .invalidProviderReply:
             return "Aster NetworkExtension returned an invalid reply."
+        case .tunnelReplyTimeout:
+            return "Aster VPN did not reply in time. Disconnect and connect again."
         }
     }
 }

@@ -245,7 +245,9 @@ class OverviewPage extends StatelessWidget {
                   ),
                   if (hasProfile)
                     Text(
-                      c.settings.tun
+                      isMobilePlatform
+                          ? c.tr('所有應用程式 · VPN', 'All applications · VPN')
+                          : c.settings.tun
                           ? c.tr('所有應用程式 · TUN', 'All applications · TUN')
                           : c.settings.systemProxy
                           ? c.tr('系統代理', 'System proxy')
@@ -283,10 +285,15 @@ class OverviewPage extends StatelessWidget {
                   (
                     Icons.check_circle_outline,
                     c.tr('3. 連線', '3. Connect'),
-                    c.tr(
-                      '系統代理會自動設定，不需要終端。',
-                      'The system proxy is set up for you. No terminal needed.',
-                    ),
+                    isMobilePlatform
+                        ? c.tr(
+                            '連線後所有應用程式都會經過 Aster，不需要終端。',
+                            'Every app goes through Aster once connected. No terminal needed.',
+                          )
+                        : c.tr(
+                            '系統代理會自動設定，不需要終端。',
+                            'The system proxy is set up for you. No terminal needed.',
+                          ),
                   ),
                 ])
                   Padding(

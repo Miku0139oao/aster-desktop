@@ -334,16 +334,24 @@ final class AsterIOSHost {
             throw AsterIOSError.tunnelUnavailable
         }
         return try await withCheckedThrowingContinuation { continuation in
+            let reply = AsterProviderReply(continuation)
             do {
                 try session.sendProviderMessage(data) { response in
                     guard let response else {
-                        continuation.resume(throwing: AsterIOSError.invalidProviderReply)
+                        reply.fail(AsterIOSError.invalidProviderReply)
                         return
                     }
-                    continuation.resume(returning: response)
+                    reply.succeed(response)
                 }
             } catch {
-                continuation.resume(throwing: error)
+                reply.fail(error)
+                return
+            }
+            // A stalled extension must not block the serial gate forever.
+            // Starting the core can wait on HTTP providers, so allow well over
+            // that; the Dart side gives up after three minutes.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 300) {
+                reply.fail(AsterIOSError.tunnelReplyTimeout)
             }
         }
     }
@@ -401,5 +409,32 @@ final class AsterSerialGate {
         tail = Task { _ = try? await work.value }
         lock.unlock()
         return try await work.value
+    }
+}
+
+/// Completes a provider reply exactly once, whether the extension answers or
+/// the timeout fires first. Resuming a continuation twice would trap.
+final class AsterProviderReply {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data, Error>?
+
+    init(_ continuation: CheckedContinuation<Data, Error>) {
+        self.continuation = continuation
+    }
+
+    func succeed(_ value: Data) {
+        finish { $0.resume(returning: value) }
+    }
+
+    func fail(_ error: Error) {
+        finish { $0.resume(throwing: error) }
+    }
+
+    private func finish(_ body: (CheckedContinuation<Data, Error>) -> Void) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        if let continuation { body(continuation) }
     }
 }

@@ -494,8 +494,10 @@ class AppController extends ChangeNotifier {
       if (isMobilePlatform && page != 1 && !busy) {
         await _consumePendingRoute();
       }
-      // Native macOS TUN changes must pass through XPC, including scheduled refreshes.
-      if (Platform.isMacOS) {
+      // macOS schedules refreshes in Flutter because TUN changes must pass
+      // through XPC. Mobile has no Go-side scheduler at all, so it refreshes
+      // here while the app is in the foreground.
+      if (Platform.isMacOS || isMobilePlatform) {
         final now = DateTime.now();
         for (final profile in profiles.where((p) => p.url.isNotEmpty)) {
           final hours =
