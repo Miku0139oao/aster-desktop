@@ -8,17 +8,17 @@
 
 | 項目 | 需求 |
 | --- | --- |
-| Mac | macOS 14 以上，安裝 Xcode 16 以上（以 Flutter 3.47.6 的支援範圍為準） |
-| Apple 帳號 | 已加入付費 Apple Developer Program（個人或組織），可在 [developer.apple.com](https://developer.apple.com/account) 登入 |
-| iPhone | iOS 16 以上（專案 deployment target 為 16.0），可連接 Mac |
+| Mac | macOS 14.5 以上。Xcode 16.0–16.2 需 macOS 14.5；Xcode 16.3 需 macOS 15.2；Xcode 16.4 需 macOS 15.3（Xcode 26 以上需 macOS 15.6）。請安裝 Flutter 3.47.6 支援且符合你的 macOS 版本的 Xcode |
+| Apple 帳號 | 已加入付費 Apple Developer Program（個人或組織），可在 [developer.apple.com](https://developer.apple.com/account) 登入，並在 Xcode → Settings → Accounts 加入同一個 Apple ID |
+| iPhone | iOS 16 以上（建置腳本設定的 deployment target 為 16.0），可連接 Mac |
 | Flutter | 3.47.6（版本記錄於 `toolchain.json`） |
 | Go | 1.26.3（用來產生 iOS 的 gomobile XCFramework） |
-| 其他 | Xcode Command Line Tools、Ruby 的 `xcodeproj` gem、Python 3、CocoaPods（若 Flutter 要求） |
+| 其他 | Xcode Command Line Tools、Ruby（含 `xcodeproj` gem；macOS 已不內建系統 Ruby，可用 Homebrew 安裝）、Python 3、CocoaPods（若 Flutter 要求） |
 
 先在終端機確認：
 
 ```bash
-xcodebuild -version     # Xcode 16 以上
+xcodebuild -version     # Xcode 16 以上，且符合上方 macOS 版本需求
 flutter --version       # 3.47.6
 go version              # go1.26.3
 pod --version           # 沒有安裝時：brew install cocoapods
@@ -39,11 +39,13 @@ Aster iOS 由兩個 binary 組成，另有一個共用的 App Group：
 
 | 用途 | 預設值 | 定義位置 |
 | --- | --- | --- |
-| App bundle id | `app.aster.desktop` | `scripts/configure-ios.rb`、Xcode 的 Runner target |
-| Tunnel extension bundle id | `app.aster.desktop.tunnel` | `scripts/configure-ios.rb`、Xcode 的 AsterTunnel target |
+| App bundle id | `app.aster.desktop` | `scripts/configure-ios.rb`（建置時寫入 Runner target） |
+| Tunnel extension bundle id | `app.aster.desktop.tunnel` | `scripts/configure-ios.rb`（建置時寫入 AsterTunnel target） |
 | App Group | `group.app.aster.desktop` | 兩個 `.entitlements` 檔與 `ios/Shared/AsterIOSRuntime.swift` |
 
 App ID 與 App Group 的名稱是全 Apple 開發者帳號共用的。若預設值已被其他人註冊，就必須換成你專屬的前綴（例如 `com.yourname.aster`）。bundle id 與 App Group 會編譯進 App，**換了字串就必須重新建置**，不能只改簽章。
+
+尚未執行 `scripts/build-ios.py` 時，Xcode 專案仍是 Flutter 的預設值（`app.aster.asterDesktop`、deployment target 15.0），也還沒有 AsterTunnel target 與 entitlements 設定；這些都由建置腳本寫入，屬正常現象。
 
 ---
 
@@ -66,7 +68,7 @@ git checkout v0.4.0
 3. `ios/Shared/AsterIOSRuntime.swift:5-6`：`appGroup` 與 `tunnelBundleIdentifier`
 4. `ios/Runner/Runner.entitlements`、`ios/AsterTunnel/AsterTunnel.entitlements`：`group.*` 字串
 
-以 `com.yourname.aster` 為例，四處會變成：
+以 `com.yourname.aster` 為例，各處會變成：
 
 ```text
 App：        com.yourname.aster
@@ -74,13 +76,15 @@ Extension：  com.yourname.aster.tunnel
 App Group：  group.com.yourname.aster
 ```
 
-`configure-ios.rb` 每次執行都會把 Xcode 專案裡的 bundle id 重設成腳本中的值，所以請改腳本（或改完 Xcode 後不要再跑建置腳本），不要只改 Xcode 介面。
+`configure-ios.rb` 每次執行都會把 Xcode 專案裡的 bundle id 重設成腳本中的值，所以請改腳本（或改完 Xcode 後不要再跑建置腳本），不要只改 Xcode 介面。`.entitlements` 與 `AsterIOSRuntime.swift` 不經由腳本改寫，直接編輯即生效。
 
 ### A3. 建置 XCFramework 與未簽章 App
 
 ```bash
 flutter pub get --enforce-lockfile
-gem install xcodeproj --no-document
+# 系統 Ruby 沒有寫入權限時，改用 gem install --user-install xcodeproj --no-document
+# 找不到 ruby／gem 時，先安裝 Ruby（例如 brew install ruby）並把其 bin 目錄加入 PATH
+sudo gem install xcodeproj --no-document
 python3 scripts/build-ios.py
 ```
 
@@ -90,10 +94,10 @@ python3 scripts/build-ios.py
 2. 執行 `scripts/configure-ios.rb`，把 AsterTunnel extension、entitlements 與 framework 連結寫進 Xcode 專案。
 3. 執行 `flutter build ios --release --no-codesign`，產出 `build/ios/iphoneos/Runner.app`。
 
-Flutter 或 Go 不在 `PATH` 時，可用環境變數指定：
+Flutter 或 Go 不在 `PATH` 時，可用環境變數指定。兩者都要指向**可執行檔**，不是 SDK 根目錄：
 
 ```bash
-ASTER_FLUTTER=/path/to/flutter ASTER_GO=/path/to/go python3 scripts/build-ios.py
+ASTER_FLUTTER=/path/to/flutter/bin/flutter ASTER_GO=/path/to/go/bin/go python3 scripts/build-ios.py
 ```
 
 這一步不需要簽章，成功後再進 Xcode 設定簽章即可。
@@ -102,13 +106,14 @@ ASTER_FLUTTER=/path/to/flutter ASTER_GO=/path/to/go python3 scripts/build-ios.py
 
 到 [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources)：
 
-1. **Identifiers → App IDs → +**
+1. **Devices → +**：註冊要安裝的 iPhone UDID；Development 與 Ad Hoc 描述檔只包含已註冊的裝置。Flutter 的 `flutter devices` 或 Xcode 連接裝置時都能查到 UDID。
+2. **Identifiers → App IDs → +**
    - 選 App，Bundle ID 選 Explicit，填入 App 的 bundle id（例如 `com.yourname.aster`）。
    - 勾選 **App Groups** 與 **Network Extensions**；Network Extensions 的類型需包含 **Packet Tunnel**。
    - 儲存。
-2. 再建立一個 App ID，填入 extension 的 bundle id（例如 `com.yourname.aster.tunnel`），同樣啟用 **App Groups** 與 **Network Extensions（Packet Tunnel）**。
-3. **Identifiers → App Groups → +** 建立 `group.com.yourname.aster`（或預設的 `group.app.aster.desktop`），回到兩個 App ID 的 Configure 頁面把它指派給兩者。
-4. 描述檔交給 Xcode 的自動簽章建立即可（見 A5）。若你偏好手動簽章，才需要到 **Profiles → +** 為兩個 bundle id 各建立 **iOS App Development** 描述檔，選擇憑證與已註冊的裝置後下載。
+3. 再建立一個 App ID，填入 extension 的 bundle id（例如 `com.yourname.aster.tunnel`），同樣啟用 **App Groups** 與 **Network Extensions（Packet Tunnel）**。
+4. **Identifiers → App Groups → +** 建立 `group.com.yourname.aster`（或預設的 `group.app.aster.desktop`），回到兩個 App ID 的 Configure 頁面把它指派給兩者。
+5. 描述檔交給 Xcode 的自動簽章建立即可（見 A5）。若你偏好手動簽章，才需要到 **Profiles → +** 為兩個 bundle id 各建立 **iOS App Development** 描述檔，選擇憑證與已註冊的裝置後下載。
 
 Xcode 的自動簽章也能代為建立描述檔，但前提是 App ID 已啟用上述 capability；先完成入口網站設定可避免 Xcode 產生缺少 entitlement 的描述檔。
 
@@ -117,6 +122,8 @@ Xcode 的自動簽章也能代為建立描述檔，但前提是 App ID 已啟用
 ```bash
 open ios/Runner.xcworkspace
 ```
+
+先到 **Xcode → Settings → Accounts → +**，用付費 Apple ID 登入並選取團隊。沒有這一步，下列 Team 下拉選單會是空的，自動簽章也無法建立描述檔。
 
 1. 左側選 **Runner** target → **Signing & Capabilities**：
    - Team 選你的開發者團隊，勾選 **Automatically manage signing**。
@@ -128,10 +135,11 @@ open ios/Runner.xcworkspace
 ### A6. 安裝到 iPhone
 
 1. 用傳輸線連接 iPhone，解鎖並在手機上按「信任這部電腦」。
-2. 手機的 **設定 → 隱私權與安全性 → 開發者模式** 開啟，重新開機後確認開啟（第一次連接 Xcode 後才會出現此選項）。
-3. 在 Xcode 上方選擇你的 iPhone 作為執行目標，按 **Run**（⌘R）。
-4. 首次啟動會出現 VPN 設定授權，選擇 **允許**；可能需要 Face ID／Touch ID 確認。
-5. 匯入訂閱或設定檔，選擇節點後連線。VPN 狀態應出現在 **設定 → 一般 → VPN 與裝置管理**。
+2. 在 Xcode 的 **Window → Devices and Simulators** 或執行目標下拉選單中選一次你的 iPhone，讓 Xcode 辨識這台裝置。
+3. 回到手機的 **設定 → 隱私權與安全性 → 開發者模式** 開啟；這個選項要在 Xcode 連接過裝置後才會出現。重新開機後確認開啟，並重新連接、信任這台 Mac。
+4. 在 Xcode 上方選擇你的 iPhone 作為執行目標，按 **Run**（⌘R）。
+5. 第一次按下 App 內的連線時，系統會詢問是否允許 Aster 新增 VPN 設定，選擇 **允許**；可能需要 Face ID／Touch ID 確認。
+6. 匯入訂閱或設定檔，選擇節點後連線。VPN 狀態應出現在 **設定 → 一般 → VPN 與裝置管理**。
 
 若首次開啟顯示「未受信任的開發者」，到 **設定 → 一般 → VPN 與裝置管理 → 開發者 App** 選擇你的開發者憑證並按 **信任**，再重新開啟 App。
 
@@ -166,17 +174,21 @@ unzip Aster-Desktop-0.4.0-ios-unsigned.zip
 
 1. 在入口網站建立 `app.aster.desktop` 與 `app.aster.desktop.tunnel` 兩個 App ID，兩者都要有 **App Groups** 與 **Network Extensions（Packet Tunnel）**。
 2. 建立 `group.app.aster.desktop` 並指派給兩個 App ID。若名稱已被佔用，此路線不可行。
-3. 為兩個 bundle id 建立 **iOS App Development** 或 **Ad Hoc** 描述檔，確認 `Entitlements` 內含：
+3. **Devices → +** 註冊要安裝的 iPhone UDID（Xcode 連接裝置時也會顯示）。Development 與 Ad Hoc 描述檔只包含已註冊的裝置。
+4. **Profiles → +** 為兩個 bundle id 各建立一份描述檔：
+   - **iOS App Development**：搭配 **Apple Development** 憑證，適合直接安裝測試。
+   - **Ad Hoc**：搭配 **Apple Distribution** 憑證，只能安裝在已註冊的裝置。
+   確認 `Entitlements` 內含：
    - `application-identifier` = `<TEAMID>.app.aster.desktop`（extension 則是 `.tunnel`）
    - `com.apple.developer.networking.networkextension` = `packet-tunnel-provider`
    - `com.apple.security.application-groups` = `group.app.aster.desktop`
-4. 把簽章憑證安裝到 Mac 的鑰匙圈（可由 Xcode → Settings → Accounts → Manage Certificates 建立），並確認身分名稱：
+5. 把對應的簽章憑證安裝到 Mac 的鑰匙圈：**Xcode → Settings → Accounts → +** 登入 Apple ID，再用 **Manage Certificates → +** 建立 Apple Development 或 Apple Distribution 憑證。確認身分名稱：
 
 ```bash
 security find-identity -v -p codesigning
 ```
 
-5. 雙擊下載的 `.mobileprovision` 安裝，或直接保留檔案供下一步使用。
+6. 雙擊下載的 `.mobileprovision` 安裝，或直接保留檔案供下一步使用。
 
 ### B3. 由描述檔產生簽章用 entitlements
 
@@ -200,13 +212,15 @@ plutil -extract Entitlements.application-identifier raw runner-profile.plist
 ### B4. 重新簽章（由內而外）
 
 ```bash
+# Development 描述檔用這個；Ad Hoc 描述檔改成 "Apple Distribution: Your Name (XXXXXXXXXX)"
 IDENTITY="Apple Development: Your Name (XXXXXXXXXX)"
+TIMESTAMP=--timestamp=none
 APP=Runner.app
 
 # 1. 先簽所有內嵌 framework（Flutter 與 Dart 程式碼）
 find "$APP" -type d -name '*.framework' -print0 |
   while IFS= read -r -d '' bundle; do
-    codesign --force --sign "$IDENTITY" --timestamp=none "$bundle"
+    codesign --force --sign "$IDENTITY" "$TIMESTAMP" "$bundle"
   done
 
 # 2. 放入描述檔：extension 與主 App 各一份
@@ -214,16 +228,16 @@ cp tunnel.mobileprovision "$APP/PlugIns/AsterTunnel.appex/embedded.mobileprovisi
 cp runner.mobileprovision "$APP/embedded.mobileprovision"
 
 # 3. 先簽 extension，再簽主 App
-codesign --force --sign "$IDENTITY" --timestamp=none \
+codesign --force --sign "$IDENTITY" "$TIMESTAMP" \
   --entitlements tunnel.entitlements "$APP/PlugIns/AsterTunnel.appex"
-codesign --force --sign "$IDENTITY" --timestamp=none \
+codesign --force --sign "$IDENTITY" "$TIMESTAMP" \
   --entitlements runner.entitlements "$APP"
 
 # 4. 驗證
 codesign --verify --deep --strict --verbose=2 "$APP"
 ```
 
-使用 Ad Hoc 或 App Store 描述檔時，把 `--timestamp=none` 改成 `--timestamp`（需要網路連到 Apple 的時間戳伺服器）。開發用描述檔不需要時間戳。
+時間戳不是 iOS 開發或 Ad Hoc 安裝的必要條件，App Store 發佈時也會重新簽章；上面的 `--timestamp=none` 可直接沿用。只有需要讓簽章在憑證到期後仍有效（例如 Developer ID／公證）時，才改成 `--timestamp`。
 
 簽章後原本 zip 的 SHA-256 當然不再相符，這是預期行為；請保留原始 zip 以便重來。
 
@@ -239,7 +253,7 @@ xcrun devicectl device install app --device <裝置識別碼> Runner.app
 
 - 或把 `Runner.app` 拖進 Apple Configurator 的裝置視窗。
 
-安裝後若 App 閃退或 tunnel 啟動失敗，先確認描述檔的 App Group 與 Network Extension 是否齊全，以及裝置是否已登錄在描述檔中。使用 development 描述檔時，手機也要開啟開發者模式並信任這台 Mac。
+安裝後若 App 閃退或 tunnel 啟動失敗，先確認描述檔的 App Group 與 Network Extension 是否齊全，以及裝置是否已登錄在描述檔中。使用 development 描述檔時，手機也要開啟開發者模式（步驟同 A6）並信任這台 Mac。
 
 ---
 
@@ -251,12 +265,13 @@ xcrun devicectl device install app --device <裝置識別碼> Runner.app
 | `Provisioning profile ... doesn't include the com.apple.developer.networking.networkextension entitlement` | App ID 沒開 Network Extensions，或描述檔是在開啟前建立的；開啟 capability 後重新產生描述檔 |
 | `An App ID with Identifier ... is not available` | bundle id 已被其他帳號註冊；改用你自己的前綴（路線 A） |
 | `App Group ... is not available` | App Group 名稱已被佔用；改用你自己的 group（路線 A） |
-| 安裝成功但啟動即閃退，日誌出現 App Group 無法取得 | `AsterIOSRuntime.appGroup` 與兩個 entitlements 的 group 不一致；四個地方要一起改並重新建置 |
+| 安裝成功但啟動即閃退，日誌出現 App Group 無法取得 | `AsterIOSRuntime.appGroup` 與兩個 entitlements 的 group 不一致；這三個檔案要一起改並重新建置 |
 | Tunnel 啟動失敗，日誌提到 provider 或 entitlement | 描述檔缺少 `packet-tunnel-provider`，或 extension 的 App ID 沒開 Network Extensions |
 | 安裝時顯示 `Application is missing the application-identifier entitlement` | 重新簽章時沒有使用描述檔內的 Entitlements；回到 B3 重新產生 |
+| 安裝時被拒絕，提示 device 不符或未包含 UDID | 裝置未註冊，或描述檔建立後才加入；到 **Devices** 註冊 UDID 後重新產生描述檔，再重新簽章 |
 | `code object is not signed at all` | 有內嵌 framework 漏簽；確認 B4 的第一步有涵蓋 `Runner.app` 內所有 `.framework`，且順序是由內而外 |
 | 手機找不到 VPN 設定 | 首次連線必須允許 VPN 設定；可到 **設定 → 一般 → VPN 與裝置管理** 檢查 |
-| 一週後 App 無法開啟 | 免費帳號的 7 天限制。付費帳號的 development／Ad Hoc 描述檔有效期為一年，到期前重新簽章即可 |
+| App 過一段時間後無法開啟 | 描述檔到期。付費帳號的 development／Ad Hoc 描述檔通常不超過一年；到期前要重新簽章並**重新安裝**，因為已安裝的 App 會保留舊的描述檔直到被取代 |
 
 ## 注意事項
 
