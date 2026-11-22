@@ -271,7 +271,7 @@ xcrun devicectl device install app --device <裝置識別碼> Runner.app
 | 安裝時被拒絕，提示 device 不符或未包含 UDID | 裝置未註冊，或描述檔建立後才加入；到 **Devices** 註冊 UDID 後重新產生描述檔，再重新簽章 |
 | `code object is not signed at all` | 有內嵌 framework 漏簽；確認 B4 的第一步有涵蓋 `Runner.app` 內所有 `.framework`，且順序是由內而外 |
 | 手機找不到 VPN 設定 | 首次連線必須允許 VPN 設定；可到 **設定 → 一般 → VPN 與裝置管理** 檢查 |
-| App 過一段時間後無法開啟 | 描述檔到期。付費帳號的 development／Ad Hoc 描述檔通常不超過一年；到期前要重新簽章並**重新安裝**，因為已安裝的 App 會保留舊的描述檔直到被取代 |
+| App 過一段時間後無法開啟 | 描述檔到期；Apple 未保證確切期限，通常不超過一年。到期前要重新簽章並**重新安裝**到 iPhone（Xcode Run、`xcrun devicectl device install app` 或 Apple Configurator，見 B5），因為已安裝的 App 內嵌自己的描述檔，只重新簽章 Mac 上的 `Runner.app` 不會更新手機上的那一份 |
 
 ## 注意事項
 
