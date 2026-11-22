@@ -57,7 +57,8 @@ iOS 目前可在沒有付費 Apple Developer Program 的情況下完成：
 在 macOS 執行：
 
 ```bash
-gem install xcodeproj --no-document
+# 系統 Ruby 沒有寫入權限時，改用 gem install --user-install xcodeproj --no-document
+sudo gem install xcodeproj --no-document
 flutter pub get --enforce-lockfile
 python3 scripts/build-ios.py
 ```
