@@ -1,5 +1,9 @@
 # 更新紀錄
 
+## 未發佈
+
+- 新增 [iOS 自簽安裝教學](docs/IOS_SELF_SIGN.md)：付費 Apple Developer Program 需求、從原始碼建置並簽章、重新簽章官方 unsigned zip、識別碼調整與常見錯誤。
+
 ## 0.4.0 — 2026-11-22 — iOS 客戶端基礎
 
 - 首次在同一個版本同時提供 Windows、macOS（Intel／Apple Silicon）、Linux、Android 與 iOS 產物；iOS 為未簽章 CI 建置，安裝仍需 Apple Developer Program 簽章。

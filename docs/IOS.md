@@ -4,7 +4,7 @@ Aster iOS 使用與桌面、Android 相同的 Flutter／Material 3 介面，並�
 
 ## 取得方式
 
-自 `0.4.0` 起，發佈頁會同步提供 `Aster-Desktop-<版本>-ios-unsigned.zip` 與對應的建置校驗檔。這是未簽章的 `Runner.app`，用於檢視 CI 產物、學術或自行簽章測試，**不能直接安裝在一般 iPhone，也不能上傳 TestFlight**；重新簽章需要付費 Apple Developer Program 的 NetworkExtension capability 與 provisioning profile，見下方[簽章與測試](#簽章與測試)。
+自 `0.4.0` 起，發佈頁會同步提供 `Aster-Desktop-<版本>-ios-unsigned.zip` 與對應的建置校驗檔。這是未簽章的 `Runner.app`，用於檢視 CI 產物、學術或自行簽章測試，**不能直接安裝在一般 iPhone，也不能上傳 TestFlight**；重新簽章需要付費 Apple Developer Program 的 NetworkExtension capability 與 provisioning profile，完整步驟見[自簽安裝教學](IOS_SELF_SIGN.md)。
 
 ## 架構
 
@@ -49,6 +49,8 @@ iOS 目前可在沒有付費 Apple Developer Program 的情況下完成：
 - App Store 發佈
 
 正式建置需要建立 App ID、App Group、NetworkExtension capability 與對應 provisioning profile。CI 目前使用 `--no-codesign`，產物只供編譯與結構檢查，不能直接安裝在一般 iPhone。
+
+要安裝到自己的實機，請依[自簽安裝教學](IOS_SELF_SIGN.md)選擇從原始碼建置，或重新簽章官方的 unsigned zip；免費 Apple ID 與 Personal Team 無法啟用 Network Extension。
 
 ## 建置
 

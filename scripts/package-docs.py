@@ -24,6 +24,7 @@ PAGES = {
     'docs/BUILDING.md': ('docs/BUILDING.html', '開發與建置'),
     'docs/ANDROID.md': ('docs/ANDROID.html', 'Android 版'),
     'docs/IOS.md': ('docs/IOS.html', 'iOS 版'),
+    'docs/IOS_SELF_SIGN.md': ('docs/IOS_SELF_SIGN.html', 'iOS 自簽安裝'),
     'docs/ARCHITECTURE.md': ('docs/ARCHITECTURE.html', '架構與介面'),
     'docs/TESTING.md': ('docs/TESTING.html', '測試紀錄'),
     'NOTICE.md': ('NOTICE.html', '第三方聲明'),
