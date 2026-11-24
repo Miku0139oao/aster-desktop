@@ -21,24 +21,31 @@ type module struct {
 func main() {
 	core := flag.String("core", "", "pinned core source directory")
 	out := flag.String("out", ".build/third-party", "notice output directory")
+	engineGo := flag.String("engine-go", "", "toolchain for the bridge and core")
 	flag.Parse()
-	if err := collect(*core, *out); err != nil {
+	if err := collect(*core, *out, *engineGo); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-func collect(core, out string) error {
+func collect(core, out, engineGo string) error {
 	if err := os.MkdirAll(out, 0755); err != nil {
 		return err
 	}
 	modules := map[string]module{}
-	for _, dir := range []string{"bridge", core} {
+	for _, dir := range []string{"bridge", core, "."} {
 		target := "."
 		if dir == "bridge" {
 			target = "./cmd/aster-bridge"
 		}
+		if dir == "." {
+			target = "./cmd/aster-desktop"
+		}
 		command := exec.Command("go", "list", "-deps", "-tags", "with_gvisor", "-json", target)
 		command.Dir = dir
+		if dir != "." && engineGo != "" {
+			command.Env = append(os.Environ(), "GOTOOLCHAIN="+engineGo)
+		}
 		data, err := command.Output()
 		if err != nil {
 			return fmt.Errorf("module list in %s: %w", dir, err)

@@ -100,6 +100,8 @@ Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝�
 
 ## 文件與開發
 
+目前開發分支的 Windows、macOS 和 Linux 介面使用 MyGo 原生 UI。桌面建置方式見[開發與建置](docs/BUILDING.md)。上方的下載連結與驗證紀錄對應已發佈的 0.4.0 版本。
+
 - [完整使用手冊](docs/USER_GUIDE.md)：安裝、首次使用、分流、流量、更新、備份與退出。
 - [常見問題與故障排除](docs/FAQ.md)：無法連線、TUN、授權、安裝、日誌與回報方式。
 - [Android 版](docs/ANDROID.md)：VpnService、應用程式分流、權限、簽章與建置。

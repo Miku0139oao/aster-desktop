@@ -1,4 +1,4 @@
-param([string]$Flutter='flutter',[string]$VCRedist='',[switch]$SkipFlutter,[switch]$Installer)
+param([switch]$Installer)
 $ErrorActionPreference='Stop'
 $asterRoot=Split-Path -Parent $PSScriptRoot
 $asterBuild=Join-Path $asterRoot '.build'
@@ -24,36 +24,29 @@ try {
 } finally { Pop-Location }
 Push-Location $asterRoot
 try {
-  go run ./scripts/notices.go -core $asterDependency.Dir -out .build/third-party
+  $env:GOTOOLCHAIN="go$($asterLock.nativeGo)"
+  $asterEntry=Join-Path $asterBuild 'native\windows-entry'
+  $asterRelease=Join-Path $asterBuild 'native\windows-bundle'
+  New-Item -ItemType Directory -Path $asterEntry,$asterRelease -Force | Out-Null
+  Copy-Item -Path (Join-Path $asterRoot 'cmd\aster-desktop\*.go') -Destination $asterEntry -Force
+  go run "github.com/akavel/rsrc@$($asterLock.windowsResourceTool)" -arch amd64 -ico (Join-Path $asterRoot 'assets/aster.ico') -manifest (Join-Path $asterRoot 'windows/runner/runner.exe.manifest') -o (Join-Path $asterEntry 'resources_windows_amd64.syso')
+  if($LASTEXITCODE -ne 0){throw 'Application resource generation failed'}
+  go build -mod=readonly -trimpath -ldflags '-H windowsgui -s -w' -o (Join-Path $asterRelease 'aster_desktop.exe') ./.build/native/windows-entry
+  if($LASTEXITCODE -ne 0){throw 'MyGo desktop build failed'}
+  go run ./scripts/notices.go -core $asterDependency.Dir -engine-go "go$($asterLock.go)" -out .build/third-party
   if($LASTEXITCODE -ne 0){throw 'Third-party notices could not be collected'}
-  if(!$SkipFlutter){
-    $asterVersion=& $Flutter --version --machine | ConvertFrom-Json
-    if($asterVersion.frameworkVersion -ne $asterLock.flutter){throw "Use Flutter $($asterLock.flutter)"}
-    & $Flutter pub get --enforce-lockfile
-    if($LASTEXITCODE -ne 0){throw 'Flutter dependencies could not be resolved'}
-    & $Flutter build windows --release
-    if($LASTEXITCODE -ne 0){throw 'Windows GUI build failed'}
-  }
-  $asterRelease=Join-Path $asterRoot 'build\windows\x64\runner\Release'
-  if(!$VCRedist){
-    $asterVSWhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if(!(Test-Path -LiteralPath $asterVSWhere)){$asterVSWhere='D:\DevTools\VisualStudio\Installer\vswhere.exe'}
-    if(Test-Path -LiteralPath $asterVSWhere){
-      $asterVS=& $asterVSWhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-      $asterCRT=Get-ChildItem -Path (Join-Path $asterVS 'VC\Redist\MSVC\*\x64\Microsoft.VC143.CRT') -Directory | Sort-Object FullName -Descending | Select-Object -First 1
-      if($asterCRT){$VCRedist=$asterCRT.FullName}
-    }
-  }
-  if(!$VCRedist -or !(Test-Path -LiteralPath $VCRedist)){throw 'Pass -VCRedist with the Visual Studio x64 Microsoft.VC143.CRT directory'}
-  Copy-Item -Path (Join-Path $VCRedist '*.dll') -Destination $asterRelease -Force
   Copy-Item -LiteralPath (Join-Path $asterBuild 'aster-bridge.exe'),(Join-Path $asterBuild 'aster-core.exe'),(Join-Path $asterRoot 'LICENSE'),(Join-Path $asterRoot 'NOTICE.md'),(Join-Path $asterRoot 'toolchain.json') -Destination $asterRelease
   Copy-Item -LiteralPath (Join-Path $asterRoot 'README.md') -Destination (Join-Path $asterRelease 'Readme.md')
   Copy-Item -LiteralPath (Join-Path $asterBuild 'third-party') -Destination $asterRelease -Recurse -Force
   Copy-Item -LiteralPath (Join-Path $asterRoot 'docs') -Destination $asterRelease -Recurse -Force
-  Copy-Item -LiteralPath (Join-Path $asterRoot 'assets\OFL-NotoSansTC.txt') -Destination $asterRelease
+  Copy-Item -LiteralPath (Join-Path $asterRoot 'assets\OFL-NotoSansTC.txt') -Destination $asterRelease -Force
+  Copy-Item -LiteralPath (Join-Path $asterRoot 'assets\opencc\LICENSE') -Destination (Join-Path $asterRelease 'LICENSE-OpenCC') -Force
   New-Item -ItemType Directory -Path (Join-Path $asterRoot 'dist') -Force | Out-Null
   Compress-Archive -Path "$asterRelease\*" -DestinationPath (Join-Path $asterRoot "dist\Aster-Desktop-$asterReleaseVersion-windows-x64-portable.zip") -Force
-  if($Installer){& (Join-Path $PSScriptRoot 'package-windows.ps1') -ReleasePath $asterRelease}
+  if($Installer){
+    $env:GOTOOLCHAIN="go$($asterLock.go)"
+    & (Join-Path $PSScriptRoot 'package-windows.ps1') -ReleasePath $asterRelease
+  }
   & (Join-Path $PSScriptRoot 'package-source.ps1') -CoreSource $asterDependency.Dir
   & (Join-Path $PSScriptRoot 'checksums.ps1')
 } finally { Pop-Location }

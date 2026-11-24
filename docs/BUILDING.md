@@ -1,31 +1,23 @@
 # 開發、建置與授權
 
-固定 Flutter **3.47.6**（`5fc346839b5d0eef006ed8404392afb4dfae428d`）、Go **1.26.3**，依賴固定在 `pubspec.lock` / `go.sum`。核心及轉換器固定 **`a9a33503b39a03681bc52d9758907316a22df199`**，核心使用 `with_gvisor`。單獨更新核心不會改變內嵌轉換器。參考 [Flutter 桌面建置文件](https://docs.flutter.dev/platform-integration/desktop)。
+桌面介面使用 MyGo 原生 UI 與 Go **1.27.3**，版本固定在根目錄的 `go.mod`。橋接層與核心使用 Go **1.26.3**。Android、iOS 使用 Flutter **3.47.6**（`5fc346839b5d0eef006ed8404392afb4dfae428d`）。核心及轉換器固定在 **`a9a33503b39a03681bc52d9758907316a22df199`**，核心使用 `with_gvisor`。單獨更新核心不會改變內嵌轉換器。
 
 ```powershell
-# Windows：Visual Studio 2022 C++ 桌面工具鏈
-./scripts/build.ps1 -Flutter 'path/to/flutter/bin/flutter.bat' -Installer
+# Windows x64
+./scripts/build.ps1 -Installer
 ```
 
 ```sh
-# Linux：clang, cmake, ninja, pkg-config, GTK 3/AppIndicator 開發套件；deb 另需 dpkg-deb
-# macOS：Xcode CLI、CocoaPods，Intel/Apple Silicon 各自在目標機器建置
-ASTER_FLUTTER=/path/to/flutter/bin/flutter bash scripts/build.sh
+# Linux：GTK 3、AppIndicator 與 OpenGL 執行環境
+# macOS：Xcode 命令列工具，用於編譯並簽署背景服務與 XPC 函式庫
+bash scripts/build.sh
 ```
 
 結果在 `dist/`，含套件、對應桌面／固定核心來源包及 `checksums.txt`。Windows 使用 Go 建置的原生安裝器，升權後在管理員專用目錄展開安裝資料。Linux 在 Ubuntu 24.04 建置 deb 與 Ubuntu 可攜包，在 Arch 建置 Arch 套件與 Arch 可攜包，各自連結對應的 AppIndicator 函式庫。Mac DMG 內含保護安裝所有權的 PKG。正式 Mac 簽署設定 `ASTER_SIGN_IDENTITY` 和 `ASTER_NOTARY_PROFILE`。CI 在 `.github/workflows/build.yml`，推送到 repository 後自動執行。
 
-```sh
-flutter pub get --enforce-lockfile
-flutter analyze
-flutter test
-cd bridge
-go test ./...
-go vet ./...
-# 設 ASTER_TEST_CORE=/absolute/path/to/pinned/core 啟用真實核心整合測試
-```
+根目錄的 `go test ./...` 驗證 MyGo 介面與單一執行個體。設定 `ASTER_TEST_BRIDGE`、`ASTER_TEST_CORE` 為建置產物的絕對路徑，可測試真實的匯入、選節點與核心啟停。設定 `ASTER_TEST_ARTIFACTS` 為絕對目錄，可存下首頁的深色、淺色與繁體中文截圖。橋接層測試在 `bridge/` 執行 `go test ./...`。行動版沿用各自的 Flutter 建置說明。
 
-Flutter 打包各自在該平台執行；Go 橋接層可以交叉編譯。原生代理、TUN、授權、睡眠喚醒需逐平台額外實測，不能以交叉編譯代替。
+Go 桌面程式與橋接層可交叉編譯。桌面打包工具、系統代理、TUN、授權與睡眠喚醒需在對應平台驗證。
 
 ## 使用文件打包
 

@@ -24,7 +24,7 @@ go run "github.com/akavel/rsrc@$($asterLock.windowsResourceTool)" -arch amd64 -i
 if($LASTEXITCODE -ne 0){throw 'Installer icon resource generation failed'}
 Push-Location (Join-Path $asterRoot 'bridge')
 try {
-  go build -trimpath -ldflags '-H windowsgui -s -w' -o $asterTarget ./.build/setup
+  go build -tags aster_installer -trimpath -ldflags '-H windowsgui -s -w' -o $asterTarget ./.build/setup
   if($LASTEXITCODE -ne 0){throw 'Windows installer packaging failed'}
 } finally {Pop-Location}
 $asterVerify=Start-Process -FilePath $asterTarget -ArgumentList '--verify' -WindowStyle Hidden -Wait -PassThru

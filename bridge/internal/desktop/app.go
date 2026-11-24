@@ -255,6 +255,8 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		return a.workspace(ctx, req)
 	case "state":
 		return map[string]any{"state": s.State, "core": a.status(), "desktopVersion": Version, "coreCommit": CoreCommit, "service": ServiceStatus()}, nil
+	case "status":
+		return map[string]any{"core": a.status(), "service": ServiceStatus()}, nil
 	case "settings":
 		var next Settings
 		if err := decode(req.Params, &next); err != nil {

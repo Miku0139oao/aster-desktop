@@ -6,4 +6,4 @@ Icon=aster-desktop
 Terminal=false
 Type=Application
 Categories=Network;
-StartupWMClass=app.astercore.aster_desktop
+StartupWMClass=aster_desktop

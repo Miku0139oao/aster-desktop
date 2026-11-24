@@ -13,7 +13,7 @@ on:
         type: choice
         options: [both, arm64, amd64]
       verify_gui:
-        description: Run the native GUI driver after validating the installer
+        description: Launch the installed MyGo app after validating the installer
         default: true
         type: boolean
 permissions:
@@ -79,37 +79,31 @@ jobs:
             [[ "$(stat -f '%u' "$path")" == 0 ]]
             file "$path"
           done
+          privilege="$app/Contents/Frameworks/libAsterPrivilege.dylib"
+          [[ -f "$privilege" && ! -L "$privilege" ]]
+          lipo "$privilege" -verify_arch "$EXPECTED_ARCH"
+          [[ "$(stat -f '%u' "$privilege")" == 0 ]]
+          nm -gU "$privilege" > "$RUNNER_TEMP/aster-privilege-symbols.txt"
+          grep -q ' _aster_privilege_request$' "$RUNNER_TEMP/aster-privilege-symbols.txt"
+          grep -q ' _aster_privilege_free$' "$RUNNER_TEMP/aster-privilege-symbols.txt"
           python3 - "$app" <<'PY'
           import os, stat, sys
           app = sys.argv[1]
-          for relative in ['', 'Contents', 'Contents/MacOS', 'Contents/Resources', 'Contents/Library', 'Contents/Library/HelperTools', 'Contents/Library/LaunchDaemons']:
+          for relative in ['', 'Contents', 'Contents/MacOS', 'Contents/Frameworks', 'Contents/Frameworks/libAsterPrivilege.dylib', 'Contents/Resources', 'Contents/Library', 'Contents/Library/HelperTools', 'Contents/Library/LaunchDaemons']:
               path = os.path.join(app, relative)
               info = os.lstat(path)
               assert info.st_uid == 0 and info.st_mode & 0o022 == 0 and not stat.S_ISLNK(info.st_mode), path
           PY
           "$app/Contents/Resources/aster-core" -v
           cp "$app/Contents/Resources/aster-core" "$app/Contents/Resources/aster-bridge" ../
-      - uses: subosito/flutter-action@v2
-        if: inputs.verify_gui
-        with:
-          flutter-version: '3.47.6'
-          channel: stable
-          cache: true
-      - run: flutter pub get --enforce-lockfile
-        if: inputs.verify_gui
-      - name: Use the reviewed validation harness with the package application sources
+      - name: Launch and activate the installed app
         if: inputs.verify_gui
         env:
           VALIDATION_SHA: ${{ github.sha }}
         run: |
           git fetch --depth=1 origin "$VALIDATION_SHA"
-          git show "$VALIDATION_SHA:integration_test/desktop_test.dart" > integration_test/desktop_test.dart
-          mkdir -p test_driver
-          git show "$VALIDATION_SHA:test_driver/desktop_test.dart" > test_driver/desktop_test.dart
-      - name: Native macOS GUI with the installed package binaries
-        if: inputs.verify_gui
-        timeout-minutes: 15
-        run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
+          git show "$VALIDATION_SHA:scripts/test-native-launch.sh" > "$RUNNER_TEMP/test-native-launch.sh"
+          bash "$RUNNER_TEMP/test-native-launch.sh" '/Applications/Aster Desktop.app/Contents/MacOS/Aster Desktop'
       - name: Record validation scope
         if: always()
         env:
