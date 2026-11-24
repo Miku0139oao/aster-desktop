@@ -102,6 +102,7 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
 
     private func trustedInstallation() -> Bool {
         for path in ["/Applications/Aster Desktop.app", "/Applications/Aster Desktop.app/Contents", "/Applications/Aster Desktop.app/Contents/MacOS", trustedExecutable,
+                     "/Applications/Aster Desktop.app/Contents/Frameworks", "/Applications/Aster Desktop.app/Contents/Frameworks/libAsterPrivilege.dylib",
                      "/Applications/Aster Desktop.app/Contents/Resources", "/Applications/Aster Desktop.app/Contents/Resources/aster-bridge", "/Applications/Aster Desktop.app/Contents/Resources/aster-core"] {
             guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
                   (attributes[.ownerAccountID] as? NSNumber)?.intValue == 0,

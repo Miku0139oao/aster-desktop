@@ -1,3 +1,5 @@
+//go:build aster_installer
+
 // Native test-version installer; payload is embedded by package-windows.ps1.
 package main
 

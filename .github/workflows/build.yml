@@ -10,11 +10,11 @@ on:
         type: choice
         options: [all, windows-2022, ubuntu-24.04, macos-15-intel, macos-15]
       verify_gui:
-        description: Run native macOS GUI validation after packaging
+        description: Launch the packaged macOS app after building
         default: true
         type: boolean
       refresh_visual_baselines:
-        description: Regenerate platform baselines after an intentional visual change (review uploaded renders)
+        description: Capture MyGo overview screenshots for review
         default: false
         type: boolean
 permissions:
@@ -33,11 +33,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.3'
-          cache-dependency-path: bridge/go.sum
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            bridge/go.sum
       - name: Warm the Go module cache
         shell: bash
         working-directory: bridge
+        env:
+          GOTOOLCHAIN: go1.26.3
         run: |
           # proxy.golang.org intermittently times out mid-download; a failure
           # here would otherwise surface as a broken test run.
@@ -47,42 +51,31 @@ jobs:
             sleep $((attempt * 10))
           done
           exit 1
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.6'
-          channel: stable
-          cache: true
       - name: Linux prerequisites
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev libsecret-1-dev dpkg-dev zstd xvfb
-      - run: flutter pub get --enforce-lockfile
-      - run: flutter analyze
-      - name: Cross-process single instance lifecycle
-        run: dart run scripts/test_single_instance.dart
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0t64 libayatana-appindicator3-1 libgl1 dpkg-dev zstd xvfb
       - name: Release tooling tests
         if: runner.os == 'Linux'
         run: |
           python3 -m py_compile scripts/assemble-release.py scripts/package-docs.py
           python3 scripts/test-assemble-release.py
-      - name: Widget and visual tests
-        run: flutter test ${{ inputs.refresh_visual_baselines && '--update-goldens' || '' }}
-      - name: Preserve rendered platform baselines
+      - name: MyGo UI and activation tests
+        env:
+          ASTER_TEST_ARTIFACTS: ${{ inputs.refresh_visual_baselines && format('{0}/.build/native-screenshots', github.workspace) || '' }}
+          CGO_ENABLED: '0'
+        run: go test ./...
+      - name: Preserve rendered MyGo overview
         if: inputs.refresh_visual_baselines
         uses: actions/upload-artifact@v4
         with:
           name: visual-baselines-${{ matrix.os }}
-          path: evidence/**/*.png
-      - name: Preserve failed visual comparisons
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-failures-${{ matrix.os }}
-          path: test/failures/*.png
-          if-no-files-found: ignore
+          path: .build/native-screenshots/*.png
+          include-hidden-files: true
       - name: Go tests
         working-directory: bridge
         env:
           CGO_ENABLED: '0'
+          GOTOOLCHAIN: go1.26.3
         run: go test ./...
       - name: Build Windows packages
         if: runner.os == 'Windows'
@@ -104,30 +97,38 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:GOTOOLCHAIN='go1.26.3'
           $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
           cd bridge
           go test ./... -count=1
       - name: Real core lifecycle and rollback tests (Unix)
         if: runner.os != 'Windows'
-        run: cd bridge && ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./... -count=1
+        run: cd bridge && GOTOOLCHAIN=go1.26.3 ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./... -count=1
       - name: Windows LocalSystem service and TUN regression
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:GOTOOLCHAIN='go1.26.3'
           $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
           $env:ASTER_TEST_WINDOWS_SERVICE='disposable-runner'
           cd bridge
           go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 3m
-      - name: Native GUI workflow (Windows)
+      - name: MyGo workflow with the packaged engine (Windows)
         if: runner.os == 'Windows'
-        run: flutter test integration_test -d windows
-      - name: Native GUI workflow (Linux)
+        shell: pwsh
+        run: |
+          $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
+          $env:ASTER_TEST_BRIDGE="$pwd/.build/aster-bridge.exe"
+          go test ./internal/desktopui -run TestNativeBridgeWorkflow -count=1 -v
+      - name: MyGo workflow with the packaged engine (Unix)
+        if: runner.os != 'Windows'
+        run: ASTER_TEST_BRIDGE="$GITHUB_WORKSPACE/.build/aster-bridge" ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./internal/desktopui -run TestNativeBridgeWorkflow -count=1 -v
+      - name: Launch the MyGo Linux bundle
         if: runner.os == 'Linux'
-        run: xvfb-run -a flutter test integration_test -d linux
-      - name: Native GUI workflow (macOS)
+        run: xvfb-run -a bash scripts/test-native-launch.sh .build/native/linux-bundle/aster_desktop
+      - name: Launch the MyGo macOS bundle
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.verify_gui)
-        timeout-minutes: 15
-        run: flutter drive --driver=test_driver/desktop_test.dart --target=integration_test/desktop_test.dart -d macos
+        run: bash scripts/test-native-launch.sh '.build/native/Aster Desktop.app/Contents/MacOS/Aster Desktop'
   android:
     runs-on: ubuntu-24.04
     steps:
@@ -166,6 +167,10 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get --enforce-lockfile
+      - name: Flutter mobile UI checks
+        run: |
+          flutter analyze
+          flutter test
       - name: Prepare Android release signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

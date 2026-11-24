@@ -17,7 +17,7 @@ fi
 # DrvFs can report Windows files as 0777. Never preserve group/world write
 # permissions in packages that may become privileged service executables.
 tar --mode='u+rwX,go+rX,go-w' -C "$bundle" -czf "dist/Aster-Desktop-$version-linux-$target-x64-portable.tar.gz" .
-stage="$root/.build/linux-package"
+stage="$root/.build/native/linux-package"
 mkdir -p "$stage/usr/lib/aster-desktop" "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/512x512/apps"
 cp -a "$bundle/." "$stage/usr/lib/aster-desktop/"
 cp assets/aster.png "$stage/usr/share/icons/hicolor/512x512/apps/aster-desktop.png"
@@ -61,6 +61,7 @@ url = https://github.com/Miku0139oao/aster-desktop
 arch = x86_64
 license = GPL3
 depend = gtk3
+depend = libglvnd
 depend = libappindicator
 depend = polkit
 depend = systemd
