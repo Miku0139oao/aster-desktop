@@ -11,21 +11,44 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
 
 func (a *App) loadInterfaces() {
-	a.run("listNetworkInterfaces", func(ctx context.Context) (func(), error) {
-		var interfaces []Object
-		err := a.client.Call(ctx, "listNetworkInterfaces", nil, &interfaces)
-		return func() {
-			if err == nil {
-				a.interfaces = interfaces
-			}
-		}, err
+	if a.interfacesLoading || a.quitting || a.client == nil {
+		return
+	}
+	a.interfacesLoading, a.interfacesError = true, nil
+	interfaces := []Object{}
+	a.readList("listNetworkInterfaces", 10*time.Second, &interfaces, func(err error) {
+		a.interfacesLoading, a.interfacesError = false, err
+		a.interfaces = nil
+		if err == nil {
+			a.interfaces = interfaces
+		}
 	})
 }
+
+func (a *App) readList(method string, timeout time.Duration, result any, finish func(error)) {
+	load := func() {
+		ctx, cancel := context.WithTimeout(a.ctx, timeout)
+		defer cancel()
+		err := a.client.Call(ctx, method, nil, result)
+		a.dispatch(func() {
+			if !a.quitting {
+				finish(err)
+			}
+		})
+	}
+	if a.post == nil {
+		load()
+	} else {
+		go load()
+	}
+}
+
 func (a *App) days() int {
 	days := int(number(a.snapshot.State.Preferences["statisticsRange"]))
 	if !slices.Contains([]int{1, 7, 30, 365}, days) {
@@ -34,16 +57,8 @@ func (a *App) days() int {
 	return days
 }
 func (a *App) loadHistory() {
-	days := a.days()
-	a.run("trafficHistory", func(ctx context.Context) (func(), error) {
-		var result Object
-		err := a.client.Call(ctx, "trafficHistory", Object{"days": days}, &result)
-		return func() {
-			if err == nil {
-				a.history = result
-			}
-		}, err
-	})
+	a.nextHistoryPoll = time.Time{}
+	a.Poll()
 }
 func (a *App) setHistoryRange(days int) {
 	prefs := maps.Clone(a.snapshot.State.Preferences)
@@ -51,7 +66,10 @@ func (a *App) setHistoryRange(days int) {
 		prefs = Object{}
 	}
 	prefs["statisticsRange"] = days
-	a.mutate("preferences", Object{"preferences": prefs}, a.loadHistory)
+	a.mutate("preferences", Object{"preferences": prefs}, func() {
+		a.history, a.historyError = nil, nil
+		a.loadHistory()
+	})
 }
 
 func (a *App) statistics(c *ui.Context) {
@@ -86,10 +104,13 @@ func (a *App) statistics(c *ui.Context) {
 		})
 		a.panel(c, func() {
 			a.title(c, a.tr("每日流量", "Daily traffic"))
-			if err := str(a.history["error"]); err != "" {
+			if a.historyLoading {
+				ui.Text(c, a.tr("正在讀取流量紀錄…", "Loading traffic history…")).TextColor(a.palette.muted).Role(ui.RoleStatus)
+			} else if a.historyError != nil {
+				ui.Text(c, a.historyError.Error()).MaxLines(3).TextColor(c.Theme().Danger).Role(ui.RoleAlert)
+			} else if err := str(a.history["error"]); err != "" {
 				a.hint(c, err)
-			}
-			if len(rows) == 0 {
+			} else if len(rows) == 0 {
 				a.hint(c, a.tr("尚無流量紀錄。", "No traffic history yet."))
 			}
 			for _, raw := range slices.Backward(rows) {
@@ -109,7 +130,7 @@ func (a *App) statistics(c *ui.Context) {
 		a.breakdown(c, rows, "applications", a.tr("應用程式流量", "Traffic by application"))
 		a.breakdown(c, rows, "routes", a.tr("出口流量", "Traffic by route"))
 		ui.Row(c).Gap(8).Wrap().Children(func() {
-			a.button(c, a.tr("重新整理", "Refresh"), false).Disabled(a.busy).OnClick(a.loadHistory)
+			a.button(c, a.tr("重新整理", "Refresh"), false).Disabled(a.busy || a.historyLoading).OnClick(a.loadHistory)
 			a.button(c, a.tr("匯出 CSV", "Export CSV"), false).Disabled(a.busy || len(rows) == 0 || a.platform.SaveFile == nil).OnClick(func() {
 				var buf strings.Builder
 				writer := csv.NewWriter(&buf)
@@ -123,7 +144,11 @@ func (a *App) statistics(c *ui.Context) {
 			})
 			a.button(c, a.tr("清除流量紀錄", "Clear traffic history"), false).Disabled(a.busy || len(rows) == 0).OnClick(func() {
 				a.confirm(a.tr("清除本機流量紀錄？", "Clear local traffic history?"), "", func() {
-					a.mutate("clearTrafficHistory", nil, func() { a.dismiss(); a.loadHistory() })
+					a.mutate("clearTrafficHistory", nil, func() {
+						a.dismiss()
+						a.history, a.historyError = nil, nil
+						a.loadHistory()
+					})
 				})
 			})
 		})

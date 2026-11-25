@@ -68,6 +68,9 @@ func (a *App) showDialog(c *ui.Context) {
 	modal := ui.DialogBase(c.Key(d.kind), &d.open, func(backdrop, panel ui.Element) {
 		backdrop.Background(ui.RGBA(0, 0, 0, .48))
 		panel.Width(width).MaxHeight(height).Padding(24).Gap(18).Radius(28).Background(a.palette.panel)
+		if a.quitError != "" {
+			ui.Text(c, a.quitError).MaxLines(3).TextColor(c.Theme().Danger).Role(ui.RoleAlert)
+		}
 		switch d.kind {
 		case importDialog:
 			a.importForm(c)
@@ -138,6 +141,13 @@ func (a *App) field(c *ui.Context, label string, value *string) ui.Element {
 }
 
 func (a *App) importForm(c *ui.Context) {
+	ui.Scroll(c).MinHeight(0).Shrink(1).Children(func() {
+		ui.Column(c).Gap(18).Children(func() { a.importFields(c) })
+	})
+	a.dialogButtons(c, a.tr("匯入並檢查", "Import and validate"), a.submitImport)
+}
+
+func (a *App) importFields(c *ui.Context) {
 	d := &a.dialog
 	a.dialogTitle(c, a.tr("匯入訂閱或設定", "Import a subscription or configuration"))
 	a.hint(c, a.tr("選一種方式即可。匯入後會先檢查設定，再開始使用。", "Choose one method. Your configuration is checked before use."))
@@ -176,7 +186,6 @@ func (a *App) importForm(c *ui.Context) {
 			}
 		})
 	}
-	a.dialogButtons(c, a.tr("匯入並檢查", "Import and validate"), a.submitImport)
 }
 
 func (a *App) submitImport() {

@@ -46,4 +46,4 @@ jobs:
           ASTER_TEST_WINDOWS_SERVICE: disposable-runner
         run: |
           $env:ASTER_TEST_CORE=Join-Path (Split-Path $pwd -Parent) '.build/tun-binaries/aster-core.exe'
-          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 3m
+          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 8m

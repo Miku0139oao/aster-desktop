@@ -3,12 +3,16 @@ package desktopui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"image/png"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +33,41 @@ type fixtureClient struct {
 	methods []string
 }
 
+type stalledReadClient struct {
+	*fixtureClient
+	mu                           sync.Mutex
+	connectOnce                  sync.Once
+	readCalls                    atomic.Int32
+	readMethod                   string
+	discovering, finishDiscovery chan struct{}
+	connecting, finishConnect    chan struct{}
+}
+
+func (f *stalledReadClient) Call(ctx context.Context, method string, params, out any) error {
+	switch method {
+	case f.readMethod:
+		if f.readCalls.Add(1) == 1 {
+			close(f.discovering)
+			select {
+			case <-f.finishDiscovery:
+				return context.DeadlineExceeded
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	case "connect":
+		f.connectOnce.Do(func() { close(f.connecting) })
+		select {
+		case <-f.finishConnect:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.fixtureClient.Call(ctx, method, params, out)
+}
+
 func (f *fixtureClient) Call(_ context.Context, method string, params, out any) error {
 	f.methods = append(f.methods, method)
 	var result any
@@ -37,6 +76,8 @@ func (f *fixtureClient) Call(_ context.Context, method string, params, out any) 
 		result = f.state
 	case "settings":
 		f.state.State.Settings = params.(Settings)
+	case "listNetworkInterfaces":
+		result = []Object{{"name": "Fixture Ethernet"}}
 	case "listApplications":
 		result = []Object{{"name": "Fixture app", "path": "/fixture/app", "running": true}}
 	case "trafficHistory":
@@ -57,6 +98,22 @@ func (f *fixtureClient) Call(_ context.Context, method string, params, out any) 
 }
 func (f *fixtureClient) Events() <-chan backend.Event { return nil }
 func (f *fixtureClient) Close() error                 { return nil }
+func (f *fixtureClient) Shutdown(ctx context.Context) error {
+	return f.Call(ctx, "disconnect", nil, nil)
+}
+
+type retryShutdownClient struct {
+	fixtureClient
+	attempts int
+}
+
+func (f *retryShutdownClient) Shutdown(context.Context) error {
+	f.attempts++
+	if f.attempts == 1 {
+		return errors.New("could not restore system proxy settings")
+	}
+	return nil
+}
 
 func newView(t *testing.T, client backend.Client, locale string) (*App, *ui.Tester) {
 	t.Helper()
@@ -73,6 +130,111 @@ func click(t *testing.T, tester *ui.Tester, label string) {
 	t.Helper()
 	if err := tester.Click(label); err != nil {
 		t.Fatalf("click %q: %v (visible text: %q)", label, err, tester.Texts())
+	}
+}
+
+func TestQuitWaitsForTheActiveOperationAndAllowsRetry(t *testing.T) {
+	client := &retryShutdownClient{}
+	a, tester := newView(t, client, "en")
+	var finished, quit bool
+	complete := func(err error) { quit = err == nil }
+	a.run("connect", func(context.Context) (func(), error) {
+		a.RequestQuit(complete)
+		if client.attempts != 0 {
+			t.Fatal("shutdown started before the foreground request completed")
+		}
+		return func() { finished = true }, nil
+	})
+	if !finished || quit || client.attempts != 1 {
+		t.Fatalf("expected the failed shutdown after the active operation, finished=%v quit=%v attempts=%d", finished, quit, client.attempts)
+	}
+	tester.Frame()
+	if !tester.HasText("Could not stop the proxy. Try quitting again. could not restore system proxy settings") {
+		t.Fatalf("quit failure is missing from the window: %q", tester.Texts())
+	}
+	a.RequestQuit(complete)
+	if !quit || client.attempts != 2 || a.quitError != "" {
+		t.Fatalf("shutdown retry did not clear the error and allow quit, quit=%v attempts=%d error=%q", quit, client.attempts, a.quitError)
+	}
+}
+
+func TestTUNCanConnectWhileNetworkListIsLoading(t *testing.T) {
+	if err := Setup(); err != nil {
+		t.Fatal(err)
+	}
+	settings := defaultSettings()
+	settings.Tun = true
+	client := &stalledReadClient{
+		fixtureClient: &fixtureClient{state: Snapshot{State: State{
+			Settings: settings,
+			ActiveID: "tun",
+			Profiles: []Profile{{ID: "tun", Name: "TUN configuration", Content: sampleConfig}},
+		}}},
+		readMethod:      "listNetworkInterfaces",
+		discovering:     make(chan struct{}),
+		finishDiscovery: make(chan struct{}),
+		connecting:      make(chan struct{}),
+		finishConnect:   make(chan struct{}),
+	}
+	updates := make(chan func(), 4)
+	a := New(client, func(update func()) { updates <- update }, Platform{}, "en")
+	t.Cleanup(a.Stop)
+	applyUntil := func(message string, done func() bool) {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		for !done() {
+			select {
+			case apply := <-updates:
+				apply()
+			case <-deadline.C:
+				t.Fatal(message)
+			}
+		}
+	}
+	a.Initialize(false, nil)
+	applyUntil("desktop state did not load", func() bool { return a.ready })
+	select {
+	case <-client.discovering:
+	case <-time.After(5 * time.Second):
+		t.Fatal("network list discovery did not start")
+	}
+	tester := ui.NewTester(a.View, 1180, 1000)
+	if !tester.HasText("Loading network interfaces…") {
+		t.Fatal("missing network list loading status")
+	}
+	click(t, tester, "Connect")
+	select {
+	case <-client.connecting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("network discovery blocked connection")
+	}
+	close(client.finishDiscovery)
+	applyUntil("network list failure did not reach the UI", func() bool { return !a.interfacesLoading })
+	tester.Frame()
+	if !tester.HasText("Starting proxy…") || !tester.HasText("Could not load network interfaces. Refresh the list or follow system routes.") ||
+		!tester.HasText(context.DeadlineExceeded.Error()) {
+		t.Fatal(tester.Texts())
+	}
+	close(client.finishConnect)
+	applyUntil("connection result did not reach the UI", func() bool { return !a.busy })
+	tester.Frame()
+	if a.busyOperation != "" || a.errorMessage != "" || tester.HasText("Starting proxy…") {
+		t.Fatal("connection progress did not reset after completion")
+	}
+	a.jump(overview)
+	if a.interfacesLoading || client.readCalls.Load() != 1 {
+		t.Fatal("returning to Home retried a failed network lookup")
+	}
+	click(t, tester, "Refresh network list")
+	applyUntil("manual network refresh did not finish", func() bool { return !a.interfacesLoading })
+	if a.interfacesError != nil || client.readCalls.Load() != 2 {
+		t.Fatalf("manual retry failed: calls=%d, err=%v", client.readCalls.Load(), a.interfacesError)
+	}
+	tester.Frame()
+	click(t, tester, "Follow system routes")
+	if !tester.HasText("Fixture Ethernet") {
+		t.Fatal("network option missing after manual retry")
 	}
 }
 
@@ -112,6 +274,88 @@ func TestNativeOverviewAndJump(t *testing.T) {
 	}
 	if !slices.Contains(client.methods, "trafficHistory") {
 		t.Fatal(client.methods)
+	}
+}
+
+func TestPageReadsDoNotBlockConnect(t *testing.T) {
+	for _, tc := range []struct {
+		method string
+		page   pageID
+	}{
+		{"listApplications", applications},
+		{"trafficHistory", statistics},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			if err := Setup(); err != nil {
+				t.Fatal(err)
+			}
+			client := &stalledReadClient{
+				fixtureClient: &fixtureClient{state: Snapshot{State: State{
+					Settings: defaultSettings(),
+					ActiveID: "test",
+					Profiles: []Profile{{ID: "test", Name: "Test configuration", Content: sampleConfig}},
+				}}},
+				readMethod:  tc.method,
+				discovering: make(chan struct{}, 1),
+				connecting:  make(chan struct{}),
+			}
+			updates := make(chan func(), 4)
+			a := New(client, func(update func()) { updates <- update }, Platform{}, "en")
+			t.Cleanup(a.Stop)
+			a.Initialize(false, nil)
+			select {
+			case update := <-updates:
+				update()
+			case <-time.After(5 * time.Second):
+				t.Fatal("desktop state did not load")
+			}
+			a.errorMessage = "Previous connection failed"
+			a.jump(tc.page)
+			select {
+			case <-client.discovering:
+			case <-time.After(5 * time.Second):
+				t.Fatal("page read did not start")
+			}
+			a.jump(overview)
+			if a.errorMessage != "Previous connection failed" {
+				t.Fatal("page read cleared the connection error")
+			}
+			click(t, ui.NewTester(a.View, 1180, 800), "Connect")
+			select {
+			case <-client.connecting:
+			case <-time.After(5 * time.Second):
+				t.Fatal("page read blocked connection")
+			}
+		})
+	}
+}
+
+func TestImportDialogActionsAtLargeTextSize(t *testing.T) {
+	client := &fixtureClient{state: Snapshot{State: State{Settings: defaultSettings()}}}
+	a, tester := newView(t, client, "en")
+	a.showImport()
+	// The Windows minimum includes the native title bar, leaving about 549 DIP of content.
+	tester.SetSize(760, 549)
+	tester.SetPreferences(ui.Preferences{TextScale: 1.5})
+	click(t, tester, "Paste content")
+	a.dialog.err = "The configuration could not be imported.\nThe first provider is missing its URL.\nA group references an unknown node.\nReview the configuration and try again."
+	tester.Frame()
+	if !tester.HasText("The first provider is missing its URL.") {
+		t.Fatal("missing validation error in the import dialog")
+	}
+
+	click(t, tester, "Import and validate")
+	if !tester.HasText("Enter a subscription URL or choose a configuration.") {
+		t.Fatal("validation did not update the dialog error")
+	}
+	click(t, tester, "YAML or node links")
+	tester.Type(sampleConfig)
+	if a.dialog.source != sampleConfig {
+		t.Fatal("the pasted-content field did not receive input")
+	}
+	click(t, tester, "Cancel")
+	if a.dialog.open {
+		t.Fatal("cancel did not close the import dialog")
 	}
 }
 
@@ -197,22 +441,33 @@ func TestNativeBridgeWorkflow(t *testing.T) {
 	if a.running() {
 		t.Fatal("stop did not stop the core")
 	}
+	closed := false
+	a.RequestQuit(func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		closed = true
+	})
+	if !closed {
+		t.Fatal("quit did not close the packaged engine")
+	}
 }
 
 func freeMixedPort(t *testing.T) int {
 	t.Helper()
+	loopback := net.IPv4(127, 0, 0, 1)
 	for range 32 {
-		tcp, err := net.Listen("tcp4", "127.0.0.1:0")
+		// Windows can reserve different ephemeral ranges for TCP and UDP.
+		// Try the same candidate outside the default Windows ephemeral range.
+		port := 24000 + rand.IntN(10000)
+		udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: loopback, Port: port})
 		if err != nil {
-			t.Fatal(err)
+			continue
 		}
-		port := tcp.Addr().(*net.TCPAddr).Port
-		// The mixed listener needs both transports. Some Windows UDP ports
-		// are reserved even when TCP can bind the same number.
-		udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
-		tcp.Close()
+		tcp, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: loopback, Port: port})
+		udp.Close()
 		if err == nil {
-			udp.Close()
+			tcp.Close()
 			return port
 		}
 	}

@@ -3,6 +3,7 @@ package desktop
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -80,8 +82,14 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 		fmt.Fprint(w, "payload: ['DOMAIN,slow.example']\n")
 	}))
 	defer provider.Close()
+	const (
+		inspectionPath = "/aster-process-inspection"
+		requestBody    = "test data from the originating application"
+		responseBody   = "test data returned through Windows TUN"
+	)
 	inspectionRelease := make(chan struct{})
-	inspectionReceived := make(chan struct{}, 1)
+	releaseInspection := sync.OnceFunc(func() { close(inspectionRelease) })
+	inspectionReceived := make(chan error, 1)
 	inspectionProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
 			http.Error(w, "CONNECT required", http.StatusMethodNotAllowed)
@@ -92,20 +100,34 @@ func TestWindowsServiceTUNLifecycle(t *testing.T) {
 			return
 		}
 		defer connection.Close()
+		_ = connection.SetDeadline(time.Now().Add(25 * time.Second))
 		// The core registers the user's connection after its upstream CONNECT
 		// succeeds. Complete that handshake before holding the tunnel open.
 		fmt.Fprint(buffer, "HTTP/1.1 200 Connection established\r\n\r\n")
 		if err := buffer.Flush(); err != nil {
 			return
 		}
+		forwarded, err := http.ReadRequest(buffer.Reader)
+		if err != nil {
+			inspectionReceived <- fmt.Errorf("read forwarded request: %w", err)
+			return
+		}
+		defer forwarded.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(forwarded.Body, int64(len(requestBody)+1)))
+		if err != nil || forwarded.Method != http.MethodPost || forwarded.URL.Path != inspectionPath || string(body) != requestBody {
+			inspectionReceived <- fmt.Errorf("unexpected forwarded request %s %s %q: %v", forwarded.Method, forwarded.URL.Path, body, err)
+			return
+		}
 		select {
-		case inspectionReceived <- struct{}{}:
+		case inspectionReceived <- nil:
 		default:
 		}
 		<-inspectionRelease
+		fmt.Fprintf(buffer, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(responseBody), responseBody)
+		_ = buffer.Flush()
 	}))
 	defer inspectionProxy.Close()
-	defer close(inspectionRelease)
+	defer releaseInspection()
 	_, inspectionPort, err := net.SplitHostPort(strings.TrimPrefix(inspectionProxy.URL, "http://"))
 	if err != nil {
 		t.Fatal(err)
@@ -164,11 +186,18 @@ tun: {device: AsterSvcTest}
 	inspectionClient := &http.Client{Transport: inspectionTransport, Timeout: 20 * time.Second}
 	inspectionResult := make(chan error, 1)
 	go func() {
-		response, requestErr := inspectionClient.Get("http://1.1.1.1:18081/aster-process-inspection")
-		inspectionResult <- requestErr
-		if response != nil {
-			response.Body.Close()
+		response, err := inspectionClient.Post("http://198.51.100.10:18081"+inspectionPath, "text/plain", strings.NewReader(requestBody))
+		if err != nil {
+			inspectionResult <- err
+			return
 		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(response.Body, int64(len(responseBody)+1)))
+		if err != nil || response.StatusCode != http.StatusOK || string(body) != responseBody {
+			inspectionResult <- fmt.Errorf("unexpected TUN response %d %q: %v", response.StatusCode, body, err)
+			return
+		}
+		inspectionResult <- nil
 	}()
 	executable := currentApplicationExecutable(t)
 	identified := false
@@ -202,8 +231,8 @@ tun: {device: AsterSvcTest}
 	if !identified {
 		t.Logf("expected original executable: %s; last synthetic connection snapshot: %s", executable, lastSnapshot)
 		select {
-		case <-inspectionReceived:
-			t.Log("loopback inspection proxy received the TUN request")
+		case err := <-inspectionReceived:
+			t.Logf("loopback inspection proxy observed the TUN request: %v", err)
 		default:
 			t.Log("loopback inspection proxy did not receive the TUN request")
 		}
@@ -215,6 +244,24 @@ tun: {device: AsterSvcTest}
 		}
 		t.Fatal("TUN did not report the original client executable")
 	}
+	select {
+	case err := <-inspectionReceived:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the loopback fixture did not receive the application payload through TUN")
+	}
+	releaseInspection()
+	select {
+	case err := <-inspectionResult:
+		if err != nil {
+			t.Fatalf("TUN did not forward the response back to the application: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the application did not receive the fixture response through TUN")
+	}
+	t.Log("Windows TUN forwarded the request and response and reported the originating executable")
 	if err = client.Call("controller", map[string]string{"method": "POST", "path": "/restart"}, nil); err == nil {
 		t.Fatal("unsupported privileged controller operation accepted")
 	}

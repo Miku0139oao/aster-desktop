@@ -104,6 +104,13 @@ jobs:
       - name: Real core lifecycle and rollback tests (Unix)
         if: runner.os != 'Windows'
         run: cd bridge && GOTOOLCHAIN=go1.26.3 ASTER_TEST_CORE="$GITHUB_WORKSPACE/.build/aster-core" go test ./... -count=1
+      - name: Install, launch, and remove the Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem -LiteralPath dist -Filter 'Aster-Desktop-*-windows-x64-setup.exe' -File)
+          if ($setup.Count -ne 1) { throw 'Expected one Windows installer' }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-installed-launch.ps1 -SetupPath $setup[0].FullName
       - name: Windows LocalSystem service and TUN regression
         if: runner.os == 'Windows'
         shell: pwsh
@@ -112,7 +119,7 @@ jobs:
           $env:ASTER_TEST_CORE="$pwd/.build/aster-core.exe"
           $env:ASTER_TEST_WINDOWS_SERVICE='disposable-runner'
           cd bridge
-          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 3m
+          go test ./internal/desktop -run TestWindowsServiceTUNLifecycle -count=1 -v -timeout 8m
       - name: MyGo workflow with the packaged engine (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

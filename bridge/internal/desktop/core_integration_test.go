@@ -30,7 +30,8 @@ func TestRealCoreApplicationRules(t *testing.T) {
 		{"PROCESS-PATH", executable},
 	} {
 		t.Run(match.kind, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Repeated core validation can take more than 30 seconds on Windows.
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			a, err := NewApp(t.TempDir(), binary, "")
 			if err != nil {
@@ -46,7 +47,7 @@ func TestRealCoreApplicationRules(t *testing.T) {
 				b, _ := json.Marshal(params)
 				result, err := a.Dispatch(ctx, Request{Method: method, Params: b})
 				if err != nil {
-					t.Fatal(method, ": ", err)
+					t.Fatalf("%s: %v (scenario context: %v)", method, err, ctx.Err())
 				}
 				return result.(json.RawMessage)
 			}

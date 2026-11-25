@@ -28,6 +28,9 @@ type App struct {
 	nextScheduledRefresh           time.Time
 	nextHistoryPoll                time.Time
 	errorMessage, notice, progress string
+	busyOperation                  string
+	afterOperation                 func()
+	quitError                      string
 	page                           pageID
 	palette                        palette
 	systemLocale                   string
@@ -58,8 +61,14 @@ type App struct {
 	dnsName, dnsType              string
 	dnsResult                     Object
 	history                       Object
+	historyLoading                bool
+	historyError                  error
 	interfaces                    []Object
+	interfacesLoading             bool
+	interfacesError               error
 	applications                  []Object
+	applicationsLoading           bool
+	applicationsError             error
 	selectedApps                  map[string]bool
 	appFilter                     string
 	appIcons                      map[string]*ui.Bitmap
@@ -99,7 +108,11 @@ func (a *App) Initialize(autostart bool, startErr error) {
 		a.errorMessage = startErr.Error()
 		return
 	}
-	a.run("state", func(ctx context.Context) (func(), error) {
+	method := "state"
+	if autostart {
+		method = "autostart"
+	}
+	a.run(method, func(ctx context.Context) (func(), error) {
 		var initial Snapshot
 		if err := a.client.Call(ctx, "state", nil, &initial); err != nil {
 			return nil, err
@@ -149,13 +162,18 @@ func (a *App) setSnapshot(s Snapshot) {
 type operation func(context.Context) (apply func(), err error)
 
 func (a *App) run(method string, work operation) {
-	if a.busy || a.quitting || a.client == nil {
+	if a.busy || a.quitting || a.client == nil || a.afterOperation != nil {
 		return
 	}
 	a.busy, a.errorMessage, a.notice = true, "", ""
+	a.busyOperation = method
 	a.epoch++
 	timeout := 3 * time.Minute
-	if method == "updateCore" {
+	switch method {
+	case "autostart", "connect", "settings", "import", "activate", "edit", "restore", "patchProfile", "manageRules", "manageObject", "batchApplicationRules", "refresh", "applyRefresh":
+		// Leave time for privileged startup and profile-apply rollback.
+		timeout = 7 * time.Minute
+	case "updateCore":
 		timeout = 20 * time.Minute
 	}
 	run := func() {
@@ -166,7 +184,7 @@ func (a *App) run(method string, work operation) {
 			if a.quitting {
 				return
 			}
-			a.busy, a.progress = false, ""
+			a.busy, a.busyOperation, a.progress = false, "", ""
 			if apply != nil {
 				apply()
 			}
@@ -175,6 +193,10 @@ func (a *App) run(method string, work operation) {
 				if a.dialog.open {
 					a.dialog.err = a.errorMessage
 				}
+			}
+			if after := a.afterOperation; after != nil {
+				a.afterOperation = nil
+				after()
 			}
 		}
 		if a.post == nil {
@@ -222,7 +244,7 @@ func (a *App) mutateAfter(ctx context.Context, method string, params any, after 
 
 func (a *App) saveSettings(next Settings) {
 	a.mutate("settings", next, func() {
-		if next.Tun && a.interfaces == nil {
+		if next.Tun && a.interfaces == nil && a.interfacesError == nil {
 			a.loadInterfaces()
 		}
 	})
@@ -281,7 +303,7 @@ func (a *App) jump(page pageID) {
 	a.page = page
 	switch page {
 	case applications:
-		if a.applications == nil {
+		if a.applications == nil && a.applicationsError == nil {
 			a.loadApplications()
 		}
 		a.Poll()
@@ -292,7 +314,7 @@ func (a *App) jump(page pageID) {
 	case nodes, connections, logs:
 		a.Poll()
 	case overview:
-		if a.settings().Tun && a.interfaces == nil {
+		if a.settings().Tun && a.interfaces == nil && a.interfacesError == nil {
 			a.loadInterfaces()
 		}
 	}
@@ -375,6 +397,7 @@ func (a *App) Poll() {
 	loadHistory := page == statistics && now.After(a.nextHistoryPoll)
 	if loadHistory {
 		a.nextHistoryPoll = now.Add(10 * time.Second)
+		a.historyLoading = true
 	}
 	work := func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
@@ -383,6 +406,7 @@ func (a *App) Poll() {
 		err := a.client.Call(ctx, "status", nil, &status)
 		var live, providerData, links, history Object
 		var messages []string
+		var historyErr error
 		if err == nil && status.Core.Running {
 			if page == overview || page == nodes {
 				_ = a.api(ctx, "GET", "/proxies", nil, &live)
@@ -398,15 +422,20 @@ func (a *App) Poll() {
 			_ = a.client.Call(ctx, "logs", nil, &messages)
 		}
 		if err == nil && loadHistory {
-			_ = a.client.Call(ctx, "trafficHistory", Object{"days": historyDays}, &history)
+			historyErr = a.client.Call(ctx, "trafficHistory", Object{"days": historyDays}, &history)
 		}
 		finish := func() {
 			a.polling = false
+			if loadHistory {
+				a.historyLoading = false
+			}
 			if a.quitting || a.epoch != epoch {
 				return
 			}
 			if err != nil {
-				a.errorMessage = err.Error()
+				if a.errorMessage == "" {
+					a.errorMessage = err.Error()
+				}
 				return
 			}
 			wasRunning := a.running()
@@ -429,8 +458,11 @@ func (a *App) Poll() {
 			if messages != nil && !a.pausedLogs && !slices.Equal(a.logs, messages) {
 				a.logs = messages
 			}
-			if history != nil {
-				a.history = history
+			if loadHistory {
+				a.historyError = historyErr
+				if historyErr == nil {
+					a.history = history
+				}
 			}
 		}
 		if a.post == nil {
@@ -536,6 +568,30 @@ func (a *App) Listen() {
 			}
 		}
 	}
+}
+
+// RequestQuit waits for any foreground operation, then asks the engine to
+// restore proxy settings and stop. A failure leaves the app available to retry.
+func (a *App) RequestQuit(done func(error)) {
+	if a.client == nil {
+		done(nil)
+		return
+	}
+	if a.busy {
+		a.afterOperation = func() { a.RequestQuit(done) }
+		return
+	}
+	a.quitError = ""
+	a.run("quit", func(ctx context.Context) (func(), error) {
+		err := a.client.Shutdown(ctx)
+		return func() {
+			if err != nil {
+				a.quitError = a.tr("無法停止代理，請重試退出。", "Could not stop the proxy. Try quitting again.") + " " + err.Error()
+				a.Poll()
+			}
+			done(err)
+		}, nil
+	})
 }
 
 func (a *App) Stop() {

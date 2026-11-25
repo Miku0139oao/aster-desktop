@@ -3,6 +3,7 @@ package desktopui
 import (
 	"fmt"
 	"runtime"
+	"slices"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -57,8 +58,12 @@ func (a *App) View(c *ui.Context) {
 		a.sidebar(c, sidebar)
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.header(c)
-			if a.errorMessage != "" && !a.dialog.open {
+			if a.quitError != "" && !a.dialog.open {
+				a.banner(c, a.quitError, true)
+			} else if a.errorMessage != "" && !a.dialog.open {
 				a.banner(c, a.errorMessage, true)
+			} else if (a.ready && a.busy || a.busyOperation == "quit") && !a.dialog.open {
+				a.operationProgress(c)
 			} else if a.progress != "" {
 				a.banner(c, a.progress, false)
 			} else if a.notice != "" {
@@ -189,7 +194,31 @@ func (a *App) banner(c *ui.Context, message string, problem bool) {
 		} else {
 			text.Role(ui.RoleStatus)
 		}
-		a.iconButton(c, "close", a.tr("關閉提示", "Dismiss message")).OnClick(func() { a.errorMessage, a.notice = "", "" })
+		a.iconButton(c, "close", a.tr("關閉提示", "Dismiss message")).OnClick(func() { a.errorMessage, a.notice, a.quitError = "", "", "" })
+	})
+}
+
+func (a *App) operationProgress(c *ui.Context) {
+	message := a.progress
+	if message == "" {
+		switch a.busyOperation {
+		case "connect", "autostart":
+			message = a.tr("正在啟動代理…", "Starting proxy…")
+		case "disconnect":
+			message = a.tr("正在停止代理…", "Stopping proxy…")
+		case "quit":
+			message = a.tr("正在停止代理並退出…", "Stopping the proxy and quitting…")
+		case "settings":
+			message = a.tr("正在儲存設定…", "Saving settings…")
+		case "installService":
+			message = a.tr("正在安裝背景服務…", "Installing background service…")
+		default:
+			message = a.tr("處理中…", "Working…")
+		}
+	}
+	ui.Row(c).Margin(0, PagePadding, 8, PagePadding).Padding(8, 12).Radius(ControlRadius).Gap(8).Background(a.palette.selected).Children(func() {
+		ui.Spinner(c).Size(16, 16)
+		ui.Text(c, message).Grow(1).MinWidth(0).MaxLines(3).Role(ui.RoleStatus)
 	})
 }
 
@@ -399,8 +428,17 @@ func (a *App) outboundInterface(c *ui.Context) {
 	for _, entry := range a.interfaces {
 		options = append(options, str(entry["name"]))
 	}
-	if a.settings().TunInterface != "" && len(a.interfaces) == 0 {
+	missing := !slices.Contains(options, current)
+	if missing {
 		options = append(options, current)
+	}
+	if a.interfacesLoading {
+		ui.Text(c, a.tr("正在讀取網路清單…", "Loading network interfaces…")).TextColor(a.palette.muted).Role(ui.RoleStatus)
+	} else if a.interfacesError != nil {
+		ui.Text(c, a.tr("無法讀取網路清單。請重新整理，或選擇依系統路由。", "Could not load network interfaces. Refresh the list or follow system routes.")).TextColor(c.Theme().Danger).Role(ui.RoleAlert)
+		ui.Text(c, a.interfacesError.Error()).MaxLines(3).TextColor(a.palette.muted)
+	} else if a.interfaces != nil && missing {
+		ui.Text(c, a.tr("所選網路未連接，請選擇其他網路後再連線。", "The selected network is unavailable. Choose another before connecting.")).TextColor(a.palette.muted).Role(ui.RoleStatus)
 	}
 	ui.Row(c).Gap(8).Wrap().Children(func() {
 		label := a.tr("TUN 出站網路", "TUN outbound network")
@@ -413,6 +451,6 @@ func (a *App) outboundInterface(c *ui.Context) {
 			}
 			a.saveSettings(next)
 		})
-		a.button(c, a.tr("重新整理網路清單", "Refresh network list"), false).Disabled(a.busy).OnClick(a.loadInterfaces)
+		a.button(c, a.tr("重新整理網路清單", "Refresh network list"), false).Disabled(a.interfacesLoading).OnClick(a.loadInterfaces)
 	})
 }

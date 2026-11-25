@@ -112,6 +112,13 @@ func (m *macClient) state(ctx context.Context) (macState, error) {
 	return state, err
 }
 func (m *macClient) Call(ctx context.Context, method string, params, result any) error {
+	switch method {
+	case "listNetworkInterfaces", "trafficHistory":
+		// This read-only bridge call does not share state with the XPC session.
+		return m.Client.Call(ctx, method, params, result)
+	case "listApplications":
+		return m.listApplications(ctx, params, result)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -119,24 +126,27 @@ func (m *macClient) Call(ctx context.Context, method string, params, result any)
 	}
 	return m.call(ctx, method, params, result)
 }
-func (m *macClient) call(ctx context.Context, method string, params, result any) error {
-	switch method {
-	case "listApplications":
-		var applications []object
-		if err := m.Client.Call(ctx, method, params, &applications); err != nil {
-			return err
-		}
-		paths := make([]string, 0, min(256, len(applications)))
-		for _, application := range applications {
-			if path, _ := application["path"].(string); application["installed"] == true && path != "" {
-				paths = append(paths, path)
-				if len(paths) == 256 {
-					break
-				}
+
+func (m *macClient) listApplications(ctx context.Context, params, result any) error {
+	var applications []object
+	if err := m.Client.Call(ctx, "listApplications", params, &applications); err != nil {
+		return err
+	}
+	paths := make([]string, 0, min(256, len(applications)))
+	for _, application := range applications {
+		if path, _ := application["path"].(string); application["installed"] == true && path != "" {
+			paths = append(paths, path)
+			if len(paths) == 256 {
+				break
 			}
 		}
+	}
+	if len(paths) > 0 {
 		var icons map[string]string
-		if err := m.native(ctx, "applicationIcons", paths, &icons); err == nil {
+		m.mu.Lock()
+		err := m.native(ctx, "applicationIcons", paths, &icons)
+		m.mu.Unlock()
+		if err == nil {
 			for _, application := range applications {
 				path, _ := application["path"].(string)
 				if icon := icons[path]; icon != "" {
@@ -144,7 +154,12 @@ func (m *macClient) call(ctx context.Context, method string, params, result any)
 				}
 			}
 		}
-		return decodeResult(applications, result)
+	}
+	return decodeResult(applications, result)
+}
+
+func (m *macClient) call(ctx context.Context, method string, params, result any) error {
+	switch method {
 	case "state", "status":
 		var state map[string]json.RawMessage
 		if err := m.Client.Call(ctx, method, nil, &state); err != nil {
@@ -459,4 +474,20 @@ func (m *macClient) Close() error {
 		err = errors.Join(err, m.native(ctx, "close", nil, nil))
 	}
 	return errors.Join(err, m.Client.Close())
+}
+
+func (m *macClient) Shutdown(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.tun || m.proxy {
+		if err := m.disconnect(ctx, nil); err != nil {
+			return err
+		}
+	}
+	if m.invoke != nil {
+		if err := m.native(ctx, "close", nil, nil); err != nil {
+			return err
+		}
+	}
+	return m.Client.Shutdown(ctx)
 }
