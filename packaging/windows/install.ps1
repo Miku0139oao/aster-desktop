@@ -1,8 +1,10 @@
+param([switch]$Quiet)
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 try {
 $asterPrincipal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if(!$asterPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
+  if($Quiet){throw 'Run the quiet installer from an elevated terminal.'}
   $asterElevated=Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$PSCommandPath+'"') -WindowStyle Hidden -Wait -PassThru
   exit $asterElevated.ExitCode
 }
@@ -64,8 +66,10 @@ New-ItemProperty -Path $asterRegistry -Name DisplayName -Value 'Aster Desktop' -
 New-ItemProperty -Path $asterRegistry -Name DisplayVersion -Value '#ASTER_VERSION' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $asterRegistry -Name UninstallString -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+$asterUninstall+'"') -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $asterRegistry -Name InstallLocation -Value $asterInstall -PropertyType String -Force | Out-Null
-Add-Type -AssemblyName PresentationFramework
-[System.Windows.MessageBox]::Show('Aster Desktop is installed. Open it from the Start menu. Your profiles stay in your user account.','Aster Desktop') | Out-Null
+if(!$Quiet){
+  Add-Type -AssemblyName PresentationFramework
+  [System.Windows.MessageBox]::Show('Aster Desktop is installed. Open it from the Start menu. Your profiles stay in your user account.','Aster Desktop') | Out-Null
+}
 } catch {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 1

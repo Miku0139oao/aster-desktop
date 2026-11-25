@@ -28,9 +28,22 @@ func TestMain(m *testing.M) {
 	}
 	if mode := os.Getenv("ASTER_CORE_FIXTURE"); mode != "" {
 		args := os.Args[1:]
-		config := ""
+		config, dir := "", ""
 		for i, arg := range args {
+			if arg == "-d" && i+1 < len(args) {
+				dir = args[i+1]
+			}
 			if arg == "-t" {
+				if mode == "geosite-retry" {
+					if _, err := os.Stat(filepath.Join(dir, "GeoSite.dat")); err == nil {
+						fmt.Fprintln(os.Stderr, "list fixture not found in GeoSite.dat")
+						os.Exit(1)
+					}
+					if err := os.WriteFile(filepath.Join(dir, "retry-ready"), nil, 0600); err != nil {
+						os.Exit(2)
+					}
+					time.Sleep(time.Minute)
+				}
 				os.Exit(0)
 			}
 			if arg == "-f" && i+1 < len(args) {

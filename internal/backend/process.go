@@ -31,6 +31,8 @@ type Client interface {
 	Call(context.Context, string, any, any) error
 	Events() <-chan Event
 	Close() error
+	// Shutdown leaves the engine available for retry if disconnect fails.
+	Shutdown(context.Context) error
 }
 
 type reply struct {
@@ -186,20 +188,32 @@ func (p *Process) Call(ctx context.Context, method string, params, result any) e
 
 func (p *Process) Events() <-chan Event { return p.events }
 
+func (p *Process) Shutdown(ctx context.Context) error {
+	if err := p.Call(ctx, "disconnect", nil, nil); err != nil {
+		return err
+	}
+	p.closeOnce.Do(p.closeTransport)
+	return nil
+}
+
 func (p *Process) Close() error {
 	p.closeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		p.closeErr = p.Call(ctx, "disconnect", nil, nil)
 		cancel()
-		_ = p.in.Close()
-		select {
-		case <-p.done:
-		case <-time.After(15 * time.Second):
-			_ = p.cmd.Process.Kill()
-			<-p.done
-		}
+		p.closeTransport()
 	})
 	return p.closeErr
+}
+
+func (p *Process) closeTransport() {
+	_ = p.in.Close()
+	select {
+	case <-p.done:
+	case <-time.After(15 * time.Second):
+		_ = p.cmd.Process.Kill()
+		<-p.done
+	}
 }
 
 // Executables resolves installed bundles and the local development build.

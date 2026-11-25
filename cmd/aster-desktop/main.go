@@ -97,6 +97,12 @@ func run() error {
 			}
 		}
 	}
+	stopUI := func() {
+		if model != nil {
+			model.Stop()
+		}
+		stopLoop()
+	}
 	mygo.App.OnActivate(func(visible bool) {
 		if !visible {
 			show()
@@ -107,10 +113,7 @@ func run() error {
 			return
 		}
 		if event.SessionEnding {
-			if model != nil {
-				model.Stop()
-			}
-			stopLoop()
+			stopUI()
 			closeEngine()
 			closed = true
 			return
@@ -120,17 +123,25 @@ func run() error {
 			return
 		}
 		closing = true
-		if model != nil {
-			model.Stop()
-		}
-		stopLoop()
-		go func() {
+		if model == nil {
 			closeEngine()
-			mygo.RunOnMain(func() {
+			stopUI()
+			closed = true
+			mygo.App.Quit()
+			return
+		}
+		window.Update(func() {
+			model.RequestQuit(func(err error) {
+				if err != nil {
+					closing = false
+					show()
+					return
+				}
+				stopUI()
 				closed = true
 				mygo.App.Quit()
 			})
-		}()
+		})
 	})
 	mygo.App.WhenReady(func() {
 		if runtime.GOOS == "darwin" {
@@ -187,9 +198,17 @@ func run() error {
 			}
 		}
 		window.OnClose(func(event *mygo.CloseEvent) {
-			if !closing && !closed && tray != nil {
-				event.PreventDefault()
+			if closed {
+				return
+			}
+			event.PreventDefault()
+			if closing {
+				return
+			}
+			if tray != nil {
 				window.Hide()
+			} else {
+				mygo.App.Quit()
 			}
 		})
 		window.OnFocus(func() { window.Update(view.Poll) })

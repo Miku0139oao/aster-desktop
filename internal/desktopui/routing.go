@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -188,15 +189,20 @@ func (a *App) chosenProvider(choice string) (provider, node string, ok bool) {
 	return "", "", false
 }
 func (a *App) loadApplications() {
-	a.run("listApplications", func(ctx context.Context) (func(), error) {
-		var apps []Object
-		if err := a.client.Call(ctx, "listApplications", nil, &apps); err != nil {
-			return nil, err
+	if a.applicationsLoading || a.quitting || a.client == nil {
+		return
+	}
+	a.applicationsLoading, a.applicationsError = true, nil
+	apps := []Object{}
+	a.readList("listApplications", 30*time.Second, &apps, func(err error) {
+		a.applicationsLoading, a.applicationsError = false, err
+		if err == nil {
+			if apps == nil {
+				apps = []Object{}
+			}
+			a.applications = apps
+			clear(a.appIcons)
 		}
-		if apps == nil {
-			apps = []Object{}
-		}
-		return func() { a.applications = apps; clear(a.appIcons); a.Poll() }, nil
 	})
 }
 func (a *App) apps(c *ui.Context) {
@@ -230,9 +236,15 @@ func (a *App) apps(c *ui.Context) {
 	})
 	ui.Column(c).Fill().Padding(4, PagePadding, 20, PagePadding).Gap(12).Children(func() {
 		a.hint(c, a.tr("使用 TUN +「依規則」讓應用程式走你指定的出口。", "Use TUN and Rules mode to route applications through the selected target."))
+		if a.applicationsLoading {
+			ui.Text(c, a.tr("正在讀取應用程式…", "Loading applications…")).TextColor(a.palette.muted).Role(ui.RoleStatus)
+		} else if a.applicationsError != nil {
+			message := a.tr("無法讀取應用程式清單。", "Could not load applications.") + " " + a.applicationsError.Error()
+			ui.Text(c, message).MaxLines(3).TextColor(c.Theme().Danger).Role(ui.RoleAlert)
+		}
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			a.search(c, &a.queries[applications], a.tr("搜尋應用程式", "Search applications")).MinWidth(170)
-			a.button(c, a.tr("重新整理", "Refresh"), false).Disabled(a.busy).OnClick(a.loadApplications)
+			a.button(c, a.tr("重新整理", "Refresh"), false).Disabled(a.applicationsLoading).OnClick(a.loadApplications)
 			a.button(c, a.tr("選擇執行檔", "Choose executable"), false).Disabled(a.busy || a.platform.PickFile == nil).OnClick(a.pickExecutable)
 		})
 		ui.Row(c).Gap(8).Wrap().Children(func() {
@@ -251,13 +263,9 @@ func (a *App) apps(c *ui.Context) {
 			}
 		})
 		if len(apps) == 0 {
-			a.panel(c, func() {
-				text := a.tr("沒有符合的應用程式。", "No matching applications.")
-				if a.busy {
-					text = a.tr("正在讀取應用程式…", "Loading applications…")
-				}
-				a.hint(c, text)
-			})
+			if !a.applicationsLoading && a.applicationsError == nil {
+				a.panel(c, func() { a.hint(c, a.tr("沒有符合的應用程式。", "No matching applications.")) })
+			}
 			return
 		}
 		ls := &a.lists[applications]

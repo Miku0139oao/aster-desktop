@@ -25,9 +25,13 @@ type Request struct {
 	Params json.RawMessage `json:"params"`
 }
 type RPCError struct {
-	Message string `json:"message"`
-	Code    string `json:"code"`
+	Message string   `json:"message"`
+	Code    string   `json:"code"`
+	Logs    []string `json:"logs,omitempty"`
 }
+
+func (e *RPCError) Error() string { return e.Message }
+
 type Response struct {
 	ID     int       `json:"id"`
 	Result any       `json:"result,omitempty"`
@@ -111,13 +115,13 @@ func (a *App) stop() error {
 	var err error
 	if a.remote != nil {
 		err = a.remote.Call("stop", nil, nil)
-		a.remote.Close()
-		a.remote = nil
+		var response *RPCError
+		if !errors.As(err, &response) || response.Code != "service" {
+			a.remote.Close()
+			a.remote = nil
+		}
 	}
-	if ce := a.Core.Stop(); ce != nil {
-		err = ce
-	}
-	return err
+	return errors.Join(err, a.Core.Stop())
 }
 func (a *App) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -126,6 +130,10 @@ func (a *App) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	err := a.stop()
+	if a.remote != nil {
+		a.remote.Close()
+		a.remote = nil
+	}
 	if a.metrics != nil {
 		_ = a.metrics.Flush()
 	}
@@ -645,6 +653,9 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 		if a.status().Running {
 			return a.status(), nil
 		}
+		if err = a.Core.RecoverProxy(); err != nil {
+			return nil, fmt.Errorf("could not restore the previous system proxy before connecting: %w", err)
+		}
 		if a.remote != nil {
 			a.remote.Close()
 			a.remote = nil
@@ -658,14 +669,16 @@ func (a *App) Dispatch(ctx context.Context, req Request) (result any, dispatchEr
 			} else {
 				remote, err := ConnectService()
 				if err != nil {
+					if ServiceStatus()["installed"] == true {
+						return nil, fmt.Errorf("the background service is unavailable; check its status or reinstall it: %w", err)
+					}
 					return nil, errors.New("install and approve the background service to proxy all applications")
 				}
 				a.remote = remote
 				if err = remote.Call("start", map[string]any{"content": profile.Content, "settings": settings}, nil); err != nil {
-					// Keep the failure available after releasing the privileged session.
-					var logs []string
-					if remote.Call("logs", nil, &logs) == nil {
-						for _, line := range logs {
+					var response *RPCError
+					if errors.As(err, &response) {
+						for _, line := range response.Logs {
 							a.Core.appendLog(line)
 						}
 					}

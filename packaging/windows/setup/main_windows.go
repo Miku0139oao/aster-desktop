@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -26,14 +27,22 @@ import (
 var files embed.FS
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--verify" {
+	verifyOnly := flag.Bool("verify", false, "verify the embedded installation payload")
+	quiet := flag.Bool("quiet", false, "install without dialogs from an elevated terminal")
+	flag.Parse()
+	if *verifyOnly {
 		if err := verify(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return
 	}
-	if err := install(); err != nil {
-		message("安裝未完成 / Installation incomplete\n\n" + err.Error())
+	if err := install(*quiet); err != nil {
+		if *quiet {
+			fmt.Fprintln(os.Stderr, err)
+		} else {
+			message("安裝未完成 / Installation incomplete\n\n" + err.Error())
+		}
 		os.Exit(1)
 	}
 }
@@ -84,8 +93,11 @@ func verify() error {
 	}
 	return nil
 }
-func install() error {
+func install(quiet bool) error {
 	if !windows.GetCurrentProcessToken().IsElevated() {
+		if quiet {
+			return errors.New("run the quiet installer from an elevated terminal")
+		}
 		return elevate()
 	}
 	if err := verify(); err != nil {
@@ -132,7 +144,11 @@ func install() error {
 	if err != nil {
 		return err
 	}
-	command := exec.Command(filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(dir, "install.ps1"))
+	args := []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(dir, "install.ps1")}
+	if quiet {
+		args = append(args, "-Quiet")
+	}
+	command := exec.Command(filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe"), args...)
 	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	command.Env = append(os.Environ(), "ProgramFiles="+programFiles, "SystemRoot="+filepath.Dir(system), "WINDIR="+filepath.Dir(system))
 	output, err := command.CombinedOutput()

@@ -169,21 +169,20 @@ func (c *Core) Validate(ctx context.Context, content string, s Settings, privile
 		return nil, err
 	}
 	f.Close()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, c.Binary, "-d", c.Dir, "-f", name, "-t")
+	validationCtx, cancelValidation := context.WithTimeout(ctx, 30*time.Second)
+	cmd := exec.CommandContext(validationCtx, c.Binary, "-d", c.Dir, "-f", name, "-t")
 	hideCommand(cmd)
 	output, err := cmd.CombinedOutput()
-	if err != nil && missingGeoSiteList(string(output)) && c.retireGeoSiteCache() {
+	err = errors.Join(err, validationCtx.Err())
+	cancelValidation()
+	if err != nil && ctx.Err() == nil && missingGeoSiteList(string(output)) && c.retireGeoSiteCache() {
 		// The core downloads a fresh database on the retry, which can outlast
 		// the 30 second failure window.
-		retryCtx, retryCancel := context.WithTimeout(
-			context.WithoutCancel(ctx),
-			2*time.Minute,
-		)
+		retryCtx, retryCancel := context.WithTimeout(ctx, 2*time.Minute)
 		retry := exec.CommandContext(retryCtx, c.Binary, "-d", c.Dir, "-f", name, "-t")
 		hideCommand(retry)
 		output, err = retry.CombinedOutput()
+		err = errors.Join(err, retryCtx.Err())
 		retryCancel()
 	}
 	if err != nil {
@@ -671,15 +670,19 @@ func (c *Core) Stop() error {
 		case <-done:
 			err = nil
 		case <-time.After(10 * time.Second):
-			_ = cmd.Process.Kill()
-			<-done
-			err = nil
+			if killErr := cmd.Process.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+				err = fmt.Errorf("could not stop the core process: %w", killErr)
+			} else {
+				select {
+				case <-done:
+					err = nil
+				case <-time.After(3 * time.Second):
+					err = errors.New("core shutdown did not complete")
+				}
+			}
 		}
 	}
-	if pe := c.restoreProxy(); pe != nil {
-		err = pe
-	}
-	return err
+	return errors.Join(err, c.restoreProxy())
 }
 
 func waitForPortRelease(port int, controller string, timeout time.Duration) error {
@@ -777,14 +780,28 @@ func yamlMap(value []byte) map[string]any {
 func (c *Core) restoreProxy() error {
 	c.proxyMu.Lock()
 	defer c.proxyMu.Unlock()
-	if c.proxy != nil {
-		if pe := RestoreProxy(*c.proxy); pe != nil {
-			return pe
-		} else {
-			c.proxy = nil
-			_ = os.Remove(filepath.Join(c.Dir, "proxy-backup.json"))
+	backupPath := filepath.Join(c.Dir, "proxy-backup.json")
+	if c.proxy == nil {
+		b, err := os.ReadFile(backupPath)
+		if os.IsNotExist(err) {
+			return nil
 		}
+		if err != nil {
+			return fmt.Errorf("could not read the system proxy backup: %w", err)
+		}
+		var snapshot ProxySnapshot
+		if err := json.Unmarshal(b, &snapshot); err != nil {
+			return fmt.Errorf("could not read the system proxy backup: %w", err)
+		}
+		c.proxy = &snapshot
 	}
+	if err := RestoreProxy(*c.proxy); err != nil {
+		return err
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("could not remove the restored proxy backup: %w", err)
+	}
+	c.proxy = nil
 	return nil
 }
 func (c *Core) Apply(ctx context.Context, content string, s Settings, privileged bool) error {
@@ -949,23 +966,7 @@ func (c *Core) enableProxy(port int, requireRunning bool) error {
 	}
 	return nil
 }
-func (c *Core) RecoverProxy() error {
-	b, err := os.ReadFile(filepath.Join(c.Dir, "proxy-backup.json"))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var p ProxySnapshot
-	if err = json.Unmarshal(b, &p); err != nil {
-		return err
-	}
-	if err = RestoreProxy(p); err != nil {
-		return err
-	}
-	return os.Remove(filepath.Join(c.Dir, "proxy-backup.json"))
-}
+func (c *Core) RecoverProxy() error { return c.restoreProxy() }
 func bounded(s string, n int) string {
 	if len(s) > n {
 		return s[len(s)-n:]
