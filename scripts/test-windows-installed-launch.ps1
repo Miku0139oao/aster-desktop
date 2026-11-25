@@ -34,15 +34,24 @@ function Wait-ForCheck([string]$Description,[scriptblock]$Check,[int]$Seconds=20
 }
 
 function Invoke-InstallerCommand([string]$Label,[string]$Executable,[string[]]$Arguments){
-  $out=Join-Path $scratch "$Label.stdout"
-  $err=Join-Path $scratch "$Label.stderr"
-  $command=Start-Process -FilePath $Executable -ArgumentList $Arguments -WorkingDirectory $scratch `
-    -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
+  # Own the process handle from creation. PowerShell 5.1's Start-Process
+  # -PassThru can lose the exit code after WaitForExit(timeout).
+  $start=[Diagnostics.ProcessStartInfo]::new($Executable,($Arguments -join ' '))
+  $start.WorkingDirectory=$scratch
+  $start.UseShellExecute=$false
+  $start.CreateNoWindow=$true
+  $start.RedirectStandardOutput=$true
+  $start.RedirectStandardError=$true
+  $command=[Diagnostics.Process]::Start($start)
   try {
+    $out=$command.StandardOutput.ReadToEndAsync()
+    $err=$command.StandardError.ReadToEndAsync()
     if(!$command.WaitForExit(90000)){throw "$Label exceeded 90 seconds"}
     if($command.ExitCode -ne 0){throw "$Label failed with exit code $($command.ExitCode)"}
   } catch {
-    Get-Content -LiteralPath $out,$err | Write-Host
+    foreach($stream in $out,$err){
+      if($stream -and $stream.Wait(1000)){$stream.Result | Write-Host}
+    }
     throw
   } finally {
     if(!$command.HasExited){$command.Kill()}
@@ -140,6 +149,7 @@ try {
     $env:APPDATA=$appData
     $gui=Start-Process -FilePath $link.TargetPath -ArgumentList '--autostart' -WorkingDirectory $scratch -PassThru `
       -RedirectStandardOutput (Join-Path $scratch 'gui.stdout') -RedirectStandardError (Join-Path $scratch 'gui.stderr')
+    $null=$gui.Handle # Keep the exit code available after the window closes.
   } finally {$env:APPDATA=$savedAppData}
   $hwnd=Wait-ForCheck 'the installed MyGo window' {
     $gui.Refresh()
