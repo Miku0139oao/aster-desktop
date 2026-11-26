@@ -4,7 +4,7 @@
 
 Aster Desktop 是 Aster Core 的圖形客戶端，讓不習慣使用終端機的使用者也能管理代理。支援 Windows、macOS、Linux、Android 與 iOS（iOS 目前為未簽章建置）；介面預設跟隨系統語言，提供繁體中文、简体中文與 English。不用自行安裝核心或設定 Controller 位址與密碼，但需要準備自己的訂閱、節點連結或 Clash YAML。
 
-**[下載 0.4.0 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
+**[下載 0.5.0 正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.5.0)** · **[使用手冊](docs/USER_GUIDE.md)** · **[常見問題](docs/FAQ.md)** · [更新紀錄](CHANGELOG.md)
 
 ## 看看介面
 
@@ -56,14 +56,14 @@ Android 版使用頂部頁面標題與底部導覽，避免桌面側欄壓縮手
 
 | 系統 | 建議下載 | 安裝方式 |
 | --- | --- | --- |
-| Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
-| macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
-| macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
-| Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-linux-x64.deb) | 使用系統套件安裝程式開啟 |
-| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
-| iOS（實驗性） | [未簽章 zip](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/Aster-Desktop-0.4.0-ios-unsigned.zip) | 僅供檢查與自行簽章，不能直接安裝 |
+| Windows 10／11 x64 | [Windows 安裝器](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-windows-x64-setup.exe) | 從托盤退出舊版後執行安裝器 |
+| macOS 13+，Apple Silicon（M 系列） | [arm64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-macos-arm64.dmg) | 開啟 DMG，執行其中的 PKG |
+| macOS 13+，Intel | [amd64 DMG](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-macos-amd64.dmg) | 開啟 DMG，執行其中的 PKG |
+| Ubuntu 24.04 x64，GNOME／KDE | [deb 套件](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-linux-x64.deb) | 使用系統套件安裝程式開啟 |
+| Android arm64／x86_64 | [Android APK](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-android.apk) | 開啟 APK；首次連線時允許 VPN 權限 |
+| iOS（實驗性） | [未簽章 zip](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/Aster-Desktop-0.5.0-ios-unsigned.zip) | 僅供檢查與自行簽章，不能直接安裝 |
 
-[所有檔案、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.4.0/SHA256SUMS)
+[所有檔案、離線文件與來源碼](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.5.0) · [SHA-256 校驗碼](https://github.com/Miku0139oao/aster-desktop/releases/download/v0.5.0/SHA256SUMS)
 
 Android 使用內建固定核心與固定 release signing key；更新可直接覆蓋安裝。自 0.4.0 起桌面、Android 與 iOS 由同一個 tag 的 CI 一起建置與發佈。
 
@@ -94,13 +94,13 @@ Mac 套件由 CI 以本機簽署建置，尚未取得 Apple Developer ID 簽章�
 
 ## 更新與驗證狀態
 
-0.4.0 的桌面、Android 與 iOS 產物由同一個 tag 的 CI 建置並一起發佈；GUI 由使用者下載安裝包升級；核心可在「進階設定 → 檢查更新」更新，下載時保持目前代理，驗證後才短暫重啟。
+0.5.0 的桌面、Android 與 iOS 產物由同一個 tag 的 CI 建置並一起發佈；GUI 由使用者下載安裝包升級；核心可在「進階設定 → 檢查更新」更新，下載時保持目前代理，驗證後才短暫重啟。
 
 Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝驗證已通過；Mac 實機 TUN／網路／背景服務授權／Gatekeeper 互動／睡眠喚醒，以及 GNOME／KDE 桌面整合仍有待實機驗收項目。iOS 目前完成編譯、bundle／entitlement 與引擎連結檢查，尚未在 iPhone 實機驗證。詳見[測試紀錄](docs/TESTING.md)，遇到問題請先查看[常見問題](docs/FAQ.md)。
 
 ## 文件與開發
 
-目前開發分支的 Windows、macOS 和 Linux 介面使用 MyGo 原生 UI。桌面建置方式見[開發與建置](docs/BUILDING.md)。上方的下載連結與驗證紀錄對應已發佈的 0.4.0 版本。
+Windows、macOS 與 Linux 介面自 0.5.0 起使用 MyGo 原生 UI；Android 與 iOS 仍使用 Flutter 介面。桌面建置方式見[開發與建置](docs/BUILDING.md)。上方的下載連結與驗證紀錄對應已發佈的 0.5.0 版本。
 
 - [完整使用手冊](docs/USER_GUIDE.md)：安裝、首次使用、分流、流量、更新、備份與退出。
 - [常見問題與故障排除](docs/FAQ.md)：無法連線、TUN、授權、安裝、日誌與回報方式。
@@ -112,4 +112,4 @@ Windows、Ubuntu 24.04、Mac Intel／Apple Silicon 的 CI 與兩種 Mac 安裝�
 
 ## 授權與來源
 
-GPL-3.0，見 [LICENSE](LICENSE) 與[第三方聲明](NOTICE.md)。0.4.0 執行程式來源固定於 [v0.4.0](https://github.com/Miku0139oao/aster-desktop/tree/v0.4.0)，內附核心與轉換器固定於 [a9a33503](https://github.com/Miku0139oao/aster-core/tree/a9a33503b39a03681bc52d9758907316a22df199)。發佈頁提供對應桌面與核心來源、建置腳本及校驗碼。
+GPL-3.0，見 [LICENSE](LICENSE) 與[第三方聲明](NOTICE.md)。0.5.0 執行程式來源固定於 [v0.5.0](https://github.com/Miku0139oao/aster-desktop/tree/v0.5.0)，內附核心與轉換器固定於 [a9a33503](https://github.com/Miku0139oao/aster-core/tree/a9a33503b39a03681bc52d9758907316a22df199)。發佈頁提供對應桌面與核心來源、建置腳本及校驗碼。

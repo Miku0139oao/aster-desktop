@@ -1,6 +1,6 @@
 # iOS 自簽安裝教學
 
-這份教學說明如何用自己的 Apple 開發者身分簽章 Aster iOS 版，並安裝到自己的 iPhone。內容對應 `0.4.0` 的專案結構；其他版本請以該版本的原始碼為準。
+這份教學說明如何用自己的 Apple 開發者身分簽章 Aster iOS 版，並安裝到自己的 iPhone。內容對應 `0.5.0` 的專案結構；其他版本請以該版本的原始碼為準。
 
 > **先講最重要的限制**：Aster iOS 以 NetworkExtension Packet Tunnel 執行核心，`com.apple.developer.networking.networkextension`（`packet-tunnel-provider`）只提供給付費 Apple Developer Program 的 App ID。免費 Apple ID、Personal Team、AltStore／SideStore 的免費 7 天簽章都**無法**讓 tunnel 運作，也不是這份教學的適用情境。自簽需要有效的付費會員資格。
 
@@ -56,7 +56,7 @@ App ID 與 App Group 的名稱是全 Apple 開發者帳號共用的。若預設�
 ```bash
 git clone https://github.com/Miku0139oao/aster-desktop.git
 cd aster-desktop
-git checkout v0.4.0
+git checkout v0.5.0
 ```
 
 ### A2. 決定識別碼（可沿用預設）
@@ -161,11 +161,11 @@ group.app.aster.desktop
 
 ### B1. 下載與驗證
 
-將 `Aster-Desktop-0.4.0-ios-unsigned.zip` 與 `Aster-Desktop-0.4.0-ios-checksums.txt` 放在同一資料夾：
+將 `Aster-Desktop-0.5.0-ios-unsigned.zip` 與 `Aster-Desktop-0.5.0-ios-checksums.txt` 放在同一資料夾：
 
 ```bash
-grep -v '^#' Aster-Desktop-0.4.0-ios-checksums.txt | shasum -a 256 -c -
-unzip Aster-Desktop-0.4.0-ios-unsigned.zip
+grep -v '^#' Aster-Desktop-0.5.0-ios-checksums.txt | shasum -a 256 -c -
+unzip Aster-Desktop-0.5.0-ios-unsigned.zip
 ```
 
 解壓後會得到 `Runner.app`（內含 `PlugIns/AsterTunnel.appex`）。校驗檔第一行是引擎的 SHA-256 註解，`grep -v '^#'` 會略過它。
