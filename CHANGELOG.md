@@ -1,7 +1,13 @@
 # 更新紀錄
 
-## 未發佈
+## 0.5.0 — 2026-11-27 — 原生桌面介面
 
+- Windows、macOS 與 Linux 桌面介面改為 MyGo 原生 Go UI：沿用紫色淺色／深色主題、Noto Sans TC 字型、側欄與首頁卡片，共用原有 Go 橋接層與使用者資料；桌面程式不再隨附 Flutter 執行環境。
+- macOS 版在簽章過的 App 內以 Swift XPC 用戶端連接既有特權助手，系統代理與 TUN 授權流程不變。
+- 修正首頁連線按鈕被背景載入鎖住：Windows 的 TUN 網卡探索、應用程式清單與流量歷史不再阻擋連線操作，大字級下的匯入操作仍可點擊。
+- 特權 TUN 啟動與回滾加入有界的服務逾時與啟動診斷；桌面端斷線時會釋放服務 session。
+- 明確退出若無法停止核心或還原系統代理，Aster 會保留視窗並顯示原因，可在恢復後重試。
+- Windows CI 新增乾淨 runner 上的實際安裝器、原生視窗、卸載，以及經 LocalSystem 服務的 TUN 請求／回應轉送驗證。
 - 新增 [iOS 自簽安裝教學](docs/IOS_SELF_SIGN.md)：付費 Apple Developer Program 需求、從原始碼建置並簽章、重新簽章官方 unsigned zip、識別碼調整與常見錯誤。
 
 ## 0.4.0 — 2026-11-22 — iOS 客戶端基礎

@@ -239,7 +239,7 @@ func TestTUNCanConnectWhileNetworkListIsLoading(t *testing.T) {
 }
 
 func TestNativeOverviewAndJump(t *testing.T) {
-	client := &fixtureClient{state: Snapshot{State: State{Settings: defaultSettings()}, DesktopVersion: "0.4.0"}}
+	client := &fixtureClient{state: Snapshot{State: State{Settings: defaultSettings()}, DesktopVersion: "0.5.0"}}
 	a, tester := newView(t, client, "en-US")
 	if !tester.HasText("Start with a subscription") {
 		t.Fatal(tester.Texts())

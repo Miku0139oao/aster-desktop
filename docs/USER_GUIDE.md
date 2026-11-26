@@ -1,8 +1,8 @@
-# Aster Desktop 0.4.0 使用手冊
+# Aster Desktop 0.5.0 使用手冊
 
 適用於 Windows 10／11 x64、macOS 13+ Intel／Apple Silicon，以及 Ubuntu 24.04／Arch Linux x64。介面預設跟隨系統語言，提供繁體中文、简体中文與 English，也可在進階設定固定選擇任一語言。Aster Desktop 是客戶端，請先準備你已有的訂閱網址、節點分享連結或 Clash YAML 設定。
 
-[回首頁](../README.md) · [常見問題](FAQ.md) · [下載正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0)
+[回首頁](../README.md) · [常見問題](FAQ.md) · [下載正式版](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.5.0)
 
 ## 目錄
 
@@ -19,12 +19,12 @@
 
 ## 安裝與升級
 
-所有檔案均從[正式發佈頁](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.4.0)下載；核對系統及處理器種類。頁面中的 `source.zip`／`source.tar.gz` 是原始碼，不能直接當作桌面程式執行。`Aster-Desktop-0.4.0-docs.zip` 是離線文件，解壓後用瀏覽器開啟 `index.html`，不需要安裝閱讀工具。
+所有檔案均從[正式發佈頁](https://github.com/Miku0139oao/aster-desktop/releases/tag/v0.5.0)下載；核對系統及處理器種類。頁面中的 `source.zip`／`source.tar.gz` 是原始碼，不能直接當作桌面程式執行。`Aster-Desktop-0.5.0-docs.zip` 是離線文件，解壓後用瀏覽器開啟 `index.html`，不需要安裝閱讀工具。
 
 ### Windows
 
 1. 升級前先在右下角托盤找到 Aster，右鍵選「退出」。關閉主視窗會留在托盤。
-2. 執行 `Aster-Desktop-0.4.0-windows-x64-setup.exe`，依畫面完成安裝及管理員授權。
+2. 執行 `Aster-Desktop-0.5.0-windows-x64-setup.exe`，依畫面完成安裝及管理員授權。
 3. 從開始功能表開啟 Aster Desktop。原有訂閱與使用者設定會保留。已安裝背景服務者應使用安裝器升級，讓服務一起更新。
 
 可攜版：下載 `windows-x64-portable.zip`，完整解壓到固定資料夾，再執行 `aster_desktop.exe`。不要直接在 ZIP 預覽中執行，也不要只複製 EXE；核心、橋接程式及資料夾需要放在一起。使用 TUN 仍需從 GUI 安裝背景服務。安裝版與可攜版共用同一使用者資料與多開保護。
@@ -42,7 +42,7 @@ Intel／Apple Silicon 均已通過 CI 建置與實際 PKG 安裝核對；實機�
 
 Ubuntu 24.04 請下載 `.deb`，使用系統套件安裝程式開啟；也可使用可攜版 `linux-ubuntu-24.04-x64-portable.tar.gz`，完整解壓後執行 `aster_desktop`。
 
-0.4.0 由 CI 在 Ubuntu 24.04 建置，未包含 Arch 原生套件。需要 Arch 套件或 Arch 可攜版者，請依[開發與建置](BUILDING.md)在 Arch Linux 上自行建置；建置腳本會讀取 `pubspec.yaml` 的版本並輸出對應檔名。
+0.5.0 由 CI 在 Ubuntu 24.04 建置，未包含 Arch 原生套件。需要 Arch 套件或 Arch 可攜版者，請依[開發與建置](BUILDING.md)在 Arch Linux 上自行建置；建置腳本會讀取 `pubspec.yaml` 的版本並輸出對應檔名。
 
 可攜版需要 GTK 3、對應 AppIndicator、polkit 授權代理；TUN 另需 systemd 背景服務。GNOME 顯示托盤圖示可能需要桌面端的 AppIndicator 支援。無可用托盤時，關窗會執行退出。
 
@@ -50,9 +50,9 @@ Ubuntu 24.04 請下載 `.deb`，使用系統套件安裝程式開啟；也可使
 
 需要校驗時，下載同一發佈頁的 `SHA256SUMS`，將檔案 SHA-256 與其中同名項目比較。
 
-- Windows PowerShell：`Get-FileHash .\Aster-Desktop-0.4.0-windows-x64-setup.exe -Algorithm SHA256`。
-- macOS：`shasum -a 256 Aster-Desktop-0.4.0-macos-arm64.dmg`。
-- Linux：`sha256sum Aster-Desktop-0.4.0-linux-x64.deb`。
+- Windows PowerShell：`Get-FileHash .\Aster-Desktop-0.5.0-windows-x64-setup.exe -Algorithm SHA256`。
+- macOS：`shasum -a 256 Aster-Desktop-0.5.0-macos-arm64.dmg`。
+- Linux：`sha256sum Aster-Desktop-0.5.0-linux-x64.deb`。
 
 ## 第一次連線
 
@@ -194,7 +194,7 @@ Ubuntu 24.04 請下載 `.deb`，使用系統套件安裝程式開啟；也可使
 
 ### 更新桌面程式
 
-「進階設定 → 檢查更新」提供 GUI 正式版資訊與下載入口；也可直接到[發佈頁](https://github.com/Miku0139oao/aster-desktop/releases/latest)。下載對應安裝包後，先從托盤「退出」，再安裝。桌面、Android 與 iOS 產物自 0.4.0 起同版發佈；上一個桌面版是 0.2.3，已安裝者請改用 0.4.0 安裝包升級。
+「進階設定 → 檢查更新」提供 GUI 正式版資訊與下載入口；也可直接到[發佈頁](https://github.com/Miku0139oao/aster-desktop/releases/latest)。下載對應安裝包後，先從托盤「退出」，再安裝。桌面、Android 與 iOS 產物自 0.4.0 起同版發佈；0.5.0 沿用 0.4.0 的安裝位置與使用者資料，已安裝 0.4.0 者可直接以 0.5.0 安裝包升級。
 
 ### 更新核心
 
